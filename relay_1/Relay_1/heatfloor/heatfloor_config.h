@@ -1,0 +1,36 @@
+/*
+ * heatfloor_config.h
+ *
+ * Created: 12.10.2015 15:08:43
+ *  Author: gargon
+ */ 
+
+
+#ifndef HEATFLOOR_CONFIG_H_
+#define HEATFLOOR_CONFIG_H_
+
+//number of active channel -> for memory buffer allocating
+#define HEATFLOOR_CHANNELS_COUNT 2
+
+//in seconds
+#define HEATFLOOR_SENSOR_CHECK_TIME 30
+//in degrees, Celsius
+#define HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE 0.6
+
+
+/* Timer registers */
+
+#define HEATFLOOR_CONTROLLER_TIMER_REG TCNT1
+#define HEATFLOOR_CONTROLLER_TIMER_REG_OCR OCR1A
+
+#define HEATFLOOR_CONTROLLER_TIMER_PRESCALER 1024
+#define HEATFLOOR_CONTROLLER_TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / HEATFLOOR_CONTROLLER_TIMER_PRESCALER)	/*1s main loop*/
+#define HEATFLOOR_CONTROLLER_TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = HEATFLOOR_CONTROLLER_TIMER_NUM_TICKS; set_bit2(TCCR1B, CS12, CS10); unset_bit(TCCR1B, CS11); /*1024x prescaler*/}
+
+#define ENABLE_HEATFLOOR_CONTROLLER_TIMER set_bit(TIMSK, OCIE1A)
+#define DISABLE_HEATFLOOR_CONTROLLER_TIMER unset_bit(TIMSK, OCIE1A)
+
+#define HEATFLOOR_CONTROLLER_TIMER_vect TIMER1_COMPA_vect
+
+
+#endif /* HEATFLOOR_CONFIG_H_ */
