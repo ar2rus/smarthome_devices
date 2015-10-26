@@ -48,11 +48,11 @@
 #define CLUNET_DISABLE_TIMER_OVF unset_bit(TIMSK, TOIE2)
 
 /* How to init and enable external interrupt (read pin) */
-#define CLUNET_INIT_INT {set_bit(MCUCR,ISC00);unset_bit(MCUCR,ISC01); set_bit(GICR, INT0);}
+#define CLUNET_INIT_INT {set_bit(MCUCR,ISC10);unset_bit(MCUCR,ISC11); set_bit(GICR, INT1);}
 
 /* Interrupt vectors */
 #define CLUNET_TIMER_COMP_VECTOR TIMER2_COMP_vect
 #define CLUNET_TIMER_OVF_VECTOR TIMER2_OVF_vect
-#define CLUNET_INT_VECTOR INT0_vect
+#define CLUNET_INT_VECTOR INT1_vect
 
 #endif

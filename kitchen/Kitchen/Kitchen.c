@@ -359,8 +359,8 @@ int main(void){
 	cli();
 	
 	
-	RELAY_0_INIT;
-	RELAY_1_INIT;
+	//RELAY_0_INIT;
+	//RELAY_1_INIT;
 	
 	//MOTION_SENSOR_INIT;
 	//motionSensorValue = MOTION_SENSOR_READ;
@@ -368,17 +368,17 @@ int main(void){
 	//ADC_INIT;
 	//lightnessSensorValue = -1;
 	
-	BUTTON_INIT;
-	buttonStateValue = BUTTON_READ;
+	//BUTTON_INIT;
+	//buttonStateValue = BUTTON_READ;
 	
-	HALL_SENSOR_INIT;
-	hallSensorValue = HALL_SENSOR_READ;
+	//HALL_SENSOR_INIT;
+	//hallSensorValue = HALL_SENSOR_READ;
 	
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
 	
-	TIMER_INIT;
-	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
+	//TIMER_INIT;
+	//ENABLE_TIMER_CMP_A;	//main loop timer 1ms
 	sei();
 	
 	while(1){
