@@ -47,7 +47,7 @@ void exhaustedFanResponse(unsigned char address){
 	sei();
 	while (clunet_ready_to_send());	//ожидание отправки других сообщений
 	
-	char data[] = {EXHAUST_FAN_DEVICE_ID, buttonStateValue};
+	char data[] = {EXHAUST_FAN_DEVICE_ID, hallSensorValue};
 	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DEVICE_STATE_INFO, data, sizeof(data));
 }
 
@@ -377,8 +377,8 @@ int main(void){
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
 	
-	//TIMER_INIT;
-	//ENABLE_TIMER_CMP_A;	//main loop timer 1ms
+	TIMER_INIT;
+	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
 	sei();
 	
 	while(1){
