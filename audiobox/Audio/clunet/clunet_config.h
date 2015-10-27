@@ -9,7 +9,7 @@
 #define __clunet_config_h_included__
 
 /* Device address (0-254) */
-#define CLUNET_DEVICE_ID 10
+#define CLUNET_DEVICE_ID 0x0A
 
 /* Device name */
 #define CLUNET_DEVICE_NAME "AudioBox"
