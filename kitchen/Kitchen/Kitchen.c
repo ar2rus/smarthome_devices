@@ -155,9 +155,9 @@ ISR(TIMER1_COMPA_vect){
 	char state = BUTTON_READ;
 	if (state != buttonStateValue){
 		buttonStateValue = state;
-		buttonResponse(CLUNET_BROADCAST_ADDRESS);
 		
 		if (buttonStateValue){
+			buttonResponse(CLUNET_BROADCAST_ADDRESS);
 			switchExecute(FAN_RELAY_ID, 0x02);	//toggle
 		}
 	}
@@ -359,8 +359,8 @@ int main(void){
 	cli();
 	
 	
-	//RELAY_0_INIT;
-	//RELAY_1_INIT;
+	RELAY_0_INIT;
+	RELAY_1_INIT;
 	
 	//MOTION_SENSOR_INIT;
 	//motionSensorValue = MOTION_SENSOR_READ;
@@ -368,11 +368,11 @@ int main(void){
 	//ADC_INIT;
 	//lightnessSensorValue = -1;
 	
-	//BUTTON_INIT;
-	//buttonStateValue = BUTTON_READ;
+	BUTTON_INIT;
+	buttonStateValue = BUTTON_READ;
 	
-	//HALL_SENSOR_INIT;
-	//hallSensorValue = HALL_SENSOR_READ;
+	HALL_SENSOR_INIT;
+	hallSensorValue = HALL_SENSOR_READ;
 	
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
