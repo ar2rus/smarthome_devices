@@ -114,6 +114,7 @@ void uip_udp_appcall(void){
 				s->timer = UDP_DATA_MAXAGE;
 			
 				if (uip_datalen() == sizeof(supradin_header_t) + sh->size){
+					while (clunet_ready_to_send());
 					clunet_send(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
 				}
 			}
