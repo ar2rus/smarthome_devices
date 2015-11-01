@@ -31,15 +31,12 @@
 #define CLUNET_READ_PIN 3
 
 /* Timer initialization */
-//#define CLUNET_TIMER_INIT {unset_bit4(TCCR2, WGM21, WGM20, COM21, COM20); /* Timer2, normal mode */ \
-//	set_bit(TCCR2, CS22); unset_bit2(TCCR2, CS21, CS20); /* 64x prescaler for 16 MHz*/ }
-
 #define CLUNET_TIMER_INIT {unset_bit4(TCCR2, WGM21, WGM20, COM21, COM20); /* Timer2, normal mode */ \
 	set_bit2(TCCR2, CS21, CS20); unset_bit(TCCR2, CS22);  /* 32x prescaler for 16 MHz*/ }
 
-	
 /* Timer prescaler */
 #define CLUNET_TIMER_PRESCALER 32
+
 
 /* Timer registers */
 #define CLUNET_TIMER_REG TCNT2
