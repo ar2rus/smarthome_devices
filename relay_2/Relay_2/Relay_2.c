@@ -120,6 +120,11 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 				fan_light(data[0]);
 			}
 		break;
+		case CLUNET_COMMAND_DOOR_INFO:
+			if (src_address == DOORS_MIRRORED_BOX_DEVICE_ID && size==1){
+				switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, data[0]>0);
+			}
+		break;
 		case CLUNET_COMMAND_FAN:
 			if (size == 1){
 				switch (data[0]){

@@ -20,7 +20,7 @@
 /*relay_0 description*/
 #define RELAY_0_ID 1
 #define RELAY_0_PORT D
-#define RELAY_0_PIN  7
+#define RELAY_0_PIN  5
 
 /*relay_1 description*/
 #define RELAY_1_ID 2
@@ -30,7 +30,7 @@
 /*relay_2 description*/
 #define RELAY_2_ID 3
 #define RELAY_2_PORT D
-#define RELAY_2_PIN  5
+#define RELAY_2_PIN  7
 
 
 /*relay_0 controls*/
@@ -57,7 +57,10 @@
 
 
 #define HUMIDITY_SENSOR_DEVICE_ID 0x1E
+#define DOORS_MIRRORED_BOX_DEVICE_ID 0x1E
+
 #define FAN_RELAY_ID RELAY_1_ID
+#define MIRRORED_BOX_LIGHT_RELAY_ID RELAY_2_ID
 
 
 

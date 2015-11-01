@@ -3,25 +3,31 @@
 
 
 char datadht[5];
-char motionSensorValue;
+char doorSensorValue;
 char lightnessSensorValue;
 
 
 
-void motionResponse(unsigned char address){
-	char data = motionSensorValue;
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_MOTION_INFO, &data, sizeof(data));
+void doorResponse(unsigned char address){
+	char data = doorSensorValue;
+	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, &data, sizeof(data));
 }
 
 void lightnessResponse(unsigned char address){
+
+	
 	char data[2];
 	data[0] = lightnessSensorValue > LIGHTNESS_BARRIER;
 	data[1] = lightnessSensorValue;
 	
+	sei();
+	while (clunet_ready_to_send());
+		
 	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_LIGHT_LEVEL_INFO, data, sizeof(data));
 }
 
 void temperatureResponse(unsigned char address){
+		
 	float temperature;
 	
 	char data[5];
@@ -37,6 +43,9 @@ void temperatureResponse(unsigned char address){
 		memcpy(&data[3], &t10, 2);
 	}
 	
+	sei();
+	while (clunet_ready_to_send());
+	
 	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, data, 1 + 4 * data[0]);
 }
 
@@ -51,11 +60,16 @@ void humidityResponse(unsigned char address){
 		memcpy(&data[0], &h10, 2);
 	}
 	
+	sei();
+	while (clunet_ready_to_send());
+		
 	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
 }
 
 //lightness
 ISR(ADC_vect){
+	sei();
+	
 	char value_ = lightnessSensorValue;
 	lightnessSensorValue = 100 * ADCH / 255;
 	if (value_ >= 0 && ((lightnessSensorValue > LIGHTNESS_BARRIER) ^ (value_ > LIGHTNESS_BARRIER))){
@@ -75,18 +89,25 @@ ISR(TIMER1_COMPB_vect){
 char shouldSendDelayedResponse = 0;
 unsigned int delayedResponseCounterValue = 0;
 
+//не стоит проверять уровень освещенности чаще 5 мс,
+//иначе появляется дребезг при переходе через 10%
+char lightness_skip_cnt = 0;
+
 ISR(TIMER1_COMPA_vect){
 	sei();	//разрешаем прерывания более высокого приоритета (clunet)
 	
-	//check motion
-	char value = MOTION_SENSOR_READ;
-	if (motionSensorValue != value){
-		motionSensorValue = value;
-		motionResponse(CLUNET_BROADCAST_ADDRESS);
+	//check door
+	char value = DOOR_SENSOR_READ;
+	if (doorSensorValue != value){
+		doorSensorValue = value;
+		doorResponse(CLUNET_BROADCAST_ADDRESS);
 	}
 	
-	//check lightness
-	set_bit(ADCSRA, ADSC);
+	//check lightness every 5 ms
+	if (lightness_skip_cnt++==5){
+		lightness_skip_cnt = 0;
+		set_bit(ADCSRA, ADSC);
+	}
 	
 	if (necCheckSignal()){
 		OCR1B  = TCNT1 + NEC_TIMER_CMP_TICKS;
@@ -100,6 +121,8 @@ ISR(TIMER1_COMPA_vect){
 		if (nec_address == 0x02){
 			char channel[2];
 			channel[0] = 0;
+			
+			//clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DOOR, channel, sizeof(channel));
 			
 			switch (nec_command){
 				case 0x80:
@@ -179,15 +202,15 @@ ISR(TIMER1_COMPA_vect){
 		//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_INFO);
 		//also need to save to eeprom
 	}
-	
+
 	OCR1A = TCNT1 + TIMER_NUM_TICKS;
 }
 
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
 	switch(command){
-		case CLUNET_COMMAND_MOTION:
+		case CLUNET_COMMAND_DOOR:
 		if (size == 0){
-			motionResponse(src_address);
+			doorResponse(src_address);
 		}
 		break;
 		case CLUNET_COMMAND_TEMPERATURE:
@@ -227,8 +250,8 @@ int main(void){
 	
 	cli();
 	
-	MOTION_SENSOR_INIT;
-	motionSensorValue = MOTION_SENSOR_READ;
+	DOOR_SENSOR_INIT;
+	doorSensorValue = DOOR_SENSOR_READ;
 	
 	ADC_INIT;
 	lightnessSensorValue = -1;

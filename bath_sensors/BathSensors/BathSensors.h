@@ -19,17 +19,18 @@
 #include <string.h>
 
 
-#define MOTION_SENSOR_PORT D
-#define MOTION_SENSOR_PIN 5
+#define DOOR_SENSOR_PORT D
+#define DOOR_SENSOR_PIN 5
 
-#define MOTION_SENSOR_INIT unset_bit(DDRPORT(MOTION_SENSOR_PORT), MOTION_SENSOR_PIN)
-#define MOTION_SENSOR_READ (bit(INPORT(MOTION_SENSOR_PORT), MOTION_SENSOR_PIN))
+#define DOOR_SENSOR_INIT unset_bit(DDRPORT(DOOR_SENSOR_PORT), DOOR_SENSOR_PIN)
+#define DOOR_SENSOR_READ (!bit(INPORT(DOOR_SENSOR_PORT), DOOR_SENSOR_PIN))
 
 #define DHT_SENSOR_ID 1
 
 /*ADC0*/
 #define ADC_CHANNEL ADC0
-#define ADC_INIT {ADMUX=(1<<REFS0)|(1<<ADLAR); /* ADC0; Aref=AVcc; 8 bit precision*/ ADCSRA=(1<<ADEN)|(1<<ADIE)|(1<<ADPS2); /*Prescalar div factor =16*/}
+#define ADC_INIT {set_bit2(ADMUX, REFS0, ADLAR); /*ref = vcc, 8 bit precision, ADC0*/	\
+				  set_bit3(ADCSRA, ADEN, ADIE, ADPS2); /*enable, interruptions, div 16*/}
 
 /* main timer controls*/
 #define TIMER_PRESCALER 64
