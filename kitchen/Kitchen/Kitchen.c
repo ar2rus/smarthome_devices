@@ -28,27 +28,18 @@ void lightnessResponse(unsigned char address){
 */
 
 void switchResponse(unsigned char address){
-	sei();
-	while (clunet_ready_to_send());	//ожидание отправки других сообщений
-	
 	char info = (RELAY_1_STATE << (RELAY_1_ID-1)) | (RELAY_0_STATE << (RELAY_0_ID-1));
-	clunet_send(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
+	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
 void buttonResponse(unsigned char address){
-	sei();
-	while (clunet_ready_to_send());	//ожидание отправки других сообщений
-	
 	char data[] = {BUTTON_ID, buttonStateValue};
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
 }
 
 void exhaustedFanResponse(unsigned char address){
-	sei();
-	while (clunet_ready_to_send());	//ожидание отправки других сообщений
-	
 	char data[] = {EXHAUST_FAN_DEVICE_ID, hallSensorValue};
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DEVICE_STATE_INFO, data, sizeof(data));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DEVICE_STATE_INFO, data, sizeof(data));
 }
 
 void temperatureResponse(unsigned char address){
@@ -67,10 +58,7 @@ void temperatureResponse(unsigned char address){
 		memcpy(&data[3], &t10, 2);
 	}
 	
-	sei();
-	while (clunet_ready_to_send());	//ожидание отправки других сообщений
-		
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, data, 1 + 4 * data[0]);
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, data, 1 + 4 * data[0]);
 }
 
 void humidityResponse(unsigned char address){
@@ -84,10 +72,7 @@ void humidityResponse(unsigned char address){
 		memcpy(&data[0], &h10, 2);
 	}
 	
-	sei();
-	while (clunet_ready_to_send());	//ожидание отправки других сообщений
-	
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
 }
 
 void switchExecute(char id, char command){

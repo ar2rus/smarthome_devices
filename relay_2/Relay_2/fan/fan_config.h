@@ -36,9 +36,9 @@
 
 
 /* fan main timer controls*/
-#define FAN_TIMER_PRESCALER 256
+#define FAN_TIMER_PRESCALER 1024
 #define FAN_TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / FAN_TIMER_PRESCALER)	/*1 second main loop*/
-#define FAN_TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = FAN_TIMER_NUM_TICKS; set_bit(TCCR1B, CS12); unset_bit2(TCCR1B, CS11, CS10); /*256x prescaler*/}
+#define FAN_TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = FAN_TIMER_NUM_TICKS; set_bit2(TCCR1B, CS12, CS10); unset_bit(TCCR1B, CS11); /*1024x prescaler*/}
 
 #define FAN_TIMER_REG TCNT1
 

@@ -116,8 +116,8 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 			}
 		break;
 		case CLUNET_COMMAND_LIGHT_LEVEL_INFO:
-			if (src_address == HUMIDITY_SENSOR_DEVICE_ID && size==2){
-				fan_light(data[0]);
+			if (src_address == LIGHT_SENSOR_DEVICE_ID && size==2){
+				fan_trigger(data[0]);
 			}
 		break;
 		case CLUNET_COMMAND_FAN:
