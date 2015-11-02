@@ -22,8 +22,8 @@ volatile char fan_normal_humidity = 0;				 //нормальное (аналогичное тому, что б
 char fan_history_humidity[HUMIDITY_HISTORY_COUNT];	//хранит историю измерений влажности (в 0-ом индексе самое "свежее", в (HUMIDITY_HISTORY_COUNT-1) - самое давнее)
 volatile char fan_avg_hisory_humidity = 0;			//хранит среднее значение влажности по выборке fan_history_humidity
 
-volatile unsigned int h_counter = 0;		//посекундный счетчик таймера для периодического запроса текущего значения влажности
-volatile unsigned int f_counter = 0;		//посекундный счетчик таймера работы вентилятора
+volatile unsigned int h_counter = 0;				//посекундный счетчик таймера для периодического запроса текущего значения влажности
+volatile unsigned int f_counter = 0;				//посекундный счетчик таймера работы вентилятора
 
 
 void fan_refresh(char event_){
@@ -69,14 +69,14 @@ void fan_refresh(char event_){
 				break;
 			}
 		break;
-		case FAN_ACTION_LIGHT_ON:
+		case FAN_ACTION_TRIGGER_ON:
 			switch (fan_state){
 				case FAN_STATE_AUTO:
 					fan_state_tmp = FAN_STATE_REQUIRED;
 				break;
 			}
 		break;
-		case FAN_ACTION_LIGHT_OFF:
+		case FAN_ACTION_TRIGGER_OFF:
 			switch (fan_state){
 				case FAN_STATE_REQUIRED:
 					f_counter = 0;
@@ -225,8 +225,8 @@ void fan_info(struct fan_info_struct* i){
 	i->timer_remains = FAN_TIMEOUT - f_counter;
 }
 
-void fan_light(char on_){
-	fan_refresh(on_ ? FAN_ACTION_LIGHT_ON : FAN_ACTION_LIGHT_OFF);
+void fan_trigger(char on_){
+	fan_refresh(on_ ? FAN_ACTION_TRIGGER_ON : FAN_ACTION_TRIGGER_OFF);
 }
 
 void fan_set_on_humidity_request(void (*f)()){

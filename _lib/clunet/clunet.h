@@ -398,6 +398,9 @@ void clunet_init();
 // Отправка пакета
 void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size);
 
+// Отправка пакета предварительно дождавшись отправки предыдущего сообщения
+void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size);
+
 // Возвращает 0, если готов к передаче, иначе приоритет текущей задачи
 int clunet_ready_to_send();
 
