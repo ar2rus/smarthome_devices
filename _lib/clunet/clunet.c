@@ -290,3 +290,10 @@ void clunet_set_on_data_received_sniff(void (*f)(unsigned char src_address, unsi
 	on_data_received_sniff = f;
 }
 
+void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
+	sei();
+	while(clunet_ready_to_send());
+	
+	clunet_send(address, prio, command, data, size);
+}
+
