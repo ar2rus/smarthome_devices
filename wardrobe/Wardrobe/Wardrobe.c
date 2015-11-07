@@ -6,7 +6,7 @@
 volatile unsigned char doorsStateValue;
 
 void doorsResponse(unsigned char address){
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, (char*)&doorsStateValue, sizeof(doorsStateValue));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, (char*)&doorsStateValue, sizeof(doorsStateValue));
 }
 
 ISR(TIMER1_COMPA_vect){

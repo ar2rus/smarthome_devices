@@ -66,11 +66,8 @@ void switchExecute(char id, char command){
 }
 
 void switchResponse(unsigned char address){
-	//sei();
-	//while(clunet_ready_to_send());
-		
 	char info = (RELAY_2_STATE << (RELAY_2_ID-1)) | (RELAY_1_STATE << (RELAY_1_ID-1)) | (RELAY_0_STATE << (RELAY_0_ID-1));
-	clunet_send(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
+	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
 /*
@@ -112,14 +109,11 @@ void temperatureResponse(unsigned char address, OWI_device* devices, unsigned ch
 		devices++;
 	}
 	temperatureInfo[0] = cnt;
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, ((char*)temperatureInfo), 11 * cnt + 1);
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, ((char*)temperatureInfo), 11 * cnt + 1);
 }
 
 void heatfloor_state_response(unsigned char address, heatfloor_channel_infos* infos){
-	//sei();
-	//while(clunet_ready_to_send());
-	
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)infos), infos->num * sizeof(heatfloor_channel_info) + 1);
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)infos), infos->num * sizeof(heatfloor_channel_info) + 1);
 }
 
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
@@ -158,7 +152,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 				for (unsigned char i=0; i<num; i++){
 					memcpy(&oneWireDevices[i * sizeof((*devices).id) + 1], devices[i].id, sizeof((*devices).id));
 				}
-				clunet_send(src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_ONEWIRE_INFO, (char*)&oneWireDevices, sizeof(oneWireDevices));
+				clunet_send_fairy(src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_ONEWIRE_INFO, (char*)&oneWireDevices, sizeof(oneWireDevices));
 			}
 		}
 		break;

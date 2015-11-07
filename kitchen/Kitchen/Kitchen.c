@@ -5,7 +5,9 @@
 char buttonStateValue;
 char hallSensorValue;
 
-char datadht[5];
+volatile uint32_t systime = 0;
+
+
 //char motionSensorValue;
 //char lightnessSensorValue;
 
@@ -49,7 +51,7 @@ void temperatureResponse(unsigned char address){
 	 
 	data[0] = 0;
 	
-	if (dht_gettemperature(&temperature)){
+	if (dht_gettemperature_cached(&temperature, systime)){
 		data[0] = 1;
 		data[1] = 1;
 		data[2] = DHT_SENSOR_ID;
@@ -67,7 +69,7 @@ void humidityResponse(unsigned char address){
 	data[0] = 0xFF;
 	data[1] = 0xFF;
 	
-	if (dht_gethumidity(&humidity)){
+	if (dht_gethumidity_cached(&humidity, systime)){
 		signed int h10 = humidity * 10;
 		memcpy(&data[0], &h10, 2);
 	}
@@ -135,6 +137,8 @@ void switchExecute(char id, char command){
 //unsigned int delayedResponseCounterValue = 0;
 
 ISR(TIMER1_COMPA_vect){
+	++systime;
+		
 	sei();	//разрешаем прерывания более высокого приоритета (clunet)
 	
 	char state = BUTTON_READ;

@@ -14,6 +14,16 @@ Please refer to LICENSE file for licensing information.
 #include <string.h>
 
 
+uint32_t cache_time = -1;
+ 
+ #if DHT_FLOAT == 1
+	float cached_temperature;
+	float cached_humidity;
+ #elif DHT_FLOAT == 0
+	int8_t cached_temperature;
+	int8_t cached_humidity;
+#endif
+
 /*
  * get data from sensor
  */
@@ -156,3 +166,55 @@ return dht_getdata(temperature, humidity);
 }
 
 
+/************************************************************************/
+/* cache functions routines												*/
+/************************************************************************/
+
+int8_t dht_cache(uint32_t systime){
+	if (((uint32_t)(systime-cache_time)) > DHT_CACHE_TIMEOUT){
+		if (dht_gettemperaturehumidity(&cached_temperature, &cached_humidity)){
+			cache_time = systime;
+			return 1;	//обновили кэш
+		}
+		return 0; // не удалось получить значения с датчика
+	}
+	return 1;	//можно брать из кэша
+}
+
+
+#if DHT_FLOAT == 1
+	int8_t dht_gettemperature_cached(float *temperature, uint32_t systime){
+#elif DHT_FLOAT == 0
+	int8_t dht_gettemperature_cached(int8_t *temperature, uint32_t systime){
+#endif		
+		if (dht_cache(systime)){
+			*temperature = cached_temperature;
+			return 1;
+		}
+		return 0;
+	}
+	
+#if DHT_FLOAT == 1
+	int8_t dht_gethumidity_cached(float *humidity, uint32_t systime){
+#elif DHT_FLOAT == 0
+	int8_t dht_gethumidity_cached(int8_t *humidity, uint32_t systime){
+#endif
+		if (dht_cache(systime)){
+			*humidity = cached_humidity;
+			return 1;
+		}
+		return 0;
+	}
+	
+#if DHT_FLOAT == 1
+	int8_t dht_gettemperaturehumidity_cached(float *temperature, float *humidity, uint32_t systime){
+#elif DHT_FLOAT == 0
+	int8_t dht_gettemperaturehumidity_cached(int8_t *temperature, int8_t *humidity, uint32_t systime){
+#endif
+		if (dht_cache(systime)){
+			*temperature = cached_temperature;
+			*humidity = cached_humidity;
+			return 1;
+		}
+		return 0;
+	}

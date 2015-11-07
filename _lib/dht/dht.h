@@ -44,10 +44,29 @@ References:
 	extern int8_t dht_gettemperature(float *temperature);
 	extern int8_t dht_gethumidity(float *humidity);
 	extern int8_t dht_gettemperaturehumidity(float *temperature, float *humidity);
+	
+	/**************************************************************************/
+	/* Дополнительные функции, использующие закэшированные значения с датчиков*/
+	/* дополнительно передается системное время в мс						  */
+	/**************************************************************************/
+	extern int8_t dht_gettemperature_cached(float *temperature, uint32_t systime);
+	extern int8_t dht_gethumidity_cached(float *humidity, uint32_t systime);
+	extern int8_t dht_gettemperaturehumidity_cached(float *temperature, float *humidity, uint32_t systime);
 #elif DHT_FLOAT == 0
 	extern int8_t dht_gettemperature(int8_t *temperature);
 	extern int8_t dht_gethumidity(int8_t *humidity);
 	extern int8_t dht_gettemperaturehumidity(int8_t *temperature, int8_t *humidity);
+	
+	/**************************************************************************/
+	/* Дополнительные функции, использующие закэшированные значения с датчиков*/
+	/* дополнительно передается системное время в мс						  */
+	/**************************************************************************/
+	extern int8_t dht_gettemperature_cached(int8_t *temperature, uint32_t systime);
+	extern int8_t dht_gethumidity_cached(int8_t *humidity, uint32_t systime);
+	extern int8_t dht_gettemperaturehumidity_cached(int8_t *temperature, int8_t *humidity, uint32_t systime);
 #endif
 
 #endif
+
+//cache timeout (ms)
+#define DHT_CACHE_TIMEOUT 2000

@@ -1,29 +1,24 @@
 
 #include "BathSensors.h"
 
-
-char datadht[5];
 char doorSensorValue;
 char lightnessSensorValue;
 
+volatile uint32_t systime = 0;
 
 
 void doorResponse(unsigned char address){
 	char data = doorSensorValue;
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, &data, sizeof(data));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, &data, sizeof(data));
 }
 
 void lightnessResponse(unsigned char address){
 
-	
 	char data[2];
 	data[0] = lightnessSensorValue > LIGHTNESS_BARRIER;
 	data[1] = lightnessSensorValue;
-	
-	sei();
-	while (clunet_ready_to_send());
-		
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_LIGHT_LEVEL_INFO, data, sizeof(data));
+			
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_LIGHT_LEVEL_INFO, data, sizeof(data));
 }
 
 void temperatureResponse(unsigned char address){
@@ -34,7 +29,7 @@ void temperatureResponse(unsigned char address){
 	 
 	data[0] = 0;
 	
-	if (dht_gettemperature(&temperature)){
+	if (dht_gettemperature_cached(&temperature, systime)){
 		data[0] = 1;
 		data[1] = 1;
 		data[2] = DHT_SENSOR_ID;
@@ -43,10 +38,7 @@ void temperatureResponse(unsigned char address){
 		memcpy(&data[3], &t10, 2);
 	}
 	
-	sei();
-	while (clunet_ready_to_send());
-	
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, data, 1 + 4 * data[0]);
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, data, 1 + 4 * data[0]);
 }
 
 void humidityResponse(unsigned char address){
@@ -55,15 +47,12 @@ void humidityResponse(unsigned char address){
 	data[0] = 0xFF;
 	data[1] = 0xFF;
 	
-	if (dht_gethumidity(&humidity)){
+	if (dht_gethumidity_cached(&humidity, systime)){
 		signed int h10 = humidity * 10;
 		memcpy(&data[0], &h10, 2);
 	}
-	
-	sei();
-	while (clunet_ready_to_send());
 		
-	clunet_send(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
 }
 
 //lightness
@@ -94,6 +83,8 @@ unsigned int delayedResponseCounterValue = 0;
 char lightness_skip_cnt = 0;
 
 ISR(TIMER1_COMPA_vect){
+	++systime;
+	
 	sei();	//разрешаем прерывания более высокого приоритета (clunet)
 	
 	//check door

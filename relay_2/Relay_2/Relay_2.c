@@ -6,11 +6,8 @@
 
 
 void switchResponse(unsigned char address){
-	sei();
-	while (clunet_ready_to_send());	//ожидание отправки других сообщений
-	
 	char info = (RELAY_2_STATE << (RELAY_2_ID-1)) | (RELAY_1_STATE << (RELAY_1_ID-1)) | (RELAY_0_STATE << (RELAY_0_ID-1));
-	clunet_send(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
+	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
 void switchExecute(char id, char command){
@@ -59,13 +56,11 @@ void switchExecute(char id, char command){
 }
 
 void fanResponse(unsigned char address){
-	sei();
-	while (clunet_ready_to_send());//ожидание отправки других сообщений
 	
 	struct fan_info_struct i;
 	fan_info(&i);
 	
-	clunet_send(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_FAN_INFO, (char*)&i, sizeof(i));
+	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_FAN_INFO, (char*)&i, sizeof(i));
 }
 
 void fan_humidity_request(){

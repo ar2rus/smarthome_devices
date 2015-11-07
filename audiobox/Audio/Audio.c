@@ -282,14 +282,14 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 		switch (responseType){
 			case 0:{
 				char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
-				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
+				clunet_send_fairy(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
 				break;
 			}
 			case 1:{
 				char data[2];
 				data[0] = lc75341_volume_percent_value();
 				data[1] = lc75341_volume_dB_value();
-				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
+				clunet_send_fairy(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
 				break;
 			}
 			case 2:{
@@ -297,7 +297,7 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 				data[0] = lc75341_gain_dB_value();
 				data[1] = lc75341_treble_dB_value();
 				data[2] = lc75341_bass_dB_value();
-				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
+				clunet_send_fairy(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
 				break;
 			}
 		}
