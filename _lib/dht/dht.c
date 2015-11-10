@@ -1,12 +1,3 @@
-/*
-DHT Library 0x03
-
-copyright (c) Davide Gironi, 2012
-
-Released under GPLv3.
-Please refer to LICENSE file for licensing information.
-*/
-
 
 #include "dht.h"
 
@@ -16,22 +7,13 @@ Please refer to LICENSE file for licensing information.
 
 uint32_t cache_time = -1;
  
- #if DHT_FLOAT == 1
-	float cached_temperature;
-	float cached_humidity;
- #elif DHT_FLOAT == 0
-	int8_t cached_temperature;
-	int8_t cached_humidity;
-#endif
+int16_t cached_temperature;
+int16_t cached_humidity;
 
 /*
  * get data from sensor
  */
-#if DHT_FLOAT == 1
-	int8_t dht_getdata(float *temperature, float *humidity) {
-#elif DHT_FLOAT == 0
-	int8_t dht_getdata(int8_t *temperature, int8_t *humidity) {
-#endif
+int8_t dht_getdata(int16_t *temperature, int16_t *humidity) {
 	uint8_t bits[5];
 	uint8_t i,j = 0;
 
@@ -114,14 +96,11 @@ uint32_t cache_time = -1;
 			*temperature = bits[2];
 			*humidity = bits[0];
 		#elif DHT_TYPE == DHT_DHT22
-			uint16_t rawhumidity = bits[0]<<8 | bits[1];
-			uint16_t rawtemperature = bits[2]<<8 | bits[3];
-			if(rawtemperature & 0x8000) {
-				*temperature = (float)((rawtemperature & 0x7FFF) / 10.0) * -1.0;
-			} else {
-				*temperature = (float)(rawtemperature)/10.0;
+			*humidity = bits[0]<<8 | bits[1];
+			*temperature = bits[2]<<8 | bits[3];
+			if(*temperature & 0x8000) {
+				*temperature = -(*temperature & 0x7FFF);
 			}
-			*humidity = (float)(rawhumidity)/10.0;
 		#endif
 		return 1;
 	}
@@ -131,38 +110,25 @@ uint32_t cache_time = -1;
 /*
  * get temperature
  */
-#if DHT_FLOAT == 1
-	int8_t dht_gettemperature(float *temperature) {
-	float humidity = 0;
-#elif DHT_FLOAT == 0
-	int8_t dht_gettemperature(int8_t *temperature) {
-	int8_t humidity = 0;
-#endif
+int8_t dht_gettemperature(int16_t *temperature) {
+	int16_t humidity = 0;
 	return dht_getdata(temperature, &humidity);
 }
 
 /*
  * get humidity
  */
-#if DHT_FLOAT == 1
-	int8_t dht_gethumidity(float *humidity) {
-	float temperature = 0;
-#elif DHT_FLOAT == 0
-	int8_t dht_gethumidity(int8_t *humidity) {
-	int8_t temperature = 0;
-#endif
+int8_t dht_gethumidity(int16_t *humidity) {
+	int16_t temperature = 0;
 return dht_getdata(&temperature, humidity);
 }
 
 /*
  * get temperature and humidity
  */
-#if DHT_FLOAT == 1
-	int8_t dht_gettemperaturehumidity(float *temperature, float *humidity) {
-#elif DHT_FLOAT == 0
-	int8_t dht_gettemperaturehumidity(int8_t *temperature, int8_t *humidity) {
-#endif
-return dht_getdata(temperature, humidity);
+
+int8_t dht_gettemperaturehumidity(int16_t *temperature, int16_t *humidity) {
+	return dht_getdata(temperature, humidity);
 }
 
 
@@ -182,39 +148,27 @@ int8_t dht_cache(uint32_t systime){
 }
 
 
-#if DHT_FLOAT == 1
-	int8_t dht_gettemperature_cached(float *temperature, uint32_t systime){
-#elif DHT_FLOAT == 0
-	int8_t dht_gettemperature_cached(int8_t *temperature, uint32_t systime){
-#endif		
-		if (dht_cache(systime)){
-			*temperature = cached_temperature;
-			return 1;
-		}
-		return 0;
+int8_t dht_gettemperature_cached(int16_t *temperature, uint32_t systime){
+	if (dht_cache(systime)){
+		*temperature = cached_temperature;
+		return 1;
 	}
+	return 0;
+}
 	
-#if DHT_FLOAT == 1
-	int8_t dht_gethumidity_cached(float *humidity, uint32_t systime){
-#elif DHT_FLOAT == 0
-	int8_t dht_gethumidity_cached(int8_t *humidity, uint32_t systime){
-#endif
-		if (dht_cache(systime)){
-			*humidity = cached_humidity;
-			return 1;
-		}
-		return 0;
+int8_t dht_gethumidity_cached(int16_t *humidity, uint32_t systime){
+	if (dht_cache(systime)){
+		*humidity = cached_humidity;
+		return 1;
 	}
+	return 0;
+}
 	
-#if DHT_FLOAT == 1
-	int8_t dht_gettemperaturehumidity_cached(float *temperature, float *humidity, uint32_t systime){
-#elif DHT_FLOAT == 0
-	int8_t dht_gettemperaturehumidity_cached(int8_t *temperature, int8_t *humidity, uint32_t systime){
-#endif
-		if (dht_cache(systime)){
-			*temperature = cached_temperature;
-			*humidity = cached_humidity;
-			return 1;
-		}
-		return 0;
+int8_t dht_gettemperaturehumidity_cached(int16_t *temperature, int16_t *humidity, uint32_t systime){
+	if (dht_cache(systime)){
+		*temperature = cached_temperature;
+		*humidity = cached_humidity;
+		return 1;
 	}
+	return 0;
+}

@@ -12,6 +12,8 @@
 #include "OWIHighLevelFunctions.h"
 #include "OWIcrc.h"
 
+#include <util/delay.h>
+
 
 /*****************************************************************************
 *   Function name :   DS18B20_ReadTemperature

@@ -276,7 +276,7 @@ int main(void){
 	clunet_set_on_data_received(clunet_data_received);
 	
 	
-	heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
+	//heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
 	
 	sei();
 	

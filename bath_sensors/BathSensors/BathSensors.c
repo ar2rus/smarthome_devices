@@ -23,33 +23,33 @@ void lightnessResponse(unsigned char address){
 
 void temperatureResponse(unsigned char address){
 		
-	float temperature;
+	int16_t temperature;
 	
 	char data[5];
-	 
-	data[0] = 0;
 	
 	if (dht_gettemperature_cached(&temperature, systime)){
 		data[0] = 1;
 		data[1] = 1;
 		data[2] = DHT_SENSOR_ID;
 		
-		signed int t10 = temperature * 10;
-		memcpy(&data[3], &t10, 2);
+		memcpy(&data[3], &temperature, 2);
+	}else{
+		data[0] = 0;
 	}
 	
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, data, 1 + 4 * data[0]);
 }
 
 void humidityResponse(unsigned char address){
-	float humidity;
+	int16_t humidity;
+	
 	char data[2];
-	data[0] = 0xFF;
-	data[1] = 0xFF;
 	
 	if (dht_gethumidity_cached(&humidity, systime)){
-		signed int h10 = humidity * 10;
-		memcpy(&data[0], &h10, 2);
+		memcpy(&data[0], &humidity, 2);
+	}else{
+		data[0] = 0xFF;
+		data[1] = 0xFF;
 	}
 		
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
