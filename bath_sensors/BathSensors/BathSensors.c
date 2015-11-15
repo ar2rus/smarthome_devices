@@ -109,78 +109,105 @@ ISR(TIMER1_COMPA_vect){
 	uint8_t nec_command;
 	
 	if (necValue(&nec_address, &nec_command)){
-		if (nec_address == 0x02){
+		if (nec_address == 0x02 || nec_address == 0x00){
 			char channel[2];
 			channel[0] = 0;
 			
-			//clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DOOR, channel, sizeof(channel));
+			char volume;
+			
+			char eq[2];
 			
 			switch (nec_command){
 				case 0x80:
-					channel[1] = 0;
-					clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
+				case 0x68:
+					channel[1] = 1;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
 					necResetValue();
 				break;
 				case 0x40:
-					channel[1] = 1;
-					clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
+				case 0x98:
+					channel[1] = 2;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
 					necResetValue();
 				break;
 				case 0xC0:
-					channel[1] = 2;
-					clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
+				case 0xB0:
+					channel[1] = 3;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
 					necResetValue();
 				break;
 				case 0x20:
-					channel[1] = 3;
-					clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
+				case 0x30:
+				
+				case 0x48:
+					channel[1] = 4;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL, channel, sizeof(channel));
 					necResetValue();
 				break;
-				/*case 0xC1:
+				case 0xC1:
 				case 0xF8:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_INPUT_PREV);
-					necResetValue();
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_INPUT_PREV);
+					//necResetValue();
 				break;
 				case 0x41:
 				case 0xD8:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_INPUT_NEXT);
-					necResetValue();
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_INPUT_NEXT);
+					//necResetValue();
 				break;
 				
 				case 0x08:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_MUTE_TOGGLE);
-					necResetValue();
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_MUTE_TOGGLE);
+					//necResetValue();
 				break;
 				case 0x58:
-					shouldSendDelayedResponse = 1;
-					delayedResponseCounterValue = TCNT1;
-					cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_UP, 2);
+					//shouldSendDelayedResponse = 1;
+					//delayedResponseCounterValue = TCNT1;
+					//cmd(0, RC_RECIVER_DEVICE_ID, COMMAND_VOLUME_UP, 2);
+					volume = 2;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME, &volume, sizeof(volume));
 				break;
 				case 0x78:
-					shouldSendDelayedResponse = 1;
-					delayedResponseCounterValue = TCNT1;
-					cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_DOWN, 2);
+					//shouldSendDelayedResponse = 1;
+					//delayedResponseCounterValue = TCNT1;
+					//cmd(0, RC_RECIVER_DEVICE_ID, COMMAND_VOLUME_DOWN, 2);
+					volume = 3;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME, &volume, sizeof(volume));
 				break;
 				case 0xA0:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_TREBLE_UP);
-					necResetValue();
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_TREBLE_UP);
+					//necResetValue();
+					eq[0]=2;
+					eq[1]=2;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, &eq, sizeof(eq));
 				break;
 				case 0x10:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_TREBLE_DOWN);
-					necResetValue();
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_TREBLE_DOWN);
+					//necResetValue();
+					eq[0]=2;
+					eq[1]=3;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, &eq, sizeof(eq));
 				break;
 				case 0x60:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);
-					necResetValue();
+					eq[0]=3;
+					eq[1]=2;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, &eq, sizeof(eq));
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_BASS_UP);
+					//necResetValue();
 				break;
 				case 0x90:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);
-					necResetValue();
+					eq[0]=3;
+					eq[1]=3;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, &eq, sizeof(eq));
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_BASS_DOWN);
+					//necResetValue();
 				break;
 				case 0x00:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_EQUALIZER_RESET);
-					necResetValue();
-				break;*/
+					eq[0]=0;
+					eq[1]=3;
+					clunet_send(RC_RECIVER_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, &eq, sizeof(eq)-1);
+					//cmd(1, RC_RECIVER_DEVICE_ID, COMMAND_EQUALIZER_RESET);
+					//necResetValue();
+				break;
 			}
 		}
 	}

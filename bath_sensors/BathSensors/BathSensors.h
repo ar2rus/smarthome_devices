@@ -49,4 +49,6 @@
 
 #define LIGHTNESS_BARRIER 10	/*percent*/
 
+#define RC_RECIVER_DEVICE_ID 0x0B
+
 #endif /* BATH_SENSORS_H_ */
