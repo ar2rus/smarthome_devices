@@ -94,6 +94,12 @@ ISR(TIMER1_COMPA_vect){
 	uint8_t nec_command;
 	
 	if (necValue(&nec_address, &nec_command)){
+		
+		char nec[2];
+		nec[0] = nec_address;
+		nec[1] = nec_command;
+		clunet_send_fairy(CLUNET_BROADCAST_ADDRESS,CLUNET_PRIORITY_INFO,CLUNET_COMMAND_INTERCOM_MODE_INFO,nec, sizeof(nec));
+		
 		if (nec_address == 0x02){
 			switch (nec_command){
 				case 0x80:
