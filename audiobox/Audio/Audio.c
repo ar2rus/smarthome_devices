@@ -14,15 +14,6 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-
-//ÂÍÈÌÀÍÈÅ Â ÑÁÎÐÊÅ ÈÑÏÎËÜÇÓÅÒÑß ÀËÜÒÅÐÍÀÒÈÂÍÀß ÑÈÑÒÅÌÀ ÏÐÅÐÛÂÀÍÈÉ ÑÅÒÈ CLUNET:
-//ÐÀÇÐÅØÅÍÛ ÏÐÅÐÛÂÀÍÈß ÈÇ ÏÐÅÐÛÂÀÍÈÉ CLUNET.
-//ÍÅ ÑËÅÄÓÅÒ ÈÑÏÎËÜÇÎÂÀÒÜ ÄËÈÒÅËÜÍÛÅ ÎÏÅÐÀÖÈÈ ÂÍÓÒÐÈ ÎÁÐÀÁÎ×ÈÊÎÂ ÏÐÅÐÛÂÀÍÈÉ ÏÐÎØÈÂÊÈ
-//ÄËß ÎÒÊÀÒÀ ÑËÅÄÓÅÒ ÇÀÊÎÌÌÅÍÒÈÐÎÂÀÒÜ SEI() â ìîäóëå clunet.c
-
-//25.09.15 -> çàêîìåíòèðîâàííî
-
-
 ISR(TIMER1_COMPB_vect){
 	if (necReadSignal()){
 		OCR1B += NEC_TIMER_CMP_TICKS;
@@ -94,12 +85,6 @@ ISR(TIMER1_COMPA_vect){
 	uint8_t nec_command;
 	
 	if (necValue(&nec_address, &nec_command)){
-		
-		char nec[2];
-		nec[0] = nec_address;
-		nec[1] = nec_command;
-		clunet_send_fairy(CLUNET_BROADCAST_ADDRESS,CLUNET_PRIORITY_INFO,CLUNET_COMMAND_INTERCOM_MODE_INFO,nec, sizeof(nec));
-		
 		if (nec_address == 0x02){
 			switch (nec_command){
 				case 0x80:
@@ -284,18 +269,19 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 	va_end(va);
 	LED_OFF;
 	
+	sei();
 	if (sendResponse){
 		switch (responseType){
 			case 0:{
 				char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
-				clunet_send_fairy(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
+				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
 				break;
 			}
 			case 1:{
 				char data[2];
 				data[0] = lc75341_volume_percent_value();
 				data[1] = lc75341_volume_dB_value();
-				clunet_send_fairy(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
+				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
 				break;
 			}
 			case 2:{
@@ -303,7 +289,7 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 				data[0] = lc75341_gain_dB_value();
 				data[1] = lc75341_treble_dB_value();
 				data[2] = lc75341_bass_dB_value();
-				clunet_send_fairy(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
+				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
 				break;
 			}
 		}
