@@ -10,8 +10,8 @@
 volatile systime time;
 
 signed int resolveTemperatureSetting(unsigned char channel){
-	//если не прочитан eeprom или не установлено текущее время -> возвращать -1
-	return 26 * 10;
+	//если не прочитан eeprom или не установлено текущее время -> возвращать 0
+	return (27+channel) * 10;
 }
 
 void heatfloor_dispatcher_init(){

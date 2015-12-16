@@ -22,8 +22,8 @@ volatile unsigned char sensorCheckTimer;
 volatile char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
 
 
-char heatfloor_turnSwitch(unsigned char channel, signed char on_){
-	char r = -1;
+signed char heatfloor_turnSwitch(unsigned char channel, unsigned char on_){
+	signed char r = -1;
 	if (on_heatfloor_switch_exec){
 		r = (*on_heatfloor_switch_exec)(channel, on_);
 	}
@@ -38,7 +38,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 	
 	if (enable){
 		for (unsigned char i = 0; i < 8; i++){
-			if (test_bit(enable,i)){
+			if (test_bit(enable, i)){
 				
 				signed int settingT = -1;
 				signed int sensorT = -1;
@@ -53,19 +53,20 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				
 				signed char solution = 0;
 				
-				if (settingT >= 0){
+				if (settingT > 0){
 					if (sensorT >= 0){
 						//check range
 						if (sensorT >= HEATFLOOR_MIN_TEMPERATURE_10 && sensorT <= HEATFLOOR_MAX_TEMPERATURE_10){
-							if (settingT > 0){
-								if (sensorT > settingT + HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2){
-									solution = -1;					//остужаемся
-								}else if (sensorT < settingT - HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2){
-									solution = 1;					//нагреваемся
-								}
-							}else{
-								solution = 0;						//диспетчер говорит, что мы в режиме ожидания
+							if (sensorT < settingT - HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2_10){
+								solution = 1;					//нагреваемся
+							}else if (sensorT > settingT + HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2_10){
+								solution = -1;					//остужаемся
 							}
+								//в случае если значение попадает в необходимый диапазон, то
+								//сохраняем состояние: удерживаем нагревание, пока не выйдет за верхнюю границу
+								//или удерживаем охлаждение, пока не выйдем за нижнюю границу
+								
+								//при уставке 28 и гистерезисе 0.6 - будем разогреваться до 28.3 и охлаждаться до 27.7
 						}else{
 							solution = -3;						    //ошибка диапазона значения с датчика (85*, например)
 						}
@@ -76,7 +77,9 @@ heatfloor_channel_infos* heatfloor_refresh(){
 					solution = -4;									//ошибка получения значения от диспетчера
 				}
 				
-				heatfloor_turnSwitch(i, solution>0);
+				if (solution != 0){
+					heatfloor_turnSwitch(i, solution>0);
+				}
 				
 				//тут накапливаем ответ по всем каналам
 				heatfloor_channel_info* ci = &cis->channels[(cis->num)++];

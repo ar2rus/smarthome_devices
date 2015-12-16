@@ -20,11 +20,11 @@
 #define HEATFLOOR_MAX_TEMPERATURE 45
 #define HEATFLOOR_MAX_TEMPERATURE_10 HEATFLOOR_MAX_TEMPERATURE*10
 
-#define HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2 10*HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE/2
+#define HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2_10 10*HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE/2
 
 typedef struct
 {
-	unsigned char num;		//Channel number
+	unsigned char num;		//Number of channel 
 	signed char solution;	//see heatfloor_refresh()
 	signed int sensorT;		// (t*10)
 	signed int settingT;	// (t*10)
@@ -53,7 +53,7 @@ void heatfloor_set_on_sensor_temperature_request(signed int (*f)(unsigned char c
 //Определяет функцию запроса уставки для канала (t*10)
 void heatfloor_set_on_setting_temperature_request(signed int (*f)(unsigned char channel));
 
-//Определяет функцию управления исполнительныи механизмами для канала
+//Определяет функцию управления исполнительныи механизмами (реле) для канала
 void heatfloor_set_on_switch_exec(char (*f)(unsigned char channel, unsigned char on_));
 
 //Определяет функцию выдачи состояния модуля (по всем активным каналам)
