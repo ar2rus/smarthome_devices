@@ -298,7 +298,7 @@ int main(void){
 	
 	sei();
 	
-	tea5767_set_HI_PLL(104.3);
+	tea5767_set_LO_PLL(99.1);
 	lc75341_volume_percent(80);
 	
 	while (1){}

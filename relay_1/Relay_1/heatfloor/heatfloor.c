@@ -16,10 +16,10 @@ char (*on_heatfloor_switch_exec)(unsigned char channel, unsigned char on_) = 0;
 void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
 
-volatile unsigned char enable;
-volatile unsigned char sensorCheckTimer;
+unsigned char enable;
+unsigned char sensorCheckTimer;
 
-volatile char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
+char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
 
 
 signed char heatfloor_turnSwitch(unsigned char channel, unsigned char on_){
@@ -57,16 +57,16 @@ heatfloor_channel_infos* heatfloor_refresh(){
 					if (sensorT >= 0){
 						//check range
 						if (sensorT >= HEATFLOOR_MIN_TEMPERATURE_10 && sensorT <= HEATFLOOR_MAX_TEMPERATURE_10){
-							if (sensorT < settingT - HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2_10){
+							if (sensorT <= settingT - HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_10){
 								solution = 1;					//нагреваемс€
-							}else if (sensorT > settingT + HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE_2_10){
+							}else if (sensorT >= settingT){
 								solution = -1;					//остужаемс€
 							}
 								//в случае если значение попадает в необходимый диапазон, то
 								//сохран€ем состо€ние: удерживаем нагревание, пока не выйдет за верхнюю границу
 								//или удерживаем охлаждение, пока не выйдем за нижнюю границу
 								
-								//при уставке 28 и гистерезисе 0.6 - будем разогреватьс€ до 28.3 и охлаждатьс€ до 27.7
+								//при уставке 28 и гистерезисе 0.3 - будем разогреватьс€ до 28(и еще инерци€ пор€дка 0,3) и охлаждатьс€ до 27.7
 						}else{
 							solution = -3;						    //ошибка диапазона значени€ с датчика (85*, например)
 						}
@@ -86,7 +86,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				ci->num = i;
 				ci->solution = solution;
 				ci->sensorT = sensorT;
-				ci->settingT = settingT;
+				ci->settingT = enable/*settingT*/;
 				
 			}
 		}

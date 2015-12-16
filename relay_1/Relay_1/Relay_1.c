@@ -200,7 +200,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 					switch(data[0]){
 						case 0x00:
 						case 0x01:
-							//heatfloor_enable(data[1] & 0x7, data[0]);
+							heatfloor_enable(data[1] & 0x7, data[0]);
 						break;
 					}
 				}
