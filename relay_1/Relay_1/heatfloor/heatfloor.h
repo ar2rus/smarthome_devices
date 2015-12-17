@@ -38,10 +38,17 @@ typedef struct
 
 
 //Инициализация модуля
-void heatfloor_init();
+void heatfloor_init(
+	signed int (*f_sensor_temperature_request)(unsigned char channel),
+	char (*f_switch_exec)(unsigned char channel, unsigned char on_),
+	void (*f_request_systime)());
 
 // Управляет активацией канала модуля
 void heatfloor_enable(unsigned char channel, unsigned char enable_);
+
+//Установка системного времени в диспетчере
+void heatfloor_set_systime(unsigned char seconds, unsigned char minutes, 
+	unsigned char hours, unsigned char day_of_week);
 
 //Обновляет информацию (sensor, setting, solution, ...) по состоянию всех каналов. 
 //Возвращает инфу по каждому из активных каналов
@@ -51,12 +58,12 @@ heatfloor_channel_infos* heatfloor_refresh();
 void heatfloor_set_on_sensor_temperature_request(signed int (*f)(unsigned char channel));
 
 //Определяет функцию запроса уставки для канала (t*10)
-void heatfloor_set_on_setting_temperature_request(signed int (*f)(unsigned char channel));
+//void heatfloor_set_on_setting_temperature_request(signed int (*f)(unsigned char channel));
 
 //Определяет функцию управления исполнительныи механизмами (реле) для канала
 void heatfloor_set_on_switch_exec(char (*f)(unsigned char channel, unsigned char on_));
 
 //Определяет функцию выдачи состояния модуля (по всем активным каналам)
-void heatfloor_set_on_state_message(void(*f)(heatfloor_channel_infos* infos));
+void heatfloor_set_on_state_message(void (*f)(heatfloor_channel_infos* infos));
 
 #endif /* HEATFLOOR_H_ */

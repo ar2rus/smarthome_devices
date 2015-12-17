@@ -11,7 +11,6 @@
 #include <avr/interrupt.h>
 
 signed int (*on_heatfloor_sensor_temperature_request)(unsigned char channel) = 0;
-signed int (*on_heatfloor_setting_temperature_request)(unsigned char channel) = 0;
 char (*on_heatfloor_switch_exec)(unsigned char channel, unsigned char on_) = 0;
 void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
@@ -47,9 +46,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 					sensorT = (*on_heatfloor_sensor_temperature_request)(i);
 				}
 				
-				if (on_heatfloor_setting_temperature_request){
-					settingT = (*on_heatfloor_setting_temperature_request)(i);
-				}
+				settingT = heatfloor_dispatcher_resolve_temperature_setting(i);
 				
 				signed char solution = 0;
 				
@@ -112,26 +109,23 @@ ISR(HEATFLOOR_CONTROLLER_TIMER_vect){
 	HEATFLOOR_CONTROLLER_TIMER_REG_OCR = HEATFLOOR_CONTROLLER_TIMER_REG + HEATFLOOR_CONTROLLER_TIMER_NUM_TICKS;
 }
 
-void heatfloor_set_on_sensor_temperature_request(signed int (*f)(unsigned char channel)){
-	on_heatfloor_sensor_temperature_request = f;
-}
-
-void heatfloor_set_on_setting_temperature_request(signed int (*f)(unsigned char channel)){
-	on_heatfloor_setting_temperature_request = f;
-}
-
-void heatfloor_set_on_switch_exec(char (*f)(unsigned char channel, unsigned char on_)){
-	on_heatfloor_switch_exec = f;
-}
 
 void heatfloor_set_on_state_message(void(*f)(heatfloor_channel_infos* infos)){
 	on_heatfloor_state_message = f;
 }
 
-void heatfloor_init(){
+void heatfloor_init(
+		signed int (*f_sensor_temperature_request)(unsigned char channel),
+		char (*f_switch_exec)(unsigned char channel, unsigned char on_),
+		void (*f_request_systime)()
+		){
+			
 	enable = 0;
 	
-	heatfloor_set_on_setting_temperature_request(resolveTemperatureSetting);
+	on_heatfloor_sensor_temperature_request = f_sensor_temperature_request;
+	on_heatfloor_switch_exec = f_switch_exec;
+	
+	heatfloor_dispatcher_init(f_request_systime);
 	
 	HEATFLOOR_CONTROLLER_TIMER_INIT;
 	ENABLE_HEATFLOOR_CONTROLLER_TIMER;
@@ -146,4 +140,8 @@ void heatfloor_enable(unsigned char channel, unsigned char enable_){
 		flip_bit(enable, channel);
 		heatfloor_refresh_responsible(1);	//отправим ответ всегда, даже если отключили последний канал
 	}
+}
+
+void heatfloor_set_systime(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week){
+	heatfloor_dispatcher_set_systime(seconds,minutes,hours,day_of_week);
 }

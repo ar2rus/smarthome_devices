@@ -206,6 +206,9 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 				}
 			}
 		break;
+		case CLUNET_COMMAND_TIME:
+			//heatfloor_set_systime();
+		break;
 	}
 }
 
@@ -257,6 +260,10 @@ void heatfloor_state_message(heatfloor_channel_infos* infos){
 	heatfloor_state_response(CLUNET_BROADCAST_ADDRESS, infos);
 }
 
+void heatfloor_systime_request(){
+	clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_TIME, 0, 0);
+}
+
 int main(void){
 	
 	cli();
@@ -267,10 +274,14 @@ int main(void){
 	
 	OWI_Init(OWI_BUS);
 	
-	heatfloor_init();
-	heatfloor_set_on_sensor_temperature_request(heatfloor_sensor_temperature_request);
-	heatfloor_set_on_switch_exec(heatfloor_switch_exec);
+	heatfloor_init(
+		heatfloor_sensor_temperature_request,
+		heatfloor_switch_exec, 
+		heatfloor_systime_request
+		);
+		
 	heatfloor_set_on_state_message(heatfloor_state_message);
+	
 	
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);

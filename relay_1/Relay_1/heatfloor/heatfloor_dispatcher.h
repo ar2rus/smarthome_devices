@@ -20,11 +20,11 @@ typedef struct
 } systime;
 
 
-void heatfloor_dispatcher_init();
+void heatfloor_dispatcher_init(void(*f_request_systime)());
 
-void setRealTime(signed char seconds, signed char minutes, signed char hours, signed char day_of_week);
+signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channel);
 
-signed int resolveTemperatureSetting(unsigned char channel);
-
+//функция установки текущего времени
+void heatfloor_dispatcher_set_systime(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week);
 
 #endif /* HEATFLOOR_TIMER_H_ */
