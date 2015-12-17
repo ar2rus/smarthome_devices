@@ -15,8 +15,8 @@ char (*on_heatfloor_switch_exec)(unsigned char channel, unsigned char on_) = 0;
 void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
 
-unsigned char enable;
-unsigned char sensorCheckTimer;
+volatile unsigned char enable;
+volatile unsigned char sensorCheckTimer;
 
 char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
 
@@ -83,7 +83,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				ci->num = i;
 				ci->solution = solution;
 				ci->sensorT = sensorT;
-				ci->settingT = enable/*settingT*/;
+				ci->settingT = settingT;
 				
 			}
 		}

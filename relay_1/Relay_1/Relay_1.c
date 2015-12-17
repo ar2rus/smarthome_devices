@@ -273,7 +273,7 @@ int main(void){
 	RELAY_2_INIT;
 	
 	OWI_Init(OWI_BUS);
-	
+		
 	heatfloor_init(
 		heatfloor_sensor_temperature_request,
 		heatfloor_switch_exec, 
@@ -281,13 +281,12 @@ int main(void){
 		);
 		
 	heatfloor_set_on_state_message(heatfloor_state_message);
+		
+	heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
 	
-	
+		
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
-	
-	
-	heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
 	
 	sei();
 	
