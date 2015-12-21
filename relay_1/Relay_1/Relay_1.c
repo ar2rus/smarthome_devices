@@ -204,9 +204,9 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 						case 0xFF:
 							heatfloor_state_response(src_address, heatfloor_refresh());
 							break;
-						case 0xFE:	//setup ds18b20 (temporary)
-							DS18B20_SetDeviceAccuracy(OWI_BUS, &HEATING_FLOOR_CHANNEL_0_SENSOR_1W_ID, 3);
-							break;
+						//case 0xFE:	//setup ds18b20 (temporary)
+						//	DS18B20_SetDeviceAccuracy(OWI_BUS, &HEATING_FLOOR_CHANNEL_0_SENSOR_1W_ID, 3);
+						//	break;
 					}
 					break;
 				case 0x02:
