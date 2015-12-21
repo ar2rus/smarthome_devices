@@ -23,6 +23,10 @@
 #define DS18B20_RECALL_E                 0xb8
 #define DS18B20_READ_POWER_SUPPLY        0xb4
 
-unsigned char DS18B20_ReadTemperature(unsigned char bus, unsigned char* id, signed int* temperature);
+void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned char accuracy);
+
+void DS18B20_StartAllDevicesConverting(unsigned char bus);
+unsigned char DS18B20_ReadDevice(unsigned char bus, unsigned char* id, signed int* temperature);
+unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned char* id, signed int* temperature);
 
 #endif /* DS18B20_H_ */

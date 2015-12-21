@@ -89,25 +89,32 @@ char oneWireSearch(OWI_device* devices){
 *  Возвращает 1 если запрос выполнен и 0 - если нет
 */
 char temperatureRequest(OWI_device* device, signed int* temperature){
-	if (DS18B20_ReadTemperature(OWI_BUS, (*device).id, temperature) != READ_CRC_ERROR){
+	if (DS18B20_StartDeviceConvertingAndRead(OWI_BUS, (*device).id, temperature) != READ_CRC_ERROR){
 		return 1;
 	}
 	return 0;
 }
 
+/*
+* Запрос температуры для устройств devices одновременно
+*/
 void temperatureResponse(unsigned char address, OWI_device* devices, unsigned char size){
 	char temperatureInfo[11 * size + 1];
-	
 	unsigned char cnt = 0;
-	for (char i=0; i<size; i++){
-		unsigned char pos = 1 + 11*cnt;
-		if (temperatureRequest(devices, (signed int *)&temperatureInfo[pos + 9])){
-			temperatureInfo[pos] = 0; //1-wire
-			memcpy(&temperatureInfo[pos + 1], (*devices).id, sizeof((*devices).id));
-			cnt++;
+	
+	if (size > 0){
+		DS18B20_StartAllDevicesConverting(OWI_BUS);
+		for (char i=0; i<size; i++){
+			unsigned char pos = 1 + 11*cnt;
+			if (DS18B20_ReadDevice(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9]) != READ_CRC_ERROR){
+				temperatureInfo[pos] = 0; //1-wire
+				memcpy(&temperatureInfo[pos + 1], (*devices).id, sizeof((*devices).id));
+				cnt++;
+			}
+			devices++;
 		}
-		devices++;
 	}
+
 	temperatureInfo[0] = cnt;
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, ((char*)temperatureInfo), 11 * cnt + 1);
 }
@@ -191,19 +198,25 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 			}
 		break;
 		case CLUNET_COMMAND_HEATFLOOR:
-			if (data[0] == 0xFF){	//info request
-				if (size == 1){
-					heatfloor_state_response(src_address, heatfloor_refresh());
-				}
-			}else{
-				if (size == 2){
+			switch (size){
+				case 0x01:
+					switch(data[0]){
+						case 0xFF:
+							heatfloor_state_response(src_address, heatfloor_refresh());
+							break;
+						case 0xFE:	//setup ds18b20 (temporary)
+							DS18B20_SetDeviceAccuracy(OWI_BUS, &HEATING_FLOOR_CHANNEL_0_SENSOR_1W_ID, 3);
+							break;
+					}
+					break;
+				case 0x02:
 					switch(data[0]){
 						case 0x00:
 						case 0x01:
-							heatfloor_enable(data[1] & 0x7, data[0]);
+						heatfloor_enable(data[1] & 0x7, data[0]);
 						break;
 					}
-				}
+					break;
 			}
 		break;
 		case CLUNET_COMMAND_TIME:
@@ -273,7 +286,7 @@ int main(void){
 	RELAY_2_INIT;
 	
 	OWI_Init(OWI_BUS);
-		
+	
 	heatfloor_init(
 		heatfloor_sensor_temperature_request,
 		heatfloor_switch_exec, 
@@ -281,12 +294,14 @@ int main(void){
 		);
 		
 	heatfloor_set_on_state_message(heatfloor_state_message);
-		
-	heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
 	
-		
+	
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
+	
+	
+	heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
+	heatfloor_enable(HEATING_FLOOR_CHANNEL_BATHROOM, 1);
 	
 	sei();
 	

@@ -14,51 +14,69 @@
 
 #include <util/delay.h>
 
+/*****************************************************************************
+*   Function name : DS18B20_SetDeviceAccuracy
+*   Parameters :    bus - вывод микроконтроллера, который выполняет роль 1WIRE шины
+*                   *id - имя массива из 8-ми элементов, в котором хранится
+*                         адрес датчика DS18B20
+*                   accuracy - значение точность необходимой для установления
+*						0	-	9bit
+*						1	-	10bit
+*						2	-	11bit
+*						3	-	12bit
+*					
+*   Purpose :      Адресует датчик DS18B20, записывает в память (scratchpad),
+*				   копирует scratchpad в EEPROM. 
+*				   Следует вызывать только один раз для настройки устройства
+*****************************************************************************/
+void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned char accuracy){
+	OWI_DetectPresence(bus);
+	OWI_MatchRom(id, bus);
+	OWI_SendByte(DS18B20_WRITE_SCRATCHPAD, bus);
+
+	OWI_SendByte(0x00, bus);	//Th
+	OWI_SendByte(0x00, bus);	//Tl
+	OWI_SendByte(0x1F | ((accuracy & 0x03)<<5), bus);	//Config
+	
+	OWI_DetectPresence(bus);
+	OWI_MatchRom(id, bus);
+	OWI_SendByte(DS18B20_COPY_SCRATCHPAD, bus);
+	
+	/*ждем, когда запись в EEPROM завершится*/
+	while (!OWI_ReadBit(bus));
+}
+
 
 /*****************************************************************************
-*   Function name :   DS18B20_ReadTemperature
+*   Function name : DS18B20_ReadDevice
 *   Returns :       коды - READ_CRC_ERROR, если считанные данные не прошли проверку
-*                          READ_SUCCESSFUL, если данные прошли проверку    
+*                          READ_SUCCESSFUL, если данные прошли проверку
 *   Parameters :    bus - вывод микроконтроллера, который выполняет роль 1WIRE шины
 *                   *id - имя массива из 8-ми элементов, в котором хранится
 *                         адрес датчика DS18B20
 *                   *temperature - указатель на шестнадцати разрядную переменную
 *                                в которой будет сохранено считанного зн. температуры
-*   Purpose :      Адресует датчик DS18B20, дает команду на преобразование температуры
-*                  ждет, считывает его память - scratchpad, проверяет CRC,
-*                  сохраняет значение температуры в переменной, возвращает код ошибки             
+*   Purpose :      Метод только считывает значение УЖЕ ИЗМЕРЕННОЙ температуры из scratchpad,
+*				   НЕ ВЫПОЛНЯЕТ ИЗМЕРЕНИЕ
+*				   Адресует датчик DS18B20, считывает его память - scratchpad, проверяет CRC,
+*                  сохраняет значение температуры в переменной, возвращает код ошибки
 *****************************************************************************/
-unsigned char DS18B20_ReadTemperature(unsigned char bus, unsigned char* id, signed int* temperature)
-{
-    unsigned char scratchpad[9];
-    unsigned char i;
-  
-    /*подаем сигнал сброса
-    команду для адресации устройства на шине
-    подаем команду - запук преобразования */
-    OWI_DetectPresence(bus);
-    OWI_MatchRom(id, bus);
-    OWI_SendByte(DS18B20_CONVERT_T, bus);
-
-    /*ждем, когда датчик завершит преобразование*/ 
-    while (!OWI_ReadBit(bus));
-
-    /*подаем сигнал сброса
-    команду для адресации устройства на шине
-    команду - чтение внутренней памяти
-    затем считываем внутреннюю память датчика в массив
-    */
-    OWI_DetectPresence(bus);
-    OWI_MatchRom(id, bus);
-    OWI_SendByte(DS18B20_READ_SCRATCHPAD, bus);
-    for (i = 0; i<=8; i++){
-      scratchpad[i] = OWI_ReceiveByte(bus);
-    }
-    
-    if(OWI_CheckScratchPadCRC(scratchpad) != OWI_CRC_OK){
-      return READ_CRC_ERROR;
-    }
-    
+unsigned char DS18B20_ReadDevice(unsigned char bus, unsigned char* id, signed int* temperature){
+	
+	unsigned char scratchpad[9];
+	unsigned char i;
+	
+	OWI_DetectPresence(bus);
+	OWI_MatchRom(id, bus);
+	OWI_SendByte(DS18B20_READ_SCRATCHPAD, bus);
+	for (i = 0; i <= 8; i++){
+		scratchpad[i] = OWI_ReceiveByte(bus);
+	}
+	
+	if(OWI_CheckScratchPadCRC(scratchpad) != OWI_CRC_OK){
+		return READ_CRC_ERROR;
+	}
+	
 	*temperature = (unsigned int)scratchpad[0];
 	*temperature |= ((unsigned int)scratchpad[1] << 8);
 	
@@ -68,45 +86,46 @@ unsigned char DS18B20_ReadTemperature(unsigned char bus, unsigned char* id, sign
 	
 	*temperature *= 0.625f;
 	
-   // *temperature = (unsigned int)scratchpad[0];
-   // *temperature |= ((unsigned int)scratchpad[1] << 8);
-    
-    return READ_SUCCESSFUL;
+	return READ_SUCCESSFUL;
 }
 
-// /*****************************************************************************
-// *   Function name :  DS18B20_PrintTemperature 
-// *   Returns :         нет       
-// *   Parameters :     temperature - температура датчика DS18B20     
-// *   Purpose :        Выводит значение температуры датчика DS18B20
-// *                    на LCD. Адрес знакоместа нужно выставлять заранее.
-// *****************************************************************************/
-// void DS18B20_PrintTemperature(unsigned int temperature)
-// {
-//   unsigned char tmp = 0;
-//   /*выводим знак температуры
-//   *если она отрицательная 
-//   *делаем преобразование*/  
-//   if ((temperature & 0x8000) == 0){
-//     LCD_WriteData('+');
-//   }
-//   else{
-//     LCD_WriteData('-');
-//     temperature = ~temperature + 1;
-//   }
-//         
-//   //выводим значение целое знач. температуры      
-//   tmp = (unsigned char)(temperature>>4);
-//   if (tmp<100){
-//     BCD_2Lcd(tmp);
-//   }
-//   else{
-//     BCD_3Lcd(tmp);    
-//   }
-//         
-//   //выводим дробную часть знач. температуры
-//   tmp = (unsigned char)(temperature&15);
-//   tmp = (tmp>>1) + (tmp>>3);
-//   LCD_WriteData('.');
-//   BCD_1Lcd(tmp);
-// }
+
+/*****************************************************************************
+*   Function name :   DS18B20_StartAllDevicesConverting
+*   Parameters :    bus - вывод микроконтроллера, который выполняет роль 1WIRE шины
+*   Purpose :      Запускает измерение на всех устройствах одновременно,
+*                  ждет окончания преобразования
+*****************************************************************************/
+void DS18B20_StartAllDevicesConverting(unsigned char bus){
+    OWI_DetectPresence(bus);
+    OWI_SkipRom(bus);
+    OWI_SendByte(DS18B20_CONVERT_T, bus);
+
+    /*ждем, когда датчик завершит преобразование*/ 
+    while (!OWI_ReadBit(bus));
+}
+
+/*****************************************************************************
+*   Function name :   DS18B20_StartDeviceConvertingAndRead
+*   Returns :       коды - READ_CRC_ERROR, если считанные данные не прошли проверку
+*                          READ_SUCCESSFUL, если данные прошли проверку    
+*   Parameters :    bus - вывод микроконтроллера, который выполняет роль 1WIRE шины
+*                   *id - имя массива из 8-ми элементов, в котором хранится
+*                         адрес датчика DS18B20
+*                   *temperature - указатель на шестнадцати разрядную переменную
+*                                в которой будет сохранено считанного зн. температуры
+*   Purpose :      ВЫПОЛНЯЕТ ИЗМЕРЕНИЕ И ВОЗВРАЩАЕТ ЗНАЧЕНИЕ ТЕМПЕРАТУРЫ
+*				   Адресует датчик DS18B20, дает команду на преобразование температуры
+*                  ждет, считывает его память - scratchpad, проверяет CRC,
+*                  сохраняет значение температуры в переменной, возвращает код ошибки             
+*****************************************************************************/
+unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned char* id, signed int* temperature){
+    OWI_DetectPresence(bus);
+    OWI_MatchRom(id, bus);
+    OWI_SendByte(DS18B20_CONVERT_T, bus);
+
+    /*ждем, когда датчик завершит преобразование*/ 
+    while (!OWI_ReadBit(bus));
+
+   return DS18B20_ReadDevice(bus, id, temperature);
+}
