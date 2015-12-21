@@ -15,7 +15,16 @@ volatile systime time;
 
 signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channel){
 	//если не прочитан eeprom или не установлено текущее время -> возвращать 0
-	return 28 * 10;
+	//return 28 * 10;
+	
+	switch (channel){
+		case 0:
+		return 300;
+		case 1:
+		return 270;
+		default:
+		return 0;
+	}
 }
 
 void setMode(){
