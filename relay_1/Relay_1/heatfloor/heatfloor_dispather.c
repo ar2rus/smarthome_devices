@@ -21,7 +21,7 @@ signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channe
 		case 0:
 		return 300;
 		case 1:
-		return 270;
+		return 280;
 		default:
 		return 0;
 	}

@@ -287,21 +287,24 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 
 int main(void){
 	cli();
+	
 	LED_INIT;
 	TWI_INIT;
-	
-	clunet_init();
-	clunet_set_on_data_received(clunet_data_received);
-	
+		
 	tea5767_init();
 	lc75341_init();
-	
-	sei();
+
 	
 	tea5767_set_LO_PLL(99.1);
 	lc75341_volume_percent(80);
 	
+	clunet_init();
+	clunet_set_on_data_received(clunet_data_received);
+	
+	sei();
+
 	while (1){}
 	return 0;
+	
 }
 
