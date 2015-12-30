@@ -10,6 +10,7 @@
 
 /* Device address (0-254) */
 #define CLUNET_DEVICE_ID 0x14
+/*20 dec*/
 
 /* Device name */
 #define CLUNET_DEVICE_NAME "Relay control block #1"
