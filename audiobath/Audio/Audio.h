@@ -13,6 +13,10 @@
 
 #include <avr/io.h>
 
+/* skip events delay */
+#define TIMER_SKIP_EVENTS_DELAY 1000		/* 1000ms */
+
+
 /*led port description*/
 #define LED_PORT B
 #define LED_PIN  6

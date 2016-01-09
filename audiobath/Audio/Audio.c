@@ -12,6 +12,10 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
+unsigned int systime = 0;
+
+char shouldSendDelayedResponse = 0;
+unsigned int delayedResponseCounterValue = 0;
 
 /*
 *	Выполняет команду и, при необходимости, отправляет 
@@ -55,11 +59,11 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 			responseType = 1;
 			break;
 		case COMMAND_VOLUME_UP:
-			lc75341_volume_up_exp(va_arg(va, int));
+			lc75341_volume_up(va_arg(va, int));
 			responseType = 1;
 			break;
 		case COMMAND_VOLUME_DOWN:
-			lc75341_volume_down_exp(va_arg(va, int));
+			lc75341_volume_down(va_arg(va, int));
 			responseType = 1;
 			break;
 		case COMMAND_VOLUME_INFO:
@@ -178,10 +182,14 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 							cmd(1, src_address, COMMAND_VOLUME_INFO);
 							break;
 						case 0x02:
-							cmd(1, src_address, COMMAND_VOLUME_UP, 3);
+							shouldSendDelayedResponse = 1;
+							delayedResponseCounterValue = systime;
+							cmd(0, src_address, COMMAND_VOLUME_UP, 3);
 							break;
 						case 0x03:
-							cmd(1, src_address, COMMAND_VOLUME_DOWN, 3);
+							shouldSendDelayedResponse = 1;
+							delayedResponseCounterValue = systime;
+							cmd(0, src_address, COMMAND_VOLUME_DOWN, 3);
 							break;
 					}
 					break;
@@ -296,14 +304,24 @@ int main(void){
 
 	
 	tea5767_set_LO_PLL(99.1);
-	lc75341_volume_percent(80);
+	lc75341_volume_percent(50);
 	
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
 	
 	sei();
 
-	while (1){}
+	while (1){
+		++systime;
+		//send delayed response
+		//отправляем не раньше чем через 150 мс, но все равно рвется прерыванием и отправляется только по окончании любой длительной операции
+		if (shouldSendDelayedResponse && (systime - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
+			shouldSendDelayedResponse = 0;
+			cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_INFO);
+			//also need to save to eeprom
+		}
+		_delay_ms(1);
+	}
 	return 0;
 	
 }
