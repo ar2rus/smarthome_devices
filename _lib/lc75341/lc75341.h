@@ -78,6 +78,6 @@ char lc75341_bass_up();
 char lc75341_bass_down();
 unsigned char lc75341_bass_dB_value();
 
-void lc75341_reset_equaliuzer();
+void lc75341_reset_equalizer();
 
 #endif /* LC75341_H_ */

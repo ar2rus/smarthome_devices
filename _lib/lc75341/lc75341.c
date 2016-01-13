@@ -402,7 +402,7 @@ char lc75341_bass_down(){
 /*
 *	—брасывает значени€ эквалайзера (выс.частоты, низ.частоты, усиление)
 */
-void lc75341_reset_equaliuzer(){
+void lc75341_reset_equalizer(){
 		data[0] = data[0] & 0x0F;
 		data[2] = 0x00;
 		lc75341_write();
