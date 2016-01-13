@@ -12,128 +12,200 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-unsigned int systime = 0;
+volatile unsigned int systime = 0;
 
-char shouldSendDelayedResponse = 0;
-unsigned int delayedResponseCounterValue = 0;
+volatile char shouldSendDelayedResponse = 0;
+volatile unsigned int delayedResponseCounterValue = 0;
 
-/*
-*	¬ыполн€ет команду и, при необходимости, отправл€ет 
-*	информационное сообщение в сеть CLUNET
-*/
-void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, ...){
+volatile unsigned char rcv = 0;
+volatile unsigned char rcv_src_address;
+volatile unsigned char rcv_dst_address;
+volatile unsigned char rcv_command;
+char rcv_data[5];
+volatile unsigned char rcv_size;
+
+void cmd(){
 	LED_ON;
+	char response = -1;
 	
-	va_list va;
-	va_start(va, command);
-	
-	char responseType = -1;
-	
-	switch (command){
-		case COMMAND_INPUT:
-			lc75341_input(va_arg(va, int));
-			responseType = 0;
-			break;
-		case COMMAND_INPUT_NEXT:
-			lc75341_input_next();
-			responseType = 0;
-			break;
-		case COMMAND_INPUT_PREV:
-			lc75341_input_prev();
-			responseType = 0;
-			break;
-		case COMMAND_INPUT_INFO:
-			responseType = 0;
-			break;
-			
-		case COMMAND_MUTE_TOGGLE:
-			lc75341_mute_toggle();
-			responseType = 1;
-			break;
-		case COMMAND_VOLUME_DB:
-			lc75341_volume_dB(va_arg(va, int));
-			responseType = 1;
-			break;
-		case COMMAND_VOLUME_PCNT:
-			lc75341_volume_percent(va_arg(va, int));
-			responseType = 1;
-			break;
-		case COMMAND_VOLUME_UP:
-			lc75341_volume_up(va_arg(va, int));
-			responseType = 1;
-			break;
-		case COMMAND_VOLUME_DOWN:
-			lc75341_volume_down(va_arg(va, int));
-			responseType = 1;
-			break;
-		case COMMAND_VOLUME_INFO:
-			responseType = 1;
-			break;
+	switch(rcv_command){
 		
-			
-		case COMMAND_TREBLE_DB:
-			lc75341_treble_dB(va_arg(va, int));
-			responseType = 2;
+		case CLUNET_COMMAND_CHANNEL:
+		switch (rcv_size){
+			case 1:
+			switch (rcv_data[0]){
+				case 0xFF:
+					response = 0;
+					break;
+				case 0x01:
+					lc75341_input_next();
+					response = 0;
+					break;
+				case 0x02:
+					lc75341_input_prev();
+					response = 0;
+					break;
+			}
 			break;
-		case COMMAND_TREBLE_UP:
-			lc75341_treble_up();
-			responseType = 2;
+			case 2:
+			switch(rcv_data[0]){
+				case 0x00:
+					lc75341_input(rcv_data[1] - 1);	//1 channel -> 0 channel, etc
+					response = 0;
+					break;
+			}
 			break;
-		case COMMAND_TREBLE_DOWN:
-			lc75341_treble_down();
-			responseType = 2;
-			break;
-			
-		case COMMAND_BASS_DB:
-			lc75341_bass_dB(va_arg(va, int));
-			responseType = 2;
-			break;
-		case COMMAND_BASS_UP:
-			lc75341_bass_up();
-			responseType = 2;
-			break;
-		case COMMAND_BASS_DOWN:
-			lc75341_bass_down();
-			responseType = 2;
-			break;
+		}
+		break;
 		
-		case COMMAND_GAIN_DB:
-			lc75341_gain_dB(va_arg(va, int));
-			responseType = 2;
+		case CLUNET_COMMAND_VOLUME:
+		switch (rcv_size){
+			case 1:
+			switch (rcv_data[0]){
+				case 0xFF:
+					response = 1;
+					break;
+				case 0x02:
+					shouldSendDelayedResponse = 1;
+					delayedResponseCounterValue = systime;
+					lc75341_volume_up(2);
+					response = 1;
+					break;
+				case 0x03:
+					shouldSendDelayedResponse = 1;
+					delayedResponseCounterValue = systime;
+					lc75341_volume_down(2);
+					response = 1;
+					break;
+			}
 			break;
-		case COMMAND_GAIN_UP:
-			lc75341_gain_up();
-			responseType = 2;
+			case 2:
+			switch(rcv_data[0]){
+				case 0x00:
+					lc75341_volume_percent(rcv_data[1]);
+					break;
+				case 0x01:
+					lc75341_volume_dB(rcv_data[1]);
+					break;
+			}
 			break;
-		case COMMAND_GAIN_DOWN:
-			lc75341_gain_down();
-			responseType = 2;
-			break;
+		}
+		break;
 		
-		case COMMAND_EQUALIZER_RESET:
-			lc75341_reset_equaliuzer();
-			responseType = 2;
+		case CLUNET_COMMAND_MUTE:
+		if (rcv_size == 1){
+			switch(rcv_data[0]){
+				case 0:
+					lc75341_volume_percent(0);
+					break;
+				case 1:
+					lc75341_mute_toggle();
+					response = 1;
+					break;
+			}
+		}
+		break;
+		
+		case CLUNET_COMMAND_EQUALIZER:
+		switch(rcv_size){
+			case 1:
+			switch(rcv_data[0]){
+				case 0x00:
+					lc75341_reset_equalizer();
+					response = 2;
+					break;
+				case 0xFF:
+					response = 2;
+					break;
+			}
 			break;
-		case COMMAND_EQUALIZER_INFO:
-			responseType = 2;
+			case 2:
+			case 3:
+			switch(rcv_data[0]){
+				case 0x01:	//gain
+				switch(rcv_data[1]){
+					case 0x00:	//reset
+						lc75341_gain_dB(0);
+						response = 2;
+						break;
+					case 0x01:	//dB
+						if (rcv_size == 3){
+							lc75341_gain_dB(rcv_data[2]);
+							response = 2;
+						}
+						break;
+					case 0x02:	//+
+						lc75341_gain_up();
+						response = 2;
+						break;
+					case 0x03:	//-
+						lc75341_gain_down();
+						response = 2;
+						break;
+				}
+				break;
+				case 0x02:	//treble
+				switch(rcv_data[1]){
+						case 0x00:	//reset
+						lc75341_treble_dB(0);
+						response = 2;
+						break;
+					case 0x01:	//dB
+						if (rcv_size == 3){
+							lc75341_treble_dB(rcv_data[2]);
+							response = 2;
+						}
+						break;
+					case 0x02:	//+
+						lc75341_treble_up();
+						response = 2;
+						break;
+					case 0x03:	//-
+						lc75341_treble_down();
+						response = 2;
+						break;
+				}
+				break;
+				case 0x03:	//bass
+				switch(rcv_data[1]){
+					case 0x00:	//reset
+						lc75341_bass_dB(0);
+						response = 2;
+						break;
+					case 0x01:	//dB
+						if (rcv_size == 3){
+							lc75341_bass_dB(rcv_data[2]);
+							response = 2;
+						}
+						break;
+					case 0x02:	//+
+						lc75341_bass_up();
+						response = 2;
+						break;
+					case 0x03:	//-
+						lc75341_bass_down();
+						response = 2;
+						break;
+				}
+				break;
+			}
 			break;
+		}
+		break;
 	}
-	va_end(va);
-	LED_OFF;
 	
-	sei();
-	if (sendResponse){
-		switch (responseType){
+	if (response){
+		switch (response){
 			case 0:{
 				char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
-				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
+				clunet_send(rcv_src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
 				break;
 			}
 			case 1:{
 				char data[2];
 				data[0] = lc75341_volume_percent_value();
 				data[1] = lc75341_volume_dB_value();
-				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
+				clunet_send(rcv_src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
 				break;
 			}
 			case 2:{
@@ -141,155 +213,23 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 				data[0] = lc75341_gain_dB_value();
 				data[1] = lc75341_treble_dB_value();
 				data[2] = lc75341_bass_dB_value();
-				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
+				clunet_send(rcv_src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
 				break;
 			}
 		}
 	}
+	
+	LED_OFF;
 }
 
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
-	switch(command){
-		case CLUNET_COMMAND_CHANNEL:
-			switch (size){
-				case 1:
-					switch (data[0]){
-						case 0xFF:
-							cmd(1, src_address, COMMAND_INPUT_INFO);
-							break;
-						case 0x01:
-							cmd(1, src_address, COMMAND_INPUT_NEXT);
-							break;
-						case 0x02:
-							cmd(1, src_address, COMMAND_INPUT_PREV);
-							break;
-					}
-					break;
-				case 2:
-					switch(data[0]){
-						case 0x00:
-							cmd(1, src_address, COMMAND_INPUT, data[1] - 1);	//1 channel -> 0 channel
-							break;
-					}
-					break;
-			}
-			break;
-		case CLUNET_COMMAND_VOLUME:
-			switch (size){
-				case 1:
-					switch (data[0]){
-						case 0xFF:
-							cmd(1, src_address, COMMAND_VOLUME_INFO);
-							break;
-						case 0x02:
-							shouldSendDelayedResponse = 1;
-							delayedResponseCounterValue = systime;
-							cmd(0, src_address, COMMAND_VOLUME_UP, 3);
-							break;
-						case 0x03:
-							shouldSendDelayedResponse = 1;
-							delayedResponseCounterValue = systime;
-							cmd(0, src_address, COMMAND_VOLUME_DOWN, 3);
-							break;
-					}
-					break;
-				case 2:
-					switch(data[0]){
-						case 0x00:
-							cmd(1, src_address, COMMAND_VOLUME_PCNT, data[1]);
-							break;
-						case 0x01:
-							cmd(1, src_address, COMMAND_VOLUME_DB, data[1]);
-							break;
-					}
-					break;
-			}
-			break;
-		case CLUNET_COMMAND_MUTE:
-			if (size == 1){
-				switch(data[0]){
-					case 0:
-						cmd(1, src_address, COMMAND_VOLUME_PCNT, 0);
-						break;
-					case 1:
-						cmd(1, src_address, COMMAND_MUTE_TOGGLE);
-						break;
-				}
-			}
-			break;
-		case CLUNET_COMMAND_EQUALIZER:
-			switch(size){
-				case 1:
-					switch(data[0]){
-						case 0x00:
-							cmd(1, src_address, COMMAND_EQUALIZER_RESET);
-							break;
-						case 0xFF:
-							cmd(1, src_address, COMMAND_EQUALIZER_INFO);
-							break;
-					}
-					break;
-				case 2:
-				case 3:
-					switch(data[0]){
-						case 0x01:	//gain
-							switch(data[1]){
-								case 0x00:	//reset
-									cmd(1, src_address, COMMAND_GAIN_DB, 0);
-									break;
-								case 0x01:	//dB
-									if (size == 3){
-										cmd(1, src_address, COMMAND_GAIN_DB, data[2]);
-									}
-									break;
-								case 0x02:	//+
-									cmd(1, src_address, COMMAND_GAIN_UP);
-									break;
-								case 0x03:	//-
-									cmd(1, src_address, COMMAND_GAIN_DOWN);
-									break;
-							}
-							break;
-						case 0x02:	//treble
-							switch(data[1]){
-								case 0x00:	//reset
-									cmd(1, src_address, COMMAND_TREBLE_DB, 0);
-									break;
-								case 0x01:	//dB
-									if (size == 3){
-										cmd(1, src_address, COMMAND_TREBLE_DB, data[2]);
-									}
-									break;
-								case 0x02:	//+
-									cmd(1, src_address, COMMAND_TREBLE_UP);
-									break;
-								case 0x03:	//-
-									cmd(1, src_address, COMMAND_TREBLE_DOWN);
-									break;
-							}
-							break;
-						case 0x03:	//bass
-							switch(data[1]){
-								case 0x00:	//reset
-									cmd(1, src_address, COMMAND_BASS_DB, 0);
-									break;
-								case 0x01:	//dB
-									if (size == 3){
-										cmd(1, src_address, COMMAND_BASS_DB, data[2]);
-									}
-									break;
-								case 0x02:	//+
-									cmd(1, src_address, COMMAND_BASS_UP);
-									break;
-								case 0x03:	//-
-									cmd(1, src_address, COMMAND_BASS_DOWN);
-									break;
-							}
-							break;
-					}
-					break;
-			}
-			break;
+	if (!rcv){
+		rcv = 1;
+		rcv_src_address = src_address;
+		rcv_dst_address = dst_address;
+		rcv_command = command;
+		rcv_size = size;
+		memcpy(&rcv_data[0], data, size);
 	}
 }
 
@@ -301,23 +241,27 @@ int main(void){
 		
 	tea5767_init();
 	lc75341_init();
-
 	
 	tea5767_set_LO_PLL(99.1);
 	lc75341_volume_percent(50);
-	
-	clunet_init();
-	clunet_set_on_data_received(clunet_data_received);
-	
-	sei();
 
+	clunet_set_on_data_received(clunet_data_received);
+	clunet_init();
+	
 	while (1){
 		++systime;
+		
+		if (rcv){
+			cmd();
+			rcv = 0;
+		}
+		
 		//send delayed response
-		//отправл€ем не раньше чем через 150 мс, но все равно рветс€ прерыванием и отправл€етс€ только по окончании любой длительной операции
+		//отправл€ем не раньше чем через TIMER_SKIP_EVENTS_DELAY мс, 
+		//но все равно рветс€ прерыванием и отправл€етс€ только по окончании любой длительной операции
 		if (shouldSendDelayedResponse && (systime - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
 			shouldSendDelayedResponse = 0;
-			cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_INFO);
+			//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_INFO);
 			//also need to save to eeprom
 		}
 		_delay_ms(1);

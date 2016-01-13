@@ -12,6 +12,7 @@
 #include "utils/bits.h"
 
 #include <avr/io.h>
+#include <string.h>
 
 /* skip events delay */
 #define TIMER_SKIP_EVENTS_DELAY 1000		/* 1000ms */
@@ -56,8 +57,6 @@
 
 #define COMMAND_EQUALIZER_RESET	50
 #define COMMAND_EQUALIZER_INFO	51
-
-void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, ...);
 
 
 #endif /* AUDIO_H_ */
