@@ -11,8 +11,28 @@
 
 #include "utils/bits.h"
 
-#include <avr/io.h>
 #include <string.h>
+#include <stdarg.h>
+#include <avr/io.h>
+#include <avr/sleep.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+#include "lc75341/lc75341.h"
+#include "tea5767/tea5767.h"
+
+#include "clunet/clunet.h"
+#include "clunet/clunet_buffered.h"
+
+
+/* main timer controls*/
+#define TIMER_PRESCALER 64
+#define TIMER_NUM_TICKS (unsigned int)(1e-3 * F_CPU / TIMER_PRESCALER)	/*1ms main loop*/
+#define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS11, CS10); unset_bit(TCCR1B, CS12); /*64x prescaler*/}
+
+#define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)
+#define DISABLE_TIMER_CMP_A unset_bit(TIMSK, OCIE1A)
+
 
 /* skip events delay */
 #define TIMER_SKIP_EVENTS_DELAY 1000		/* 1000ms */
@@ -58,5 +78,10 @@
 #define COMMAND_EQUALIZER_RESET	50
 #define COMMAND_EQUALIZER_INFO	51
 
+
+
+#define RESPONSE_CHANNEL   0
+#define RESPONSE_VOLUME    1
+#define RESPONSE_EQUALIZER 2
 
 #endif /* AUDIO_H_ */

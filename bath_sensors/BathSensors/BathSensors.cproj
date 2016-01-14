@@ -124,6 +124,14 @@
       <SubType>compile</SubType>
       <Link>clunet\clunet.h</Link>
     </Compile>
+    <Compile Include="..\..\_lib\clunet\clunet_buffered.c">
+      <SubType>compile</SubType>
+      <Link>clunet\clunet_buffered.c</Link>
+    </Compile>
+    <Compile Include="..\..\_lib\clunet\clunet_buffered.h">
+      <SubType>compile</SubType>
+      <Link>clunet\clunet_buffered.h</Link>
+    </Compile>
     <Compile Include="..\..\_lib\dht\dht.c">
       <SubType>compile</SubType>
       <Link>dht\dht.c</Link>

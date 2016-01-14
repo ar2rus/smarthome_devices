@@ -11,6 +11,7 @@
 
 #include "utils/bits.h"
 #include "clunet/clunet.h"
+#include "clunet/clunet_buffered.h"
 
 #include "onewire/OWIBitFunctions.h"
 #include "onewire/OWIHighLevelFunctions.h"

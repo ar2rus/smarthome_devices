@@ -212,14 +212,16 @@ int main(void){
 						break;
 						
 						case 0x02:{		//next
-							data[0] = 0x06;
-							clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
+							//data[0] = 0x06;	android
+							data[0] = 0x01;
+							clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
 							necResetValue();
 						}
 						break;
 						case 0x98:{		//prev
-							data[0] = 0x05;
-							clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
+							//data[0] = 0x05; android
+							data[1] = 0x02;
+							clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
 							necResetValue();
 						}
 						break;
