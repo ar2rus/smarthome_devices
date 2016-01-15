@@ -11,10 +11,14 @@
 
 
 #include "utils/bits.h"
+
 #include "clunet/clunet.h"
+#include "clunet/clunet_buffered.h"
 
 #include "fan/fan.h"
 
+#include <avr/interrupt.h>
+#include <util/delay.h>
 
 
 /*relay_0 description*/
@@ -62,6 +66,20 @@
 
 #define FAN_RELAY_ID RELAY_1_ID
 #define MIRRORED_BOX_LIGHT_RELAY_ID RELAY_2_ID
+
+
+
+/* main timer controls*/
+#define TIMER_PRESCALER 1024
+#define TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / TIMER_PRESCALER)	/*1 second main loop*/
+#define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS12, CS10); unset_bit(TCCR1B, CS11); /*1024x prescaler*/}
+
+#define TIMER_REG TCNT1
+
+#define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)
+#define DISABLE_TIMER_CMP_A unset_bit(TIMSK, OCIE1A)
+
+#define TIMER_COMP_VECTOR TIMER1_COMPA_vect
 
 
 

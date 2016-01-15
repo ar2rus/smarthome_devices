@@ -11,6 +11,9 @@
 
 #include "utils/bits.h"
 #include "clunet/clunet.h"
+#include "clunet/clunet_buffered.h"
+
+#include <avr/interrupt.h>
 
 
 /*2 свободных порта используются как дополнительные землся и питания
@@ -50,10 +53,11 @@
 #define TIMER_NUM_TICKS (unsigned int)(1e-3 * F_CPU / TIMER_PRESCALER)	/*1ms main loop*/
 #define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS11, CS10); unset_bit(TCCR1B, CS12); /*64x prescaler*/}
 
+#define TIMER_REG TCNT1
+
 #define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)
 #define DISABLE_TIMER_CMP_A unset_bit(TIMSK, OCIE1A)
 
-//#define ENABLE_TIMER_CMP_B set_bit(TIMSK, OCIE1B)
-//#define DISABLE_TIMER_CMP_B unset_bit(TIMSK, OCIE1B)
+#define TIMER_COMP_VECTOR TIMER1_COMPA_vect
 
 #endif /* WARDROBE_H_ */

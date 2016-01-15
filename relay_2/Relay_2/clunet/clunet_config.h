@@ -10,6 +10,7 @@
 
 /* Device address (0-254) */
 #define CLUNET_DEVICE_ID 0x15
+/*dec 21*/
 
 /* Device name */
 #define CLUNET_DEVICE_NAME "Relay control block #2"
@@ -54,5 +55,20 @@
 #define CLUNET_TIMER_COMP_VECTOR TIMER2_COMP_vect
 #define CLUNET_TIMER_OVF_VECTOR TIMER2_OVF_vect
 #define CLUNET_INT_VECTOR INT1_vect
+
+
+/************************************************************************/
+/* НАСТРОЙКИ МОДУЛЯ clunet_buffered                                     */
+/************************************************************************/
+
+//Максимальный размер сообщения, который возможно сохранить в буффер.
+//Устанавливать по максимальной длине сообщения (data) необходимых 
+//к сохранению команд
+#define CLUNET_BUFFERED_DATA_MAX_LENGTH 12
+
+/* Размер буфера входящих сообщений 
+	устанавливать, исходя из свободной ОЗУ (2-20 шт) 
+*/
+#define CLUNET_BUFFERED_BUFFER_SIZE 20
 
 #endif

@@ -132,12 +132,8 @@ void fan_refresh(char event_){
 }
 
 
-ISR(FAN_TIMER_COMP_VECTOR){
-	sei();
-	
-	FAN_TIMER_REG = 0;	//reset counter
-	
-  	if (++h_counter >= FAN_HUMIDITY_CHECK_TIME){
+void fan_tick_second(){
+	if (++h_counter >= FAN_HUMIDITY_CHECK_TIME){
   		h_counter = 0;
   		
   		//shift history right and fill the new first value with 0
@@ -183,9 +179,6 @@ void fan_init(){
 	for(unsigned char i = 0; i < HUMIDITY_HISTORY_COUNT; i++) {
 		fan_history_humidity[i] = 0x00;
 	}
-	
-	FAN_TIMER_INIT;
-	ENABLE_FAN_TIMER_CMP_A;
 }
 
 void fan_button(){

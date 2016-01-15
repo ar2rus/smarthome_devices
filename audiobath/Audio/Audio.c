@@ -4,24 +4,21 @@
 
 volatile unsigned int systime = 0;
 
-volatile char shouldSendDelayedResponse = 0;
+volatile unsigned char delayedResponseAddress = 0;
 volatile unsigned int delayedResponseCounterValue = 0;
 
-void sendResponse(char response){
-	//провер€ем, не отправл€етс€ ли уже чего-нибудь
-	while (clunet_ready_to_send());
-	
+void sendResponse(unsigned char address, char response){
 	switch (response){
 		case RESPONSE_CHANNEL:{
 			char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
-			clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
+			clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
 			break;
 		}
 		case RESPONSE_VOLUME:{
 			char data[2];
 			data[0] = lc75341_volume_percent_value();
 			data[1] = lc75341_volume_dB_value();
-			clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
+			clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
 			break;
 		}
 		case RESPONSE_EQUALIZER:{
@@ -29,7 +26,7 @@ void sendResponse(char response){
 			data[0] = lc75341_gain_dB_value();
 			data[1] = lc75341_treble_dB_value();
 			data[2] = lc75341_bass_dB_value();
-			clunet_send(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
+			clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
 			break;
 		}
 	}
@@ -90,15 +87,17 @@ void cmd(clunet_msg* m){
 					response = RESPONSE_VOLUME;
 					break;
 				case 0x02:
-					shouldSendDelayedResponse = 1;
-					delayedResponseCounterValue = systime;
 					lc75341_volume_up(2);
+					
+					delayedResponseAddress = m->src_address;
+					delayedResponseCounterValue = systime;
 					//response = RESPONSE_VOLUME;
 					break;
 				case 0x03:
-					shouldSendDelayedResponse = 1;
-					delayedResponseCounterValue = systime;
 					lc75341_volume_down(2);
+					
+					delayedResponseAddress = m->src_address;
+					delayedResponseCounterValue = systime;
 					//response = RESPONSE_VOLUME;
 					break;
 			}
@@ -221,7 +220,7 @@ void cmd(clunet_msg* m){
 		break;
 	}
 	
-	sendResponse(response);
+	sendResponse(m->src_address, response);
 	
 	LED_OFF;
 }
@@ -237,8 +236,10 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 	}
 }
 
-ISR(TIMER1_COMPA_vect){
+ISR(TIMER_COMP_VECTOR){
 	++systime;
+	
+	TIMER_REG = 0;	//reset counter
 }
 
 int main(void){
@@ -267,9 +268,12 @@ int main(void){
 		
 		//отправл€ем отложенный ответ дл€ повтор€ющихс€ команд
 		//отправл€ем при паузе между одинаковыми командами более чем TIMER_SKIP_EVENTS_DELAY мс
-		if (shouldSendDelayedResponse && (systime - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
-			shouldSendDelayedResponse = 0;
-			sendResponse(RESPONSE_VOLUME);
+		if (delayedResponseAddress && (systime - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
+			
+			unsigned char address = delayedResponseAddress;
+			delayedResponseAddress = 0;
+			sendResponse(address, RESPONSE_VOLUME);
+			
 			//also need to save to eeprom
 		}
 	}
