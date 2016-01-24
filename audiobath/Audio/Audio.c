@@ -59,12 +59,28 @@ void cmd(clunet_msg* m){
 					response = RESPONSE_CHANNEL;
 					break;
 				case 0x01:
-					lc75341_input_next();
-					response = RESPONSE_CHANNEL;
+					switch (lc75341_input_value()){
+						case 0:{		//android tablet
+							char data = 0x06;	//next
+							clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, &data, 1);
+							break;
+						}
+						case 3:{		//fm tuner
+							break;
+						}
+					}
 					break;
 				case 0x02:
-					lc75341_input_prev();
-					response = RESPONSE_CHANNEL;
+					switch (lc75341_input_value()){
+						case 0:{		//android tablet
+							char data = 0x05;	//prev
+							clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, &data, 1);
+							break;
+						}
+						case 3:{		//fm tuner
+							break;
+						}
+					}
 					break;
 			}
 			break;

@@ -236,14 +236,14 @@ int main(void){
 					case 0x02:{		//next
 						//data[0] = 0x06;	android
 						data[0] = 0x01;
-						clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
+						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
 						necResetValue();
 					}
 					break;
 					case 0x98:{		//prev
 						//data[0] = 0x05; android
-						data[1] = 0x02;
-						clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
+						data[0] = 0x02;
+						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
 						necResetValue();
 					}
 					break;
