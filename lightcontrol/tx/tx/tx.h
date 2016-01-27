@@ -10,13 +10,6 @@
 #define TX_H_
 
 
-#include "utils/bits.h"
-
-#define RF_PORT B
-#define RF_PIN  3
-
-#define RF_INIT {set_bit(DDRPORT(RF_PORT), RF_PIN); RF_LO;}
-#define RF_HI set_bit(OUTPORT(RF_PORT), RF_PIN)
-#define RF_LO unset_bit(OUTPORT(RF_PORT), RF_PIN)
+#include "rf/rf.h"
 
 #endif /* TX_H_ */

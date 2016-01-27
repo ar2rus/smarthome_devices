@@ -9,23 +9,8 @@
 #ifndef RX_H_
 #define RX_H_
 
-
 #include "utils/bits.h"
-
-#define RF_PORT B
-#define RF_PIN  3
-
-#define RF_INIT {unset_bit(DDRPORT(RF_PORT), RF_PIN);}
-#define RF_VAL (test_bit(INPORT(RF_PORT), RF_PIN))
-
-/* main timer controls*/
-#define TIMER_PRESCALER 8
-//#define TIMER_NUM_TICKS (unsigned int)(1e-3 * F_CPU / TIMER_PRESCALER)	/*1ms main loop*/
-#define TIMER_INIT {TCNT0 = 0; TCCR0A = 0; TCCR0B = 0; set_bit(TCCR0B, CS01);}
-#define TIMER_REG TCNT0
-
-#define NUM_TICKS_200_MKS (unsigned int)(200e-6 * F_CPU / TIMER_PRESCALER)
-#define NUM_TICKS_125_MKS (unsigned int)(125e-6 * F_CPU / TIMER_PRESCALER)
+#include "rf/rf.h"
 
 
 //debugging
