@@ -34,6 +34,10 @@
 //без отслеживания динамики ее роста
 #define HUMIDITY_MAX_ABS 85
 
+//адрес в EEPROM для хранения конфиг. параметров:
+//тек.режим
+#define FAN_CONFIG_MODE_EEPROM_ADDRESS 0x00
+
 #define FAN_CONFIG_H_
 
 

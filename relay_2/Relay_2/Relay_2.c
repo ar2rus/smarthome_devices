@@ -52,7 +52,13 @@ void switchResponse(unsigned char address){
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-void fan_humidity_request(){
+
+void (*fan_humidity_response)(signed char humidityValue) = NULL;
+
+void fan_humidity_request( void (*f)(signed char humidityValue) ){
+	//пришел запрос на получение нового значения влажности
+	//в параметре - функция ответа (асинхронного)
+	fan_humidity_response = f;
 	clunet_send_fairy(HUMIDITY_SENSOR_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_HUMIDITY, 0, 0);
 }
 
@@ -70,7 +76,7 @@ void fanResponse(unsigned char address){
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_FAN_INFO, (char*)&i, sizeof(i));
 }
 
-void fan_state_changed(char state){
+void fan_state_changed(char mode, char state){
 	fanResponse(CLUNET_BROADCAST_ADDRESS);
 }
 
@@ -104,12 +110,16 @@ void cmd(clunet_msg* m){
 			break;
 		
 		case CLUNET_COMMAND_HUMIDITY_INFO:
-			if (m->src_address == HUMIDITY_SENSOR_DEVICE_ID && m->dst_address == CLUNET_DEVICE_ID){
-				if (m->size == 2){
-					signed int h10 = *(signed int*)m->data;
-					if (h10 < 0xFFFF){
-						h10 /= 10;
-						fan_humidity(h10 & 0xFF);
+			if (fan_humidity_response != NULL){
+				if (m->src_address == HUMIDITY_SENSOR_DEVICE_ID && m->dst_address == CLUNET_DEVICE_ID){
+					if (m->size == 2){
+						signed int h10 = *(signed int*)m->data;
+						if (h10 < 0xFFFF){
+							h10 /= 10;
+							fan_humidity_response(h10 & 0xFF);	
+							
+							fan_humidity_response = NULL;
+						}
 					}
 				}
 			}
@@ -117,7 +127,7 @@ void cmd(clunet_msg* m){
 		
 		case CLUNET_COMMAND_LIGHT_LEVEL_INFO:
 			if (m->src_address == LIGHT_SENSOR_DEVICE_ID && m->size==2){
-				fan_trigger(m->data[0]);
+				fan_trigger(!(m->data[0]));
 			}
 			break;
 			
@@ -132,7 +142,11 @@ void cmd(clunet_msg* m){
 			if (m->size == 1){
 				switch (m->data[0]){
 					case 0x00:
-						fan_button();
+					case 0x01:
+						fan_mode(m->data[0]);	//вкл/выкл авто режим
+						break;
+					case 0x02:
+						fan_button();			//переключение в ручном режиме
 						break;
 					case 0xFF:
 						fanResponse(m->src_address);
@@ -170,18 +184,16 @@ int main(void){
 	RELAY_1_INIT;
 	RELAY_2_INIT;
 	
-	TIMER_INIT;
-	ENABLE_TIMER_CMP_A;
-	
-	fan_init();
-	fan_set_on_humidity_request(fan_humidity_request);
-	fan_set_on_control_changed(fan_control_changed);
-	fan_set_on_state_changed(fan_state_changed);
-	
 	clunet_set_on_data_received(clunet_data_received);
 	clunet_buffered_init();
 	clunet_init();
+
+	//for debugging and logging
+	fan_set_on_state_changed(fan_state_changed);
+	fan_init(fan_humidity_request, fan_control_changed);
 	
+	TIMER_INIT;
+	ENABLE_TIMER_CMP_A;
 	
 	while (1){
 		if (!clunet_buffered_is_empty()){
