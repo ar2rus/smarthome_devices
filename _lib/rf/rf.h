@@ -6,17 +6,17 @@
 
 
 //delays (mks)
-#define RF_START_BIT_DELAY 250
-#define RF_BIT0_DELAY 100
-#define RF_BIT1_DELAY 150
-#define RF_HI_DELAY 80
+#define RF_START_BIT_DELAY 250 * 5
+#define RF_BIT0_DELAY 100 * 5
+#define RF_BIT1_DELAY 150 * 5
+#define RF_HI_DELAY 80 * 5
 
 #ifdef RF_TIMER_PRESCALER
 	//use at least 80% of RF_START_BIT_DELAY to detect start bit
 	#define RF_NUM_TICKS_START (F_CPU * (RF_START_BIT_DELAY * 8 / 10)  / 1000000UL / RF_TIMER_PRESCALER)
 	
 	
-	#if (RF_NUM_TICKS_START < 30)
+	#if (RF_NUM_TICKS_START < 10)
 		#error RF timer frequency is too small, increase CPU frequency or decrease timer prescaler
 	#endif
 	
@@ -40,7 +40,7 @@
 
 #define RF_TX_HI set_bit(OUTPORT(RF_PORT), RF_PIN)
 #define RF_TX_LO unset_bit(OUTPORT(RF_PORT), RF_PIN)
-#define RF_TX_INIT {set_bit(DDRPORT(RF_PORT), RF_PIN); RF_TX_LO;}
+#define RF_TX_INIT {set_bit(DDRPORT(RF_PORT), RF_PIN); RF_TX_HI;}
 
 
 #ifdef RF_TIMER_INIT

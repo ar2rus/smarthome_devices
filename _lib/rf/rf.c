@@ -59,6 +59,8 @@ void rf_send_byte(char data){
 		_delay_us(RF_HI_DELAY);							// 80uS HI pulse
 		RF_TX_LO;
 	}
+	
+	RF_TX_HI;											//keep hi in silent, или прогревать 2 секунды в HI режиме
 }
 
 volatile unsigned char tx_message_id = 0;
@@ -87,6 +89,19 @@ void rf_send_message(unsigned char device_id, char* data, unsigned char num_repe
 //=============================================================================
 //   RECEIVE_RF_PACKET
 //=============================================================================
+
+
+
+
+//debugging
+// #define LED_PORT B
+// #define LED_PIN  4
+// 
+// #define LED_INIT {set_bit(DDRPORT(LED_PORT), LED_PIN); LED_OFF;}
+// #define LED_ON set_bit(OUTPORT(LED_PORT), LED_PIN)
+// #define LED_OFF unset_bit(OUTPORT(LED_PORT), LED_PIN)
+
+
 void rf_receive_packet(char* data, unsigned char num_to_recieve, char preambule){
 	//-------------------------------------------------------
 	// This function receives an RF packet of bytes in my pulse period
@@ -111,7 +126,7 @@ void rf_receive_packet(char* data, unsigned char num_to_recieve, char preambule)
 			rrp_period = RF_TIMER_REG;  // grab the pulse period!
 			RF_TIMER_REG = 0;           // and ready to record next period
 			if(rrp_period < RF_NUM_TICKS_START){		  // clear bytecount if still receiving noise
-				rrp_bytes = num_to_recieve;	//just to skip next cycle
+				rrp_bytes = 0;
 			} else {
 				break;                   // exit if pulse was >200uS
 			}
@@ -120,24 +135,23 @@ void rf_receive_packet(char* data, unsigned char num_to_recieve, char preambule)
 		//-----------------------------------------
 		// now we had a start pulse, record 8 bits
 		rrp_bits = 8;
-		if (rrp_bytes < num_to_recieve){
-			rrp_data = 0;
-			while(rrp_bits){
-				while(!RF_VAL) continue;		// wait for input / edge
-				while(RF_VAL) continue;			// wait for input \ edge
-				rrp_period = RF_TIMER_REG;		// grab the pulse period!
-				RF_TIMER_REG = 0;				// and ready to record next period
 
-				if(rrp_period >= RF_NUM_TICKS_START){			// if >=200uS, is unexpected start pulse!
-					break;
-				}
+		rrp_data = 0;
+		while(rrp_bits){
+			while(!RF_VAL) continue;		// wait for input / edge
+			while(RF_VAL) continue;			// wait for input \ edge
+			rrp_period = RF_TIMER_REG;		// grab the pulse period!
+			RF_TIMER_REG = 0;				// and ready to record next period
 
-				rrp_data <<= 1;
-				if(rrp_period > RF_NUM_TICKS_BIT){				//  125uS
-					rrp_data |= 1;
-				}
-				rrp_bits--;                   // and record 1 more good bit done
+			if(rrp_period >= RF_NUM_TICKS_START){			// if >=200uS, is unexpected start pulse!
+				break;
 			}
+
+			rrp_data <<= 1;
+			if(rrp_period > RF_NUM_TICKS_BIT){				//  125uS
+				rrp_data |= 1;
+			}
+			rrp_bits--;                   // and record 1 more good bit done
 		}
 		
 		//-----------------------------------------

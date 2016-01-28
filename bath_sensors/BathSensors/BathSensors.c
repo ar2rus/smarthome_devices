@@ -308,7 +308,7 @@ int main(void){
 					}
 					break;
 					case 0x4A:{		//bath fan control button
-						data[0] = 0;
+						data[0] = 2;
 						clunet_send_fairy(FAN_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_FAN, data, 1);
 						necResetValue();
 					}

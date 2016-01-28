@@ -7,11 +7,13 @@ int main(void){
 	RF_TX_INIT;
 	
 	while (1){
-		for (char i=0; i<10; i++){
-			rf_send_byte(i);
-		}
+		//for (char i=0; i<100; i++){
+		//	rf_send_byte(i);
+		//}
 		
-		_delay_ms(1000);
+		rf_send_byte(4);
+		
+		_delay_ms(500);
 	}
 	
 	
