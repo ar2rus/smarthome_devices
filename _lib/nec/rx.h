@@ -1,13 +1,13 @@
 /*
- * nec.h
+ * rx.h
  *
  * Created: 28.10.2014 22:02:48
  *  Author: gargon
  */ 
 
 
-#ifndef NEC_H_
-#define NEC_H_
+#ifndef NEC_RX_H_
+#define NEC_RX_H_
 
 #include "nec_config.h"
 #include "utils/bits.h"
@@ -46,4 +46,4 @@ uint8_t necReadSignal();
 uint8_t necValue(uint8_t *address, uint8_t *command);
 void necResetValue();
  
-#endif /* NEC_H_ */
+#endif /* NEC_RX_H_ */

@@ -5,7 +5,7 @@
  *  Author: gargon
  */ 
 
-#include "nec.h"
+#include "rx.h"
 
 uint8_t status;
 uint16_t tick;

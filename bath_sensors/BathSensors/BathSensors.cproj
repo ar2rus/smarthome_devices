@@ -140,13 +140,13 @@
       <SubType>compile</SubType>
       <Link>dht\dht.h</Link>
     </Compile>
-    <Compile Include="..\..\_lib\nec\nec.c">
+    <Compile Include="..\..\_lib\nec\rx.c">
       <SubType>compile</SubType>
-      <Link>nec\nec.c</Link>
+      <Link>nec\rx.c</Link>
     </Compile>
-    <Compile Include="..\..\_lib\nec\nec.h">
+    <Compile Include="..\..\_lib\nec\rx.h">
       <SubType>compile</SubType>
-      <Link>nec\nec.h</Link>
+      <Link>nec\rx.h</Link>
     </Compile>
     <Compile Include="BathSensors.c">
       <SubType>compile</SubType>

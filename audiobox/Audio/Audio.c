@@ -1,6 +1,6 @@
 
 #include "lc75341/lc75341.h"
-#include "nec/nec.h"
+#include "nec/rx.h"
 #include "tea5767/tea5767.h"
 
 #include "clunet/clunet.h"
@@ -259,7 +259,7 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 			break;
 		
 		case COMMAND_EQUALIZER_RESET:
-			lc75341_reset_equaliuzer();
+			lc75341_reset_equalizer();
 			responseType = 2;
 			break;
 		case COMMAND_EQUALIZER_INFO:
