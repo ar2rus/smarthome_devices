@@ -13,13 +13,21 @@ int main(void){
 	LED_OFF;
 	
 	RF_RX_INIT;
+	
+	NEC_TX_INIT;
 
     while(1){
-        rf_receive_packet(&data[0], 1, 0);
+		
+		nec_send(0, 0x30);
+		_delay_ms(500);
+		nec_send(0, 0x5A);
+		_delay_ms(500);
+		
+//        rf_receive_packet(&data[0], 1, 0);
 
-		if (data[0]==4){
-			LED_ON;
-		}
+//		if (data[0]==4){
+//			LED_ON;
+//		}
 		
 // 		for (int i=0; i<8; i++){
 // 			if (test_bit(data[0], i)){
@@ -36,9 +44,9 @@ int main(void){
 			
 //		}
 		
-		_delay_ms(2000);
-		LED_OFF;
-		_delay_ms(100);
+//		_delay_ms(2000);
+//		LED_OFF;
+//		_delay_ms(100);
 		
 // 		char check = 1;
 // 		for (unsigned char i=1; i < 10; i++){

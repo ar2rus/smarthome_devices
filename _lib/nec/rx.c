@@ -1,5 +1,5 @@
 /*
- * nec.c
+ * rx.c
  *
  * Created: 28.10.2014 22:02:34
  *  Author: gargon

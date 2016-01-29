@@ -11,6 +11,7 @@
 
 #include "utils/bits.h"
 #include "rf/rf.h"
+#include "nec/tx.h"
 
 
 //debugging
