@@ -12,18 +12,22 @@ int main(void){
 	_delay_ms(500);
 	LED_OFF;
 	
-	RF_RX_INIT;
+	//RF_RX_INIT;
 	
-	NEC_TX_INIT;
-
+	//NEC_TX_INIT;
+ 		nec_send(0x00, 0x30);
+ 		//_delay_ms(100);
+ 		nec_send(0x00, 0xE2);
+ 		//_delay_ms(100);
+ 		nec_send(0x00, 0xA2);
+ 		//_delay_ms(1000);
+		
     while(1){
-		
-		nec_send(0, 0x30);
-		_delay_ms(500);
-		nec_send(0, 0x5A);
-		_delay_ms(500);
-		
-//        rf_receive_packet(&data[0], 1, 0);
+// 		
+
+        rf_receive_packet(&data[0], 1, 0);
+		LED_ON;
+		nec_send(0x00, data[0]);
 
 //		if (data[0]==4){
 //			LED_ON;

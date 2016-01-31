@@ -6,10 +6,10 @@
 
 
 //delays (mks)
-#define RF_START_BIT_DELAY 250 * 5
-#define RF_BIT0_DELAY 100 * 5
-#define RF_BIT1_DELAY 150 * 5
-#define RF_HI_DELAY 80 * 5
+#define RF_START_BIT_DELAY 250
+#define RF_BIT0_DELAY 100
+#define RF_BIT1_DELAY 150
+#define RF_HI_DELAY 80
 
 #ifdef RF_TIMER_PRESCALER
 	//use at least 80% of RF_START_BIT_DELAY to detect start bit
@@ -73,3 +73,16 @@ void rf_send_message(unsigned char device_id, char* data, unsigned char num_repe
 #define RF_RGB_LIGHTS_ID 2
 //data length
 #define RF_RGB_LIGHTS_DATA_LEN 10
+
+
+
+
+
+
+//debugging
+#define LED_PORT B
+#define LED_PIN  4
+
+#define LED_INIT {set_bit(DDRPORT(LED_PORT), LED_PIN); LED_OFF;}
+#define LED_ON set_bit(OUTPORT(LED_PORT), LED_PIN)
+#define LED_OFF unset_bit(OUTPORT(LED_PORT), LED_PIN)
