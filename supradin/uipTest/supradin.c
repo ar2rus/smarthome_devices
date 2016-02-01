@@ -14,6 +14,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/wdt.h>
 
 #define BUF ((struct uip_eth_hdr *)&uip_buf[0])
 
@@ -79,7 +80,7 @@ void poll_ethernet(){
 
 int main(void){
 	//define mac (never change the first byte 0x00)
-	struct uip_eth_addr mac = {{ 0x00, 0x01, 0x11, 0x02, 0x12, 0x13 }};	
+	struct uip_eth_addr mac = {{ 0xFA, 0xD8, 0x49, 0x34, 0x68, 0x23 }};	
 	enc28j60_init(mac.addr);
 
 	//stack init
@@ -109,9 +110,14 @@ int main(void){
 	clunet_init();
 	clunet_set_on_data_received_sniff(clunet_data_received);
 
+
+	 wdt_enable(WDTO_2S);
+	 
     while(1){
  		check_ethernet();
 		poll_ethernet();
  		periodic_ethernet();
+		 
+		wdt_reset();
     }
 }
