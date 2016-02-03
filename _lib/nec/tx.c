@@ -4,6 +4,7 @@
 #include <util/delay.h>
 #include <avr/io.h>
 
+
 void nec_send(char address, char command){
 	
 	unsigned long data = address;

@@ -3,7 +3,7 @@
 #include <util/delay.h>
 
 
-char data[10];
+char data[15];
 
 int main(void){
 	
@@ -17,17 +17,20 @@ int main(void){
 	//NEC_TX_INIT;
  		nec_send(0x00, 0x30);
  		//_delay_ms(100);
- 		nec_send(0x00, 0xE2);
+ 		//nec_send(0x00, 0xE2);
  		//_delay_ms(100);
- 		nec_send(0x00, 0xA2);
+ 		//nec_send(0x00, 0xA2);
  		//_delay_ms(1000);
 		
     while(1){
 // 		
 
-        rf_receive_packet(&data[0], 1, 0);
-		LED_ON;
-		nec_send(0x00, data[0]);
+        //rf_receive_packet(&data[0], 1, 0);
+		if (rf_recieve_message(RF_RGB_LIGHTS_ID, &data[0])){
+			nec_send(0x00, data[0]);
+		}
+		
+		//nec_send(0x00, data[0]);
 
 //		if (data[0]==4){
 //			LED_ON;

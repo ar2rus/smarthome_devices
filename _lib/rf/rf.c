@@ -1,5 +1,4 @@
 
-
 #include <util/delay.h>
 #include <string.h>
 
@@ -27,28 +26,33 @@ char check_crc(char* data, unsigned char size){
 	return crc;
 }
 
-
-//=============================================================================
-//   SEND_RF_BYTE
-//=============================================================================
-void rf_send_byte(char data){
-	
-	RF_TX_LO;
-	_delay_us(RF_START_BIT_DELAY);		  // 250uS LO
+void rf_send_package(char* data, unsigned char count){
 	RF_TX_HI;
+	_delay_us(RF_START_BIT1_DELAY);
+	RF_TX_LO;
+	_delay_us(RF_START_BIT0_DELAY);
+	RF_TX_HI;
+	_delay_us(RF_START_BIT1_DELAY);
+	/*RF_TX_LO;
+	_delay_us(RF_START_BIT0_DELAY);
+	RF_TX_HI;
+	_delay_us(RF_START_BIT1_DELAY);
+	*/
 	
-	// now loop and send 8 bits
-	for(char tbit=0; tbit<8; tbit++){
-		_delay_us(RF_BIT0_DELAY - RF_HI_DELAY);			 // default 0 bit LO period is 20uS
-		if(test_bit(data, 7 - tbit)){
-			_delay_us(RF_BIT1_DELAY - RF_BIT0_DELAY);	 // increase the LO period if is a 1 bit!
+	
+	for (unsigned char i=0; i<count; i++){
+		char c = data[i];
+		for (unsigned char b=0; b<8; b++){
+				RF_TX_LO;
+				_delay_us(RF_BIT0_DELAY);
+				if (test_bit(c, b)){
+					_delay_us(RF_BIT1_DELAY - RF_BIT0_DELAY);
+				}
+				RF_TX_HI;
+				_delay_us(RF_HI_DELAY);
 		}
-		RF_TX_LO;
-		_delay_us(RF_HI_DELAY);							// 80uS HI pulse
-		RF_TX_HI;
 	}
-	
-	_delay_us(RF_HI_DELAY);	
+	RF_TX_LO;
 }
 
 volatile unsigned char tx_message_id = 0;
@@ -65,12 +69,21 @@ void rf_send_message(unsigned char device_id, char* data, unsigned char num_repe
 	message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
 	
 	for (unsigned char i=0; i<num_repeats; i++){
-		for (unsigned char j=0; j<msg_len; j++){
-			rf_send_byte(message[j]);
-		}
+		//message[2] = (i==0 ? 0x30 : (i==1 ? 0x18 : 0x7a));
+		//message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
+		rf_send_package(&message[0], msg_len);
+		_delay_us(100);
 	}
 }
 
+
+//debugging
+#define LED_PORT B
+#define LED_PIN  4
+
+#define LED_INIT {set_bit(DDRPORT(LED_PORT), LED_PIN); LED_OFF;}
+#define LED_ON set_bit(OUTPORT(LED_PORT), LED_PIN)
+#define LED_OFF unset_bit(OUTPORT(LED_PORT), LED_PIN)
 
 
 #ifdef RF_RX_INIT
@@ -83,74 +96,86 @@ void rf_receive_packet(char* data, unsigned char num_to_recieve, unsigned char p
 	
 	RF_RX_INIT;
 	
-	//-------------------------------------------------------
-	// This function receives an RF packet of bytes in my pulse period
-	// encoded format. The packet must have 10 valid contiguous bytes
-	// or the function will not exit. There is no timeout feature, but could be added.
-	// global variable; unsigned char rxdat[10] holds the 10 byte result.
-	//-------------------------------------------------------
 	unsigned char rrp_data;
 	unsigned char rrp_period;
 	unsigned char rrp_bits;
-	unsigned char rrp_bytes;
-
-	rrp_bytes = 0;
-	while(rrp_bytes < num_to_recieve){   // loop until it has received num_to_recieve contiguous RF bytes
+	unsigned char rrp_bytes = 0;
+	
+	
+	while(rrp_bytes < num_to_recieve){
 		
-		
-		//-----------------------------------------
-		// wait for a start pulse >200uS
-		
-		RF_TIMER_REG = 0;
+		rrp_bytes = 0;
+		//try to recieve start pulses
 		while(1){
-			while(!RF_VAL);    // wait for input / edge
-			rrp_period = RF_TIMER_REG;  // grab the pulse period!
-			RF_TIMER_REG = 0;           // and ready to record next period
-			if(rrp_period < RF_NUM_TICKS_START){		  // clear bytecount if still receiving noise
-				rrp_bytes = 0;
-			} else {
-				break;                   // exit if pulse was >200uS
+			/*RF_TIMER_REG = 0;
+			while(RF_VAL);
+			rrp_period = RF_TIMER_REG;
+			RF_TIMER_REG = 0;
+			if(rrp_period < RF_NUM_TICKS_START){
+				continue;
 			}
-		}
 		
-		LED_ON;
-		
-		//-----------------------------------------
-		// now we had a start pulse, record 8 bits
-		rrp_bits = 8;
-
-		rrp_data = 0;
-		while(rrp_bits){
-			while(RF_VAL);			// wait for input \ edge
-			while(!RF_VAL);		// wait for input / edge
-			rrp_period = RF_TIMER_REG;		// grab the pulse period!
-			RF_TIMER_REG = 0;				// and ready to record next period
-
-			if(rrp_period >= RF_NUM_TICKS_START){			// if >=200uS, is unexpected start pulse!
+			while(!RF_VAL);*/
+			
+			RF_TIMER_REG = 0;
+			while(RF_VAL);
+			rrp_period = RF_TIMER_REG;
+			RF_TIMER_REG = 0;
+			if(rrp_period < RF_NUM_TICKS_START){
+				continue;
+			}
+			
+			while(!RF_VAL);
+			
+			RF_TIMER_REG = 0;
+			while(RF_VAL);
+			rrp_period = RF_TIMER_REG;
+			RF_TIMER_REG = 0;
+			if(rrp_period < RF_NUM_TICKS_START){
+				continue;
+			} else {
 				break;
 			}
-
-			rrp_data <<= 1;
-			if(rrp_period > RF_NUM_TICKS_BIT){				//  125uS
-				set_bit(rrp_data, 0);
-			}
-			rrp_bits--;
 		}
+		//LED_ON;
+	
+	
+		while(rrp_bytes < num_to_recieve){
+	
+			rrp_bits = 8;
+
+			rrp_data = 0;
+			while(rrp_bits){
+				while(!RF_VAL);
+				while(RF_VAL);
+				rrp_period = RF_TIMER_REG;		// grab the pulse period!
+				RF_TIMER_REG = 0;				// and ready to record next period
+
+				if(rrp_period >= RF_NUM_TICKS_START){			// if >=2000uS, is unexpected start pulse!
+					break;
+				}
+
+				rrp_data >>= 1;
+				if(rrp_period > RF_NUM_TICKS_BIT){				//  125uS
+					set_bit(rrp_data, 7);
+				}
+				rrp_bits--;
+			}
 		
-		//-----------------------------------------
-		// gets to here after 8 good bits OR after an error (unexpected start pulse)
-		if(rrp_bits){        // if error
-				rrp_bytes = 0;   // reset bytes, must run from start of a new packet again!
-		} else{							// else 8 good bits were received
+		
+			if(rrp_bits){        // if error
+					break;
+			} else{							// else 8 good bits were received
 				
 				//здесь проверка на совпадении первого байта(преамбулы) сообщения (пакета)
 				//преамбула не сравнивается, если в нее передан 0
 				if (preambule != 0 && rrp_bytes == 0 && rrp_data != preambule){
-					continue;
+						break;
 				}
 				
 				data[rrp_bytes++] = rrp_data;		// so save the received byte into array
-		}
+			}
+		}	
 	}
 }
 //-----------------------------------------------------------------------------
@@ -168,7 +193,7 @@ char rf_recieve_message(unsigned char device_id, char* data){
 	
 	rf_receive_packet(&message[0], msg_len, preambule);
 	
-	if (check_crc(data, msg_len - 1) == message[msg_len - 1]){
+	if (check_crc(&message[0], msg_len - 1) == message[msg_len - 1]){
 		if (rx_message_id != message[1]){	//отфильтровываем сообщения дубликаты с тем же номером
 			rx_message_id = message[1];
 			memcpy(data, &message[2], data_len);

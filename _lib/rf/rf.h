@@ -4,16 +4,28 @@
 
 #include <avr/io.h>
 
+//protocol delays (mks)
+#define RF_START_BIT1_DELAY 2000
+//#define RF_START_BIT1_DELAY 1000
+//#define RF_START_BIT0_DELAY 1000
+#define RF_START_BIT0_DELAY 500
 
-//delays (mks)
-#define RF_START_BIT_DELAY 250
 #define RF_BIT0_DELAY 100
 #define RF_BIT1_DELAY 150
 #define RF_HI_DELAY 80
 
+//transmitter
+#define RF_TX_HI set_bit(OUTPORT(RF_PORT), RF_PIN)
+#define RF_TX_LO unset_bit(OUTPORT(RF_PORT), RF_PIN)
+#define RF_TX_INIT {set_bit(DDRPORT(RF_PORT), RF_PIN); RF_TX_LO;}
+
+void rf_send_byte(char data);
+void rf_send_message(unsigned char device_id, char* data, unsigned char num_repeats);
+
+//reciever
 #ifdef RF_TIMER_PRESCALER
 	//use at least 80% of RF_START_BIT_DELAY to detect start bit
-	#define RF_NUM_TICKS_START (F_CPU * (RF_START_BIT_DELAY * 8 / 10)  / 1000000UL / RF_TIMER_PRESCALER)
+	#define RF_NUM_TICKS_START (F_CPU * (RF_START_BIT1_DELAY * 8 / 10)  / 1000000UL / RF_TIMER_PRESCALER)
 	
 	
 	#if (RF_NUM_TICKS_START < 10)
@@ -26,7 +38,7 @@
 	
 	
 	//use a half of difference between bit1 and bit0 delay to detect each of them
-	#define RF_NUM_TICKS_BIT (F_CPU * (RF_BIT0_DELAY + (RF_BIT1_DELAY - RF_BIT0_DELAY) / 2) / 1000000UL / RF_TIMER_PRESCALER)
+	#define RF_NUM_TICKS_BIT (F_CPU * (RF_BIT0_DELAY + RF_HI_DELAY + (RF_BIT1_DELAY - RF_BIT0_DELAY) / 2) / 1000000UL / RF_TIMER_PRESCALER)
 	
 	#if (RF_NUM_TICKS_BIT < 10)
 		#  error RF timer frequency is too small, increase CPU frequency or decrease timer prescaler
@@ -37,22 +49,13 @@
 	#endif
 #endif
 
-
-#define RF_TX_HI set_bit(OUTPORT(RF_PORT), RF_PIN)
-#define RF_TX_LO unset_bit(OUTPORT(RF_PORT), RF_PIN)
-#define RF_TX_INIT {set_bit(DDRPORT(RF_PORT), RF_PIN); RF_TX_HI;}
-
-
 #ifdef RF_TIMER_INIT
 	#define RF_RX_INIT {unset_bit(DDRPORT(RF_PORT), RF_PIN); RF_TIMER_INIT;}
-	void rf_receive_packet(char* data, unsigned char num_to_recieve, char preambule);
+	void rf_receive_packet(char* data, unsigned char num_to_recieve, unsigned char preambule);
 	char rf_recieve_message(unsigned char device_id, char* data);
 #endif
 
 #define RF_VAL (test_bit(INPORT(RF_PORT), RF_PIN))
-
-void rf_send_byte(char data);
-
 
 
 //PROTOCOL DEFINITION
@@ -63,26 +66,9 @@ void rf_send_byte(char data);
 //static preambule (0b10101100)
 #define RF_MESSAGE_PREAMBULE_HEADER 172
 
-void rf_send_message(unsigned char device_id, char* data, unsigned char num_repeats);
 
-
-//device descriptors
-
-//rgb lights:
+//device descriptors:
 //2 bits device id
 #define RF_RGB_LIGHTS_ID 2
 //data length
 #define RF_RGB_LIGHTS_DATA_LEN 10
-
-
-
-
-
-
-//debugging
-#define LED_PORT B
-#define LED_PIN  4
-
-#define LED_INIT {set_bit(DDRPORT(LED_PORT), LED_PIN); LED_OFF;}
-#define LED_ON set_bit(OUTPORT(LED_PORT), LED_PIN)
-#define LED_OFF unset_bit(OUTPORT(LED_PORT), LED_PIN)
