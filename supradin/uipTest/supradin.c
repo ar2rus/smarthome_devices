@@ -14,7 +14,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/wdt.h>
+//#include <avr/wdt.h>
 
 #define BUF ((struct uip_eth_hdr *)&uip_buf[0])
 
@@ -111,13 +111,13 @@ int main(void){
 	clunet_set_on_data_received_sniff(clunet_data_received);
 
 
-	 wdt_enable(WDTO_2S);
+	 //wdt_enable(WDTO_2S);
 	 
     while(1){
  		check_ethernet();
 		poll_ethernet();
  		periodic_ethernet();
 		 
-		wdt_reset();
+		//wdt_reset();
     }
 }

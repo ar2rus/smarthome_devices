@@ -122,6 +122,14 @@ void cmd(clunet_msg* m){
 				lightnessResponse(m->src_address);
 			}
 			break;	
+		
+		//for debugging only
+		case CLUNET_COMMAND_PING:
+			if (m->src_address == 0){	//supradin
+					char data[1] = {2};	//toggle
+					clunet_send_fairy(FAN_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_FAN, &data[0], 1);
+			}
+			break;
 	}
 }
 
@@ -131,6 +139,9 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_TEMPERATURE:
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_LIGHT_LEVEL:
+		
+		case CLUNET_COMMAND_PING:
+		
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }
@@ -311,6 +322,19 @@ int main(void){
 						data[0] = 2;
 						clunet_send_fairy(FAN_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_FAN, data, 1);
 						necResetValue();
+					}
+					break;
+					
+					
+					//debugging supradin freezes
+					case 0xFE:{	//TODO: change this code
+						data[0] = CLUNET_COMMAND_DEBUG;
+						clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_PING, data, 1);
+					}
+					break;
+					
+					case 0xFF:{ //TODO: change this code
+						clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_REBOOT, 0, 0);
 					}
 					break;
 				}

@@ -300,6 +300,11 @@
 */
 
 
+//Используется для отладки
+#define CLUNET_COMMAND_DEBUG 0x99
+
+
+
 #define CLUNET_COMMAND_SET_TIMER 0x09
 /* Установка таймера. Параметр - кол-во секунд (два байта) */
 

@@ -224,6 +224,9 @@ void enc28j60_send_packet(uint8_t *data, uint16_t len)
 		{
 			enc28j60_bfs(ECON1, ECON1_TXRST);
 			enc28j60_bfc(ECON1, ECON1_TXRST);
+			
+			//added 04.02.2016 by http://forum.mysensors.org/topic/536/problems-with-enc28j60-losing-connection-freezing-using-uipethernet-or-ethershield-read-this/2
+			enc28j60_bfc(EIR, EIR_TXERIF | EIR_TXIF); // see comments in a post above
 		}
 	}
 
@@ -235,6 +238,35 @@ void enc28j60_send_packet(uint8_t *data, uint16_t len)
 	enc28j60_wcr16(ETXND, ENC28J60_TXSTART + len);
 
 	enc28j60_bfs(ECON1, ECON1_TXRTS); // Request packet send
+	
+	
+	/*
+	 //alternatively timeouted solution
+	 //apply further
+	
+	uint8_t eir;
+	 // Reset the transmit logic problem. See Rev. B7 Silicon Errata issues 12 and 13
+	 enc28j60_bfs(ECON1, ECON1_TXRST);
+	 enc28j60_bfc(ECON1, ECON1_TXRST);
+	 enc28j60_bfc(EIR, EIR_TXERIF | EIR_TXIF);
+	 // send the contents of the transmit buffer onto the network
+	 enc28j60_bfs(ECON1, ECON1_TXRST);
+	 // wait for transmission to complete or fail
+	 {
+		 unsigned long timer = 0;
+		 while (((eir = enc28j60_rcr(EIR)) & (EIR_TXIF | EIR_TXERIF)) == 0) {
+			 if ( timer++ > 100000) {	//wait for 1 sec
+				 // Transmit hardware probably hung, try again later.
+				 // Shouldn't happen according to errata 12 and 13.
+				 enc28j60_bfc(ECON1, ECON1_TXRST);
+				 break;	//return false
+			 }else{
+				 _delay_us(10);
+			 }
+		 }
+	 }
+	 enc28j60_bfc(ECON1, ECON1_TXRST);
+	*/
 }
 
 uint16_t enc28j60_recv_packet(uint8_t *buf, uint16_t buflen)

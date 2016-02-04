@@ -114,8 +114,7 @@ void uip_udp_appcall(void){
 				s->timer = UDP_DATA_MAXAGE;
 			
 				if (uip_datalen() == sizeof(supradin_header_t) + sh->size){
-					while (clunet_ready_to_send());
-					clunet_send(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
+					clunet_send_fairy(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
 				}
 			}
 			break;
@@ -160,6 +159,13 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 				uip_udp_appstate_t *s = &c->appstate;
 				s->state = STATE_WAITING;
 			}
+		}
+		
+		//debugging of freezes
+		if (dst_address == CLUNET_DEVICE_ID && command == CLUNET_COMMAND_DEBUG){
+				//should send registers value,
+				//but will try ping and reboot commands firstly
+				clunet_send_fairy(sh->src_address, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, 0, 0);
 		}
 }
  
