@@ -27,10 +27,10 @@ char check_crc(char* data, unsigned char size){
 }
 
 void rf_send_package(char* data, unsigned char count){
-	RF_TX_HI;
-	_delay_us(RF_START_BIT1_DELAY);
-	RF_TX_LO;
-	_delay_us(RF_START_BIT0_DELAY);
+	//RF_TX_HI;
+	//_delay_us(RF_START_BIT1_DELAY);
+	//RF_TX_LO;
+	//`_delay_us(RF_START_BIT0_DELAY);
 	RF_TX_HI;
 	_delay_us(RF_START_BIT1_DELAY);
 	/*RF_TX_LO;
@@ -53,6 +53,7 @@ void rf_send_package(char* data, unsigned char count){
 		}
 	}
 	RF_TX_LO;
+	_delay_us(RF_START_BIT0_DELAY);
 }
 
 volatile unsigned char tx_message_id = 0;
@@ -69,21 +70,12 @@ void rf_send_message(unsigned char device_id, char* data, unsigned char num_repe
 	message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
 	
 	for (unsigned char i=0; i<num_repeats; i++){
-		//message[2] = (i==0 ? 0x30 : (i==1 ? 0x18 : 0x7a));
-		//message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
+		message[3] = i;
+		message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
 		rf_send_package(&message[0], msg_len);
-		_delay_us(100);
 	}
 }
 
-
-//debugging
-#define LED_PORT B
-#define LED_PIN  4
-
-#define LED_INIT {set_bit(DDRPORT(LED_PORT), LED_PIN); LED_OFF;}
-#define LED_ON set_bit(OUTPORT(LED_PORT), LED_PIN)
-#define LED_OFF unset_bit(OUTPORT(LED_PORT), LED_PIN)
 
 
 #ifdef RF_RX_INIT

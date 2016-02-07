@@ -99,8 +99,7 @@
       <Value>../nec</Value>
     </ListValues>
   </avrgcc.compiler.directories.IncludePaths>
-  <avrgcc.compiler.optimization.level>Optimize (-O1)</avrgcc.compiler.optimization.level>
-  <avrgcc.compiler.optimization.PrepareFunctionsForGarbageCollection>False</avrgcc.compiler.optimization.PrepareFunctionsForGarbageCollection>
+  <avrgcc.compiler.optimization.level>Optimize most (-O3)</avrgcc.compiler.optimization.level>
   <avrgcc.compiler.optimization.PackStructureMembers>True</avrgcc.compiler.optimization.PackStructureMembers>
   <avrgcc.compiler.optimization.AllocateBytesNeededForEnum>True</avrgcc.compiler.optimization.AllocateBytesNeededForEnum>
   <avrgcc.compiler.optimization.DebugLevel>Default (-g2)</avrgcc.compiler.optimization.DebugLevel>
@@ -116,13 +115,27 @@
     </ToolchainSettings>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\_lib\nec\nec_const.h">
+    <Compile Include="..\..\..\_lib\nec\tx.c">
       <SubType>compile</SubType>
-      <Link>nec\nec_const.h</Link>
+      <Link>nec\tx.c</Link>
     </Compile>
-    <Compile Include="..\..\..\_lib\rf\rf_const.h">
+    <Compile Include="..\..\..\_lib\nec\tx.h">
       <SubType>compile</SubType>
-      <Link>rf\rf_const.h</Link>
+      <Link>nec\tx.h</Link>
+    </Compile>
+    <Compile Include="..\..\..\_lib\rf\rf.c">
+      <SubType>compile</SubType>
+      <Link>rf\rf.c</Link>
+    </Compile>
+    <Compile Include="..\..\..\_lib\rf\rf.h">
+      <SubType>compile</SubType>
+      <Link>rf\rf.h</Link>
+    </Compile>
+    <Compile Include="nec\nec_config.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="rf\rf_config.h">
+      <SubType>compile</SubType>
     </Compile>
     <Compile Include="rx.c">
       <SubType>compile</SubType>

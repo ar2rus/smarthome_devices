@@ -3,7 +3,11 @@
 
 #include <util/delay.h>
 #include <avr/io.h>
+/*
 
+void nec_init(){
+		PWM_SETUP;
+}
 
 void nec_send(char address, char command){
 	
@@ -16,13 +20,13 @@ void nec_send(char address, char command){
 	data |= (char)(~command);
 		
 	//disable interrupts
-	TIMSK0 = 0;
+	//TIMSK0 = 0;
 	//set port direction
 	set_bit(DDRPORT(PWM_PORT), PWM_PIN);
 	// When not sending PWM, we want it low
 	unset_bit(OUTPORT(PWM_PORT), PWM_PIN);
 	
-	PWM_SETUP;
+	//PWM_SETUP;
 	
 	TIMER_ENABLE_PWM;
 	_delay_us(NEC_HDR_MARK);
@@ -30,7 +34,7 @@ void nec_send(char address, char command){
 	TIMER_DISABLE_PWM;
 	_delay_us(NEC_HDR_SPACE);
 		
-	  for (int i = 0; i < 32; i++) {
+	  for (unsigned char i = 0; i < 32; i++) {
 		  if (data & NEC_TOPBIT) {
 			  TIMER_ENABLE_PWM;
 			  _delay_us(NEC_BIT_MARK);
@@ -52,7 +56,7 @@ void nec_send(char address, char command){
 	 _delay_us(NEC_BIT_MARK);
 
 	TIMER_DISABLE_PWM;
-}
+}*/
 
 // void nec_send_repeat(){
 // 	NEC_TX_HI;

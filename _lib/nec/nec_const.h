@@ -1,0 +1,11 @@
+
+#define NEC_CARRIER 38
+
+#define NEC_HDR_MARK 9000
+#define NEC_HDR_SPACE 4500
+#define NEC_BIT_MARK  562
+#define NEC_ONE_SPACE 1675
+#define NEC_ZERO_SPACE  562
+#define NEC_RPT_SPACE 2250
+
+#define NEC_TOPBIT 0x80000000

@@ -28,26 +28,29 @@ if (BTN_VAL != btn_val){
 	btn_val = BTN_VAL;
 	
 	if (btn_val){
-		data[0] = 0x10;
+		data[0] = 0x68;
 	}else{
-		data[0] = 0x98;
+		data[0] = 0xb0;
 	}
 	
 	rf_send_message(RF_RGB_LIGHTS_ID, data, 5);
+	
+	_delay_ms(100);
 	//_delay_ms(2000);
 }
 
 
-// 		data[0] = 0x10;
-// 		rf_send_message(RF_RGB_LIGHTS_ID, data, 5);
-// 		_delay_ms(200);
-// 		data[0] = 0x98;
-// 		rf_send_message(RF_RGB_LIGHTS_ID, data, 5);
-// 		_delay_ms(200);
-// 		data[0] = 0x52;
-// 		rf_send_message(RF_RGB_LIGHTS_ID, data, 5);
-// 		_delay_ms(200);
- 	}
+// 		data[0] = 0x68;
+// 		rf_send_message(RF_RGB_LIGHTS_ID, data, 3);
+// 		//_delay_ms(10);
+//  		data[0] = 0x98;
+// 		rf_send_message(RF_RGB_LIGHTS_ID, data, 3);
+// 		//_delay_ms(100);
+// 		data[0] = 0xb0;
+// 		rf_send_message(RF_RGB_LIGHTS_ID, data, 3);
+// 		//_delay_ms(100);
+// 
+//  	}
 	
 	
 // 	char data[RF_RGB_LIGHTS_DATA_LEN];
@@ -59,7 +62,7 @@ if (BTN_VAL != btn_val){
 // 		rf_send_message(RF_RGB_LIGHTS_ID, data, RF_RGB_LIGHTS_DATA_LEN, 1);
 // 		
 // 		_delay_ms(1000);
-// 	}
+ 	}
 
 	return 0; 
 }
