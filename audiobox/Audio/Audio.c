@@ -85,6 +85,7 @@ ISR(TIMER1_COMPA_vect){
 	uint8_t nec_command;
 	
 	if (necValue(&nec_address, &nec_command)){
+		
 		if (nec_address == 0x02){
 			switch (nec_command){
 				case 0x80:
@@ -149,6 +150,11 @@ ISR(TIMER1_COMPA_vect){
 					necResetValue();
 					break;
 			}
+		}else{
+			char t[2];
+			t[0] = nec_address;
+			t[1] = nec_command;
+			clunet_send_fairy(255,1,0x99,&t[0],2);
 		}
 	}
 

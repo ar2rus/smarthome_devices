@@ -124,7 +124,7 @@ void cmd(clunet_msg* m){
 			break;	
 		
 		//for debugging only
-		case CLUNET_COMMAND_PING:
+		case CLUNET_COMMAND_PING_REPLY:
 			if (m->src_address == 0){	//supradin
 					char data[1] = {2};	//toggle
 					clunet_send_fairy(FAN_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_FAN, &data[0], 1);
@@ -140,7 +140,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_LIGHT_LEVEL:
 		
-		case CLUNET_COMMAND_PING:
+		case CLUNET_COMMAND_PING_REPLY:
 		
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
@@ -327,14 +327,16 @@ int main(void){
 					
 					
 					//debugging supradin freezes
-					case 0xFE:{	//TODO: change this code
+					case 0x68:{
 						data[0] = CLUNET_COMMAND_DEBUG;
 						clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_PING, data, 1);
+						necResetValue();
 					}
 					break;
 					
-					case 0xFF:{ //TODO: change this code
+					case 0xb0:{
 						clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_REBOOT, 0, 0);
+						necResetValue();
 					}
 					break;
 				}
