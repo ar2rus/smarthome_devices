@@ -57,10 +57,10 @@ ISR(TIMER1_COMPA_vect){
 		}
 	}else
 	if (BUTTON_L_READ){
-		tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_LOW);
+		tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_MID);
 	}else
 	if (BUTTON_R_READ){
-		tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_LOW);
+		tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_MID);
 	}else{
 		buttonStates = 0;
 	}
@@ -150,12 +150,13 @@ ISR(TIMER1_COMPA_vect){
 					necResetValue();
 					break;
 			}
-		}else{
-			char t[2];
-			t[0] = nec_address;
-			t[1] = nec_command;
-			clunet_send_fairy(255,1,0x99,&t[0],2);
 		}
+// 		else{
+// 			char t[2];
+// 			t[0] = nec_address;
+// 			t[1] = nec_command;
+// 			clunet_send_fairy(255,1,0x99,&t[0],2);
+// 		}
 	}
 
 	
