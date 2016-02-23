@@ -52,7 +52,7 @@
 
 
 //идентификатор лампы (0-9)
-#define RGB_LIGHT_ID 0
+#define RGB_LIGHT_ID 5
 
 
 

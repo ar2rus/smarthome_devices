@@ -44,28 +44,34 @@ void nec_send(char address, char command){
 	data |= (char)(~command);
 	
 	TIMER_ENABLE_PWM;	
-	nec_delay(NEC_HDR_MARK_T);
+	//nec_delay(NEC_HDR_MARK_T);
+	_delay_us(NEC_HDR_MARK);
 
 	TIMER_DISABLE_PWM;
-	nec_delay(NEC_HDR_SPACE_T);
+	//nec_delay(NEC_HDR_SPACE_T);
+	_delay_us(NEC_HDR_SPACE);
 	
 	for (int i = 0; i < 32; i++) {
 		
 		TIMER_ENABLE_PWM;
-		nec_delay(NEC_BIT_MARK_T);
+		//nec_delay(NEC_BIT_MARK_T);
+		_delay_us(NEC_BIT_MARK);
 			
 		TIMER_DISABLE_PWM;
 		if (data & NEC_TOPBIT) {	
-			nec_delay(NEC_ONE_SPACE_T);
+			//nec_delay(NEC_ONE_SPACE_T);
+			_delay_us(NEC_ONE_SPACE);
 		} else {
-			nec_delay(NEC_ZERO_SPACE_T);
+			//nec_delay(NEC_ZERO_SPACE_T);
+			_delay_us(NEC_ZERO_SPACE);
 		}
 		data <<= 1;
 	}
 
 	
 	TIMER_ENABLE_PWM;
-	nec_delay(NEC_BIT_MARK_T);
+	//nec_delay(NEC_BIT_MARK_T);
+	_delay_us(NEC_BIT_MARK);
 	TIMER_DISABLE_PWM;
 }
 
@@ -187,9 +193,13 @@ int main(void){
 	sei();
 	
 	while(1){
-		if (rf_recieve_message(RF_RGB_LIGHTS_ID, &data[0])){
-			nec_send(0x00, data[RGB_LIGHT_ID]);
-		}
+		
+		
+ 		if (rf_recieve_message(RF_RGB_LIGHTS_ID, &data[0])){
+ 			cli();
+ 			nec_send(0x00, data[RGB_LIGHT_ID]);
+ 			sei();
+ 		}
 
 	}
 	return 0;

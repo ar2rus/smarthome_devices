@@ -70,8 +70,8 @@ void rf_send_message(unsigned char device_id, char* data, unsigned char num_repe
 	message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
 	
 	for (unsigned char i=0; i<num_repeats; i++){
-		message[3] = i;
-		message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
+		//message[3] = i;
+		//message[msg_len - 1] = check_crc(&message[0], msg_len - 1);
 		rf_send_package(&message[0], msg_len);
 	}
 }

@@ -2,15 +2,13 @@
 #include <util/delay.h>
 #include "tx.h"
 
-
+char data[RF_RGB_LIGHTS_DATA_LEN];
 int main(void){
 	
 	RF_TX_INIT;
 	
-	 	char data[RF_RGB_LIGHTS_DATA_LEN];
-	 	for (int i=0; i<RF_RGB_LIGHTS_DATA_LEN; i++){
-	 		data[i] = i+1;
-	 	}
+	 	
+	 	
 	BTN_INIT;
 	char btn_val = BTN_VAL;
 	while (1){
@@ -28,14 +26,18 @@ if (BTN_VAL != btn_val){
 	btn_val = BTN_VAL;
 	
 	if (btn_val){
-		data[0] = 0x68;
+		for (int i=0; i<10; i++){
+			data[i] = 0x68;
+		}
 	}else{
-		data[0] = 0xb0;
+		for (int i=0; i<10; i++){
+			data[i] = 0xb0;
+		}
 	}
 	
-	rf_send_message(RF_RGB_LIGHTS_ID, data, 5);
+	rf_send_message(RF_RGB_LIGHTS_ID, data, 8);
 	
-	_delay_ms(100);
+	//_delay_ms(20);
 	//_delay_ms(2000);
 }
 
