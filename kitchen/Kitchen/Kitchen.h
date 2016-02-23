@@ -10,7 +10,6 @@
 #define BATH_SENSORS_H_
 
 #include "utils/bits.h"
-#include "nec/nec.h"
 #include "dht/dht.h"
 #include "clunet/clunet.h"
 

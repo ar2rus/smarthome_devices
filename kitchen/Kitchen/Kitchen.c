@@ -364,12 +364,13 @@ int main(void){
 	HALL_SENSOR_INIT;
 	hallSensorValue = HALL_SENSOR_READ;
 	
-	clunet_init();
-	clunet_set_on_data_received(clunet_data_received);
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
-	sei();
+	
+	clunet_set_on_data_received(clunet_data_received);
+	clunet_init();
+	
 	
 	while(1){
 		
