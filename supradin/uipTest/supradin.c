@@ -14,7 +14,8 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-//#include <avr/wdt.h>
+#include <avr/wdt.h>
+#include <avr/eeprom.h>
 
 #define BUF ((struct uip_eth_hdr *)&uip_buf[0])
 
@@ -79,6 +80,12 @@ void poll_ethernet(){
 
 
 int main(void){
+	wdt_disable(); 
+	
+	uint32_t reboot_counter = eeprom_read_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER);
+	eeprom_write_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER, ++reboot_counter);
+	
+	
 	//define mac (never change the first byte 0x00)
 	struct uip_eth_addr mac = {{ 0xFA, 0xD8, 0x49, 0x34, 0x68, 0x23 }};	
 	enc28j60_init(mac.addr);
@@ -111,13 +118,13 @@ int main(void){
 	clunet_set_on_data_received_sniff(clunet_data_received);
 
 
-	 //wdt_enable(WDTO_2S);
+	 wdt_enable(WDTO_2S);
 	 
     while(1){
  		check_ethernet();
 		poll_ethernet();
  		periodic_ethernet();
 		 
-		//wdt_reset();
+		wdt_reset();
     }
 }

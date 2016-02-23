@@ -18,5 +18,4 @@
 
 void ethernet_send();
 
-
 #endif /* SUPRADIN_H_ */
