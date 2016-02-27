@@ -25,7 +25,6 @@ void buttonResponse(unsigned char address){
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
 }
 
-
 void switchResponse(unsigned char address){
 	char info = (RELAY_0_STATE << (RELAY_0_ID-1));
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
@@ -65,8 +64,6 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 }
 
 
-
-
 int main(void){
 	
 	cli();
@@ -75,10 +72,8 @@ int main(void){
 	BUTTON_INIT;
 	buttonStateValue = BUTTON_READ;
 	
-	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
-	
-	sei();
+	clunet_init();
 	
 	while(1){
 		
@@ -92,7 +87,7 @@ int main(void){
 			}
 		}
 		
-		_delay_ms(50`s	= );
+		_delay_ms(5);
 		
 	}
 	

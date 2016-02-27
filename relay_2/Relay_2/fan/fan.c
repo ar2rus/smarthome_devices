@@ -51,7 +51,7 @@ void fan_refresh(char event_){
 				fan_reset_auto_mode();
 				
 				//save mode in eeeprom
-				eeprom_write_byte((void*)FAN_CONFIG_MODE_EEPROM_ADDRESS, fan_auto_enabled); // Режим 
+				eeprom_write_byte((void*)EEPROM_ADDRESS_FAN_CONFIG_MODE, fan_auto_enabled); // Режим 
 			}
 		break;
 		case FAN_ACTION_DISABLE_AUTO:
@@ -66,7 +66,7 @@ void fan_refresh(char event_){
 				}
 				
 				//save mode in eeeprom
-				eeprom_write_byte((void*)FAN_CONFIG_MODE_EEPROM_ADDRESS, fan_auto_enabled); // Режим
+				eeprom_write_byte((void*)EEPROM_ADDRESS_FAN_CONFIG_MODE, fan_auto_enabled); // Режим
 			}
 		break;
 		case FAN_ACTION_TRIGGER_TOGGLE_MANUAL:
@@ -285,7 +285,7 @@ void fan_init(void (*fan_humidity_request)( void (*fan_humidity_asynch_response)
 	on_fan_control_changed = fan_control_change_request;
 	
 	//read eeprom settings:
-	char auto_enabled_config = eeprom_read_byte((void*)FAN_CONFIG_MODE_EEPROM_ADDRESS);
+	char auto_enabled_config = eeprom_read_byte((void*)EEPROM_ADDRESS_FAN_CONFIG_MODE);
 	fan_refresh(auto_enabled_config ? FAN_ACTION_ENABLE_AUTO : FAN_ACTION_DISABLE_AUTO);
 	
 	//read state from eeprom:

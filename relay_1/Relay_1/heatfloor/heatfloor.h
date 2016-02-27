@@ -31,39 +31,61 @@ typedef struct
 } heatfloor_channel_info;
 
 typedef struct
-{
+{	
 	unsigned char num;											//The number of active channels
 	heatfloor_channel_info channels[HEATFLOOR_CHANNELS_COUNT];	//Channel descriptors
 } heatfloor_channel_infos;
 
 
-//Инициализация модуля
+/************************************************************************************************/
+/*  Инициализация модуля управления теплым полом												*/
+/*		hf_sensor_temperature_request - коллбэк функция запроса текущей температуры по каналу   */
+/*		hf_control_change_request - коллбэк функция управления реле для канала					*/
+/*		hf_systime_request - коллбэк функция запроса текущего времени и в ней параметр -		*/
+/*			тоже коллбэек функция ответа на запрос												*/
+/************************************************************************************************/
 void heatfloor_init(
-	signed int (*f_sensor_temperature_request)(unsigned char channel),
-	char (*f_switch_exec)(unsigned char channel, unsigned char on_),
-	void (*f_request_systime)());
+	signed int (*hf_sensor_temperature_request)(unsigned char channel),
+	char (*hf_control_change_request)(unsigned char channel, unsigned char on_),
+	void (*hf_systime_request)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))
+);
 
-// Управляет активацией канала модуля
+/*************************************************************************/
+/*  Активация каналов													 */
+/*************************************************************************/
 void heatfloor_enable(unsigned char channel, unsigned char enable_);
 
-//Установка системного времени в диспетчере
-void heatfloor_set_systime(unsigned char seconds, unsigned char minutes, 
-	unsigned char hours, unsigned char day_of_week);
+/************************************************************************/
+/*  Вызывать при прохождении секунды системного времени, измеренной		*/
+/*	внешним таймером													*/
+/************************************************************************/
+void heatfloor_tick_second();
 
-//Обновляет информацию (sensor, setting, solution, ...) по состоянию всех каналов. 
-//Возвращает инфу по каждому из активных каналов
-heatfloor_channel_infos* heatfloor_refresh();
+/************************************************************************/
+/*  Возвращает текущие параметры работы теплого пола по активным каналам*/
+/************************************************************************/
+heatfloor_channel_infos* heatfloor_state_info();
 
-//Определяет функцию запроса температуры с датчика для канала (t*10)
-void heatfloor_set_on_sensor_temperature_request(signed int (*f)(unsigned char channel));
+/************************************************************************/
+/*  Возвращает текущие режимы работы теплого пола по всем каналам    */
+/************************************************************************/
+heatfloor_channel_mode* heatfloor_mode_info();
 
-//Определяет функцию запроса уставки для канала (t*10)
-//void heatfloor_set_on_setting_temperature_request(signed int (*f)(unsigned char channel));
-
-//Определяет функцию управления исполнительныи механизмами (реле) для канала
-void heatfloor_set_on_switch_exec(char (*f)(unsigned char channel, unsigned char on_));
-
-//Определяет функцию выдачи состояния модуля (по всем активным каналам)
+/***********************************************************************************************************/
+/*Установка функции, которая вызывается для определения моментов обновления							       */
+/*состояния каналов теплого пола (для отладки)										    					*/
+/***********************************************************************************************************/
 void heatfloor_set_on_state_message(void (*f)(heatfloor_channel_infos* infos));
+
+
+/***********************************************************************************************************/
+/*Установка функции, которая вызывается для определения изменения										   */
+/*режимов работы теплого пола														    				   */
+/***********************************************************************************************************/
+void heatfloor_set_on_mode_message(void(*f)(heatfloor_channel_mode* modes));
+
+void heatfloor_on(unsigned char on_);
+
+void heatfloor_command(char* data, unsigned char size);
 
 #endif /* HEATFLOOR_H_ */

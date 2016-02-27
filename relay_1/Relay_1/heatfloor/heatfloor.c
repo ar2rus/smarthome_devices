@@ -9,13 +9,15 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
+#include <util/delay.h>
 
 signed int (*on_heatfloor_sensor_temperature_request)(unsigned char channel) = 0;
 char (*on_heatfloor_switch_exec)(unsigned char channel, unsigned char on_) = 0;
 void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
 
-volatile unsigned char enable;
+volatile unsigned char on;		//вкл/выкл
 volatile unsigned char sensorCheckTimer;
 
 char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
@@ -35,18 +37,16 @@ heatfloor_channel_infos* heatfloor_refresh(){
 	heatfloor_channel_infos* cis = (heatfloor_channel_infos*)(&stateMessageBuffer[0]);
 	cis->num = 0;
 	
-	if (enable){
-		for (unsigned char i = 0; i < 8; i++){
-			if (test_bit(enable, i)){
+	if (on){
+		for (unsigned char i = 0; i < HEATFLOOR_CHANNELS_COUNT; i++){
+			signed int settingT = heatfloor_dispatcher_resolve_temperature_setting(i);
+			if (settingT != 0){
 				
-				signed int settingT = -1;
 				signed int sensorT = -1;
 				
 				if (on_heatfloor_sensor_temperature_request){
 					sensorT = (*on_heatfloor_sensor_temperature_request)(i);
 				}
-				
-				settingT = heatfloor_dispatcher_resolve_temperature_setting(i);
 				
 				signed char solution = 0;
 				
@@ -86,6 +86,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				ci->settingT = settingT;
 				
 			}
+			//else канал отключен
 		}
 	}
 	return cis;
@@ -102,46 +103,68 @@ void heatfloor_refresh_responsible(unsigned char response_required){
 	}
 }
 
-ISR(HEATFLOOR_CONTROLLER_TIMER_vect){
+void heatfloor_tick_second(){
+	heatfloor_dispatcher_tick_second();
+	
 	if (++sensorCheckTimer >= HEATFLOOR_SENSOR_CHECK_TIME){
 		heatfloor_refresh_responsible(0);	//отправим ответ только если есть активные каналы
 	}
-	HEATFLOOR_CONTROLLER_TIMER_REG_OCR = HEATFLOOR_CONTROLLER_TIMER_REG + HEATFLOOR_CONTROLLER_TIMER_NUM_TICKS;
 }
 
+void heatfloor_init(
+		signed int (*hf_sensor_temperature_request)(unsigned char channel),
+		char (*hf_control_change_request)(unsigned char channel, unsigned char on_),
+		void (*hf_systime_request)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))
+		){
+			
+	//читаем активность каналов из EEPROM
+	on = eeprom_read_byte((void*)EEPROM_ADDRESS_HEATFLOOR);
+	
+	
+	on_heatfloor_sensor_temperature_request = hf_sensor_temperature_request;
+	on_heatfloor_switch_exec = hf_control_change_request;
+	
+	heatfloor_dispatcher_init(hf_systime_request);
+	
+	sensorCheckTimer = HEATFLOOR_SENSOR_CHECK_TIME - 1;
+}
+
+heatfloor_channel_infos* heatfloor_state_info(){
+	return heatfloor_refresh();
+}
+
+heatfloor_channel_mode* heatfloor_mode_info(){
+	return heatfloor_dispatcher_mode_info();
+}
 
 void heatfloor_set_on_state_message(void(*f)(heatfloor_channel_infos* infos)){
 	on_heatfloor_state_message = f;
 }
 
-void heatfloor_init(
-		signed int (*f_sensor_temperature_request)(unsigned char channel),
-		char (*f_switch_exec)(unsigned char channel, unsigned char on_),
-		void (*f_request_systime)()
-		){
-			
-	enable = 0;
-	
-	on_heatfloor_sensor_temperature_request = f_sensor_temperature_request;
-	on_heatfloor_switch_exec = f_switch_exec;
-	
-	heatfloor_dispatcher_init(f_request_systime);
-	
-	HEATFLOOR_CONTROLLER_TIMER_INIT;
-	ENABLE_HEATFLOOR_CONTROLLER_TIMER;
+void heatfloor_set_on_mode_message(void(*f)(heatfloor_channel_mode* modes)){
+	heatfloor_dispatcher_set_on_mode_message(f);
 }
 
-void heatfloor_enable(unsigned char channel, unsigned char enable_){
-	if (enable_ != bit(enable, channel)){
-		if (!enable_){
-			//switch relay off
-			heatfloor_turnSwitch(channel, 0);
+void heatfloor_on(unsigned char on_){
+	if (on_ != on){
+		on = on_;
+		
+		if (!on){
+			for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
+				//switch relay off
+				heatfloor_turnSwitch(i, 0);
+			}
 		}
-		flip_bit(enable, channel);
-		heatfloor_refresh_responsible(1);	//отправим ответ всегда, даже если отключили последний канал
+		
+		//save channels enable in eeeprom
+		eeprom_write_byte((void*)EEPROM_ADDRESS_HEATFLOOR, on); // Активность модуля
 	}
+	heatfloor_refresh_responsible(1);	//отправим ответ всегда
 }
 
-void heatfloor_set_systime(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week){
-	heatfloor_dispatcher_set_systime(seconds,minutes,hours,day_of_week);
+void heatfloor_command(char* data, unsigned char size){
+	if (heatfloor_dispatcher_command(data, size)){	//если режим изменен, нужно обновиться
+		_delay_ms(20);	//ждем отправку сообщения о смене режима, оно убивается измерением датчиков, в которых cli, sei
+		heatfloor_refresh_responsible(1);
+	}
 }

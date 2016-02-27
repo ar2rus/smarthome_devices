@@ -35,8 +35,8 @@
  *  generate the shortest delays.
  */
 
-#define     CPU_FREQUENCY   8.000
-//#define     CPU_FREQUENCY   F_CPU / 1000000
+//#define     CPU_FREQUENCY   8.000
+#define     CPU_FREQUENCY   F_CPU / 1000000
 
 /*! \brief  Use internal pull-up resistor on 1-Wire buses.
  *

@@ -36,7 +36,7 @@
 
 //адрес в EEPROM дл€ хранени€ конфиг. параметров:
 //тек.режим
-#define FAN_CONFIG_MODE_EEPROM_ADDRESS 0x00
+#define EEPROM_ADDRESS_FAN_CONFIG_MODE 0x00
 
 #define FAN_CONFIG_H_
 

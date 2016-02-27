@@ -188,8 +188,8 @@ int main(void){
 	clunet_buffered_init();
 	clunet_init();
 
-	//for debugging and logging
-	fan_set_on_state_changed(fan_state_changed);
+	
+	fan_set_on_state_changed(fan_state_changed);		//for debugging and logging
 	fan_init(fan_humidity_request, fan_control_changed);
 	
 	TIMER_INIT;
