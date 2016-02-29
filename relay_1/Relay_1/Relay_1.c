@@ -3,8 +3,6 @@
 
 OWI_device devices[OWI_MAX_BUS_DEVICES];
 
-volatile unsigned int systime = 0;
-
 signed char switchState(char id){
 	switch(id){
 		case RELAY_0_ID:
@@ -118,11 +116,11 @@ void temperatureResponse(unsigned char address, OWI_device* devices, unsigned ch
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TEMPERATURE_INFO, ((char*)temperatureInfo), 11 * cnt + 1);
 }
 
-void heatfloor_state_response(unsigned char address, heatfloor_channel_infos* infos){
+void heatfloor_states_response(unsigned char address, heatfloor_channel_infos* infos){
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)infos), infos->num * sizeof(heatfloor_channel_info) + 1);
 }
 
-void heatfloor_mode_response(unsigned char address, heatfloor_channel_mode* modes){
+void heatfloor_modes_response(unsigned char address, heatfloor_channel_mode* modes){
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)modes), HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_mode));
 }
 
@@ -131,13 +129,14 @@ void heatfloor_program_response(unsigned char address, unsigned char program_num
 }
 
 
-void (*heatfloor_systime_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
+
+void (*heatfloor_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
 
 void heatfloor_systime_request( void (*f)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) ){
 	//пришел запрос на получение нового значения текущего времени
 	//в параметре - функция ответа (асинхронно)
-	heatfloor_systime_response = f;
-	clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_TIME, 0, 0);
+	heatfloor_systime_async_response = f;
+	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin only!!!
 }
 
 void cmd(clunet_msg* m){
@@ -169,15 +168,7 @@ void cmd(clunet_msg* m){
 		case CLUNET_COMMAND_ONEWIRE_SEARCH:
 			if (m->size == 0){
 				char num = oneWireSearch(devices);
-			
-				char oneWireDevices[sizeof((*devices).id) * num + 1];
-				oneWireDevices[0] = num;
-			
-				for (unsigned char i=0; i<num; i++){
-					memcpy(&oneWireDevices[i * sizeof((*devices).id) + 1], devices[i].id, sizeof((*devices).id));
-				}
-			
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_ONEWIRE_INFO, (char*)&oneWireDevices, sizeof(oneWireDevices));
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_ONEWIRE_INFO, (char*)&devices, num * sizeof(OWI_device));
 			}
 			break;
 		case CLUNET_COMMAND_TEMPERATURE:
@@ -207,7 +198,7 @@ void cmd(clunet_msg* m){
 				if (m->size==1 && m->data[0] >=0){
 					unsigned char doors_opened = m->data[0]>0;
 					signed char state = switchState(WARDROBE_LIGHT_RELAY_ID);
-					if (state >=0 && state != doors_opened){
+					if (state >= 0 && state != doors_opened){
 						switchExecute(WARDROBE_LIGHT_RELAY_ID, doors_opened);
 						switchResponse(CLUNET_BROADCAST_ADDRESS);
 					}
@@ -216,8 +207,8 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_HEATFLOOR:
 			switch (m->size){
-				case 0x00:
-					break;
+				//case 0x00:
+				//	break;
 				case 0x01:
 					switch(m->data[0]){
 						case 0x00:
@@ -225,10 +216,10 @@ void cmd(clunet_msg* m){
 							heatfloor_on(m->data[0]);
 							break;
 						case 0xFF:	// запрос текущего состояния всех каналов
-							heatfloor_state_response(m->src_address, heatfloor_state_info());
+							heatfloor_states_response(m->src_address, heatfloor_state_info());
 							break;
 						case 0xFE:	//запрос текущих режимов по всем каналам
-							heatfloor_mode_response(m->src_address, heatfloor_channel_modes_info());
+							heatfloor_modes_response(m->src_address, heatfloor_modes_info());
 							break;
 						
 						case 0xF0:
@@ -253,11 +244,14 @@ void cmd(clunet_msg* m){
 					break;
 			}
 			break;
+		case CLUNET_COMMAND_TIME:
+			//send heatfloor current time for debug
+			break;
 		case CLUNET_COMMAND_TIME_INFO:
-			if (heatfloor_systime_response != NULL){
+			if (heatfloor_systime_async_response != NULL){
 				if (m->size == 7){
-					heatfloor_systime_response(m->data[5], m->data[4], m->data[3], m->data[6]);
-					heatfloor_systime_response = NULL;
+					heatfloor_systime_async_response(m->data[5], m->data[4], m->data[3], m->data[6]);
+					heatfloor_systime_async_response = NULL;
 				}
 			}
 			break;
@@ -271,6 +265,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_TEMPERATURE:
 		case CLUNET_COMMAND_DOOR_INFO:
 		case CLUNET_COMMAND_HEATFLOOR:
+		case CLUNET_COMMAND_TIME:
 		case CLUNET_COMMAND_TIME_INFO:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
@@ -296,7 +291,7 @@ signed int heatfloor_sensor_temperature_request(unsigned char channel){
 	return -1;
 }
 
-char heatfloor_control_changed(unsigned char channel, unsigned char on_){
+void heatfloor_control_switch_request(unsigned char channel, unsigned char on_){
 	signed char id= -1;
 	switch (channel){
 		case HEATING_FLOOR_CHANNEL_0:
@@ -312,25 +307,24 @@ char heatfloor_control_changed(unsigned char channel, unsigned char on_){
 		if (state >=0 && state != on_){
 			switchExecute(id, on_);
 			switchResponse(CLUNET_BROADCAST_ADDRESS);
-			
-			return 1;
 		}
 	}
-	
-	return -1;
 }
 
-void heatfloor_state_message(heatfloor_channel_infos* infos){
-	heatfloor_state_response(CLUNET_BROADCAST_ADDRESS, infos);
+void heatfloor_states_message(heatfloor_channel_infos* infos){
+	heatfloor_states_response(CLUNET_BROADCAST_ADDRESS, infos);
 }
 
-void heatfloor_channel_modes_message(heatfloor_channel_mode* modes){
-	heatfloor_mode_response(CLUNET_BROADCAST_ADDRESS, modes);
+void heatfloor_modes_message(heatfloor_channel_mode* modes){
+	heatfloor_modes_response(CLUNET_BROADCAST_ADDRESS, modes);
 }
 
 void heatfloor_program_message(unsigned char program_num, heatfloor_program* program){
 	heatfloor_program_response(CLUNET_BROADCAST_ADDRESS, program_num, program);
 }
+
+
+volatile unsigned char systime = 0;
 
 ISR(TIMER_COMP_VECTOR){
 	++systime;
@@ -339,7 +333,8 @@ ISR(TIMER_COMP_VECTOR){
 }
 
 
-volatile unsigned int hf_time = 0;
+
+unsigned int hf_time = 0;
 
 int main(void){
 	
@@ -356,12 +351,12 @@ int main(void){
 	
 	heatfloor_init(
 		heatfloor_sensor_temperature_request,
-		heatfloor_control_changed, 
+		heatfloor_control_switch_request, 
 		heatfloor_systime_request
 		);
 		
-	heatfloor_set_on_state_message(heatfloor_state_message);
-	heatfloor_set_on_channel_modes_changed(heatfloor_channel_modes_message);
+	heatfloor_set_on_states_message(heatfloor_states_message);
+	heatfloor_set_on_modes_changed(heatfloor_modes_message);
 	heatfloor_set_on_program_changed(heatfloor_program_message);
 	
 	TIMER_INIT;

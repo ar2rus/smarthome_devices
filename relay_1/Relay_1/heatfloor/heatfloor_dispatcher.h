@@ -12,6 +12,12 @@
 #include "heatfloor_config.h"
 
 
+#define HEATFLOOR_MODE_OFF 0
+#define HEATFLOOR_MODE_MANUAL 1
+#define HEATFLOOR_MODE_DAY 2
+#define HEATFLOOR_MODE_WEEK 3
+#define HEATFLOOR_MODE_PARTY 4
+
 
 typedef struct
 {
@@ -55,16 +61,13 @@ signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channe
 
 unsigned char heatfloor_dispatcher_command(char* data, char size);
 
-heatfloor_channel_mode* heatfloor_dispatcher_channel_modes_info();
 
-heatfloor_program* heatfloor_dispatcher_program_info(unsigned char program_num);
-
-void heatfloor_dispatcher_set_on_channel_modes_changed(void(*f)(heatfloor_channel_mode* modes));
-
-void heatfloor_dispatcher_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program));
+heatfloor_channel_mode* heatfloor_modes_info();
+heatfloor_program* heatfloor_program_info(unsigned char program_num);
 
 
-
+void heatfloor_set_on_modes_changed(void(*f)(heatfloor_channel_mode* modes));
+void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program));
 
 
 #define EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES EEPROM_ADDRESS_HEATFLOOR + 1

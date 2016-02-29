@@ -8,6 +8,7 @@
 #include "heatfloor.h"
 
 #include <avr/eeprom.h>
+#include <util/delay.h>
 
 void (*on_heatfloor_dispather_request_systime)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week)) = 0;
 
@@ -17,14 +18,14 @@ void (*on_heatfloor_program_changed)(unsigned char program_num, heatfloor_progra
 char channel_modes_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_mode)];
 char channel_programs_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_program)];
 
-//global tmp buf
+//global tmp program buf
 char program_buf[sizeof(heatfloor_program)];
 
-//счетчик секунд, с момента последней корректировки времени
-volatile unsigned int correctTimeCounter = 0;
-volatile heatfloor_datetime time;
+heatfloor_datetime time;
+unsigned char lastCorrectionHour;	//час, в котором проводилась последн€€ корректировка времени
 
-unsigned char isTimeValid(){
+
+unsigned char is_time_valid(){
 	return time.day_of_week;
 }
 
@@ -34,7 +35,7 @@ void heatfloor_dispatcher_set_systime(unsigned char seconds, unsigned char minut
 	time.hours = hours;
 	time.day_of_week = day_of_week;
 	
-	correctTimeCounter = 0;
+	lastCorrectionHour = hours;
 }
 
 void requestSystime(){
@@ -45,26 +46,28 @@ void requestSystime(){
 
 
 signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channel){
-	//если не прочитан eeprom или не установлено текущее врем€ -> возвращать 0
-	//return 28 * 10;
 	
-	if (isTimeValid()){
+	if (is_time_valid()){
 		
-		if (++correctTimeCounter >= 3600){	//корректируем каждый час
+		if (time.hours != lastCorrectionHour){	//корректируем каждый час
+			
+			lastCorrectionHour = 0xFF;			//так, спуст€ сутки и более, коррекци€ в этом же часу будет выполнена
+			
 			requestSystime();
+			_delay_ms(50);						//ждем установку времени, режетс€ отключением прерываний при замере температуры 
 		}
 		
 		heatfloor_channel_mode* cm = (heatfloor_channel_mode*)(&channel_modes_buf[0]);
 		switch (cm[channel].mode){
-			case 0:
+			case HEATFLOOR_MODE_OFF:
 				return 0;	//отключен
-			case 1:
+			case HEATFLOOR_MODE_MANUAL:
 				return cm[channel].params[0] * 10;
-			case 2:
+			case HEATFLOOR_MODE_DAY:
 				break;
-			case 3:
+			case HEATFLOOR_MODE_WEEK:
 				break;
-			case 4:
+			case HEATFLOOR_MODE_PARTY:
 				break;
 			default:
 				return -1;	//неизвестный режим
@@ -75,7 +78,7 @@ signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channe
 }
 
 void heatfloor_dispatcher_tick_second(){
-	if (isTimeValid()){
+	if (is_time_valid()){
 		if (++time.seconds == 60){
 			time.seconds = 0;
 			if (++time.minutes == 60){
@@ -112,17 +115,23 @@ unsigned char heatfloor_dispatcher_set_mode(char* data, char size){
 		heatfloor_channel_mode* cm = (heatfloor_channel_mode*)(&channel_modes_buf[0]);
 		
 		switch (data[0]){
-			case 0:				//выкл (режим) канал
+			case HEATFLOOR_MODE_OFF:	//выкл (режим) канал
+			case HEATFLOOR_MODE_PARTY:	//вечеринка
 			if (size == 2){
 				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
 					if (test_bit(data[1],i)){
 						cm[i].mode = data[0];
-						r = 1;
+						if (data[0] == HEATFLOOR_MODE_OFF){
+							r = 1;
+						}else{
+							r = -1;	//не сохран€ем в eeprom, если вечеринка
+						}
 					}
 				}
 			}
 			break;
-			case 1:				//ручной режим, с установленной t*
+			case HEATFLOOR_MODE_MANUAL:	//ручной режим, с установленной t*
+			case HEATFLOOR_MODE_DAY:	//дневной режим с установленной программой
 			if (size == 3){
 				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
 					if (test_bit(data[1],i)){
@@ -133,18 +142,7 @@ unsigned char heatfloor_dispatcher_set_mode(char* data, char size){
 				}
 			}
 			break;
-			case 2:				//дневной режим с установленной программой
-			if (size == 3){
-				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-					if (test_bit(data[1],i)){
-						cm[i].mode = data[0];
-						cm[i].params[0] = data[2];
-						r = 1;
-					}
-				}
-			}
-			break;
-			case 3:				//недельный режим, с указанием 7-ми программ
+			case HEATFLOOR_MODE_WEEK: //недельный режим, с указанием 7-ми программ
 			if (size == 9){
 				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
 					if (test_bit(data[1],i)){
@@ -153,16 +151,6 @@ unsigned char heatfloor_dispatcher_set_mode(char* data, char size){
 							cm[i].params[j] = data[2+j];
 						}
 						r = 1;
-					}
-				}
-			}
-			break;
-			case 4:			//вечеринка
-			if (size == 2){
-				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-					if (test_bit(data[1],i)){
-						cm[i].mode = data[0];
-						r = -1;	//не сохран€ем в eeprom
 					}
 				}
 			}
@@ -199,7 +187,7 @@ unsigned char heatfloor_dispatcher_set_mode(char* data, char size){
 unsigned char heatfloor_dispatcher_set_program(char* data, char size){
 	signed char r = 0;
 	if (size > 3){
-		if (data[1] >= 0 && data[1]<10){	//номер программы
+		if (data[1] >= 0 && data[1] < 10){	//номер программы
 			heatfloor_program* hp = (heatfloor_program*)(&program_buf[0]);
 			
 			hp->num_values = 0;
@@ -213,13 +201,12 @@ unsigned char heatfloor_dispatcher_set_program(char* data, char size){
 					h = data[i];
 				}
 				hp->values[hp->num_values].hour = data[i + 0];
-				hp->values[hp->num_values].t	  = data[i + 1];
+				hp->values[hp->num_values].t = data[i + 1];
 				hp->num_values++;
 			}
 			
 			//если программа корректна€ -> сохран€ем в eeprom
 			if (r){
-				
 				eeprom_busy_wait();
 				eeprom_update_block(hp, (void *)EEPROM_ADDRESS_HEATFLOOR_PROGRAMS + (data[1]*sizeof(heatfloor_program)), sizeof(heatfloor_program));
 				
@@ -236,11 +223,11 @@ unsigned char heatfloor_dispatcher_set_program(char* data, char size){
 unsigned char heatfloor_dispatcher_command(char* data, char size){
 	if (size > 1){
 		switch (data[0]){
-			case 0x00:
-			case 0x01:
-			case 0x02:
-			case 0x03:
-			case 0x04:
+			case HEATFLOOR_MODE_OFF:
+			case HEATFLOOR_MODE_MANUAL:
+			case HEATFLOOR_MODE_DAY:
+			case HEATFLOOR_MODE_WEEK:
+			case HEATFLOOR_MODE_PARTY:
 				return heatfloor_dispatcher_set_mode(data, size);
 			case 0xFD:
 				return heatfloor_dispatcher_set_program(data, size);
@@ -249,27 +236,27 @@ unsigned char heatfloor_dispatcher_command(char* data, char size){
 	return 0;
 }
 
-heatfloor_channel_mode* heatfloor_dispatcher_channel_modes_info(){
+heatfloor_channel_mode* heatfloor_modes_info(){
 	return (heatfloor_channel_mode*)(&channel_modes_buf[0]);
 }
 
-heatfloor_program* heatfloor_dispatcher_program_info(unsigned char program_num){
+heatfloor_program* heatfloor_program_info(unsigned char program_num){
 	heatfloor_program* hp = (heatfloor_program*)(&program_buf[0]);
+	
 	//read from eeprom
 	eeprom_read_block(hp, (void *)EEPROM_ADDRESS_HEATFLOOR_PROGRAMS + program_num*sizeof(heatfloor_program), sizeof(heatfloor_program));
 	return hp;
 }
 
-void heatfloor_dispatcher_set_on_channel_modes_changed(void(*f)(heatfloor_channel_mode* modes)){
+void heatfloor_set_on_modes_changed(void(*f)(heatfloor_channel_mode* modes)){
 	on_heatfloor_channel_modes_changed = f;
 }
 
-void heatfloor_dispatcher_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program)){
+void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program)){
 	on_heatfloor_program_changed = f;
 }
 
 void heatfloor_dispatcher_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))){
-	eeprom_busy_wait();
 	eeprom_read_block(&channel_modes_buf, (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES, sizeof(channel_modes_buf));
 	
 	time.day_of_week = 0;	//undefined time

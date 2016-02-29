@@ -13,23 +13,16 @@
 #include <util/delay.h>
 
 signed int (*on_heatfloor_sensor_temperature_request)(unsigned char channel) = 0;
-char (*on_heatfloor_switch_exec)(unsigned char channel, unsigned char on_) = 0;
+
+void (*on_heatfloor_control_switch_request)(unsigned char channel, unsigned char on_) = 0;
 void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
 
-volatile unsigned char on;		//вкл/выкл
-volatile unsigned char sensorCheckTimer;
+unsigned char on;				//вкл/выкл состояние
+unsigned char sensorCheckTimer;
 
 char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
 
-
-signed char heatfloor_turnSwitch(unsigned char channel, unsigned char on_){
-	signed char r = -1;
-	if (on_heatfloor_switch_exec){
-		r = (*on_heatfloor_switch_exec)(channel, on_);
-	}
-	return r;
-}
 
 heatfloor_channel_infos* heatfloor_refresh(){
 	sensorCheckTimer = 0;
@@ -75,18 +68,22 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				}
 				
 				if (solution != 0){
-					heatfloor_turnSwitch(i, solution>0);
+					if (on_heatfloor_control_switch_request){
+						(*on_heatfloor_control_switch_request)(i, solution>0);
+					}
 				}
 				
 				//тут накапливаем ответ по всем каналам
 				heatfloor_channel_info* ci = &cis->channels[(cis->num)++];
 				ci->num = i;
+				ci->mode = heatfloor_modes_info()[i].mode;
 				ci->solution = solution;
 				ci->sensorT = sensorT;
 				ci->settingT = settingT;
 				
+			}else{
+				//канал отключен
 			}
-			//else канал отключен
 		}
 	}
 	return cis;
@@ -96,7 +93,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 //response_required - генерировать событие всегда или только при наличии активных каналов
 void heatfloor_refresh_responsible(unsigned char response_required){
 	heatfloor_channel_infos* infos = heatfloor_refresh();
-	if (infos->num || response_required){	//generate an event if we have active channels only
+	if (infos->num || response_required){
 		if (on_heatfloor_state_message){
 			(*on_heatfloor_state_message)(infos);
 		}
@@ -113,16 +110,15 @@ void heatfloor_tick_second(){
 
 void heatfloor_init(
 		signed int (*hf_sensor_temperature_request)(unsigned char channel),
-		char (*hf_control_change_request)(unsigned char channel, unsigned char on_),
+		void (*hf_control_change_request)(unsigned char channel, unsigned char on_),
 		void (*hf_systime_request)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))
 		){
 			
 	//читаем активность каналов из EEPROM
 	on = eeprom_read_byte((void*)EEPROM_ADDRESS_HEATFLOOR);
 	
-	
 	on_heatfloor_sensor_temperature_request = hf_sensor_temperature_request;
-	on_heatfloor_switch_exec = hf_control_change_request;
+	on_heatfloor_control_switch_request = hf_control_change_request;
 	
 	heatfloor_dispatcher_init(hf_systime_request);
 	
@@ -133,24 +129,8 @@ heatfloor_channel_infos* heatfloor_state_info(){
 	return heatfloor_refresh();
 }
 
-heatfloor_channel_mode* heatfloor_channel_modes_info(){
-	return heatfloor_dispatcher_channel_modes_info();
-}
-
-heatfloor_program* heatfloor_program_info(unsigned char program_num){
-	return heatfloor_dispatcher_program_info(program_num);
-}
-
-void heatfloor_set_on_state_message(void(*f)(heatfloor_channel_infos* infos)){
+void heatfloor_set_on_states_message(void(*f)(heatfloor_channel_infos* infos)){
 	on_heatfloor_state_message = f;
-}
-
-void heatfloor_set_on_channel_modes_changed(void(*f)(heatfloor_channel_mode* modes)){
-	heatfloor_dispatcher_set_on_channel_modes_changed(f);
-}
-
-void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program)){
-	heatfloor_dispatcher_set_on_program_changed(f);
 }
 
 void heatfloor_on(unsigned char on_){
@@ -160,11 +140,14 @@ void heatfloor_on(unsigned char on_){
 		if (!on){
 			for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
 				//switch relay off
-				heatfloor_turnSwitch(i, 0);
+				if (on_heatfloor_control_switch_request){
+					(*on_heatfloor_control_switch_request)(i, 0);
+				}
 			}
 		}
 		
 		//save channels enable in eeeprom
+		eeprom_busy_wait();
 		eeprom_write_byte((void*)EEPROM_ADDRESS_HEATFLOOR, on); // Активность модуля
 	}
 	heatfloor_refresh_responsible(1);	//отправим ответ всегда
