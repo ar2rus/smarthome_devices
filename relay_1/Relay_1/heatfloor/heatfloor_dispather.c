@@ -48,6 +48,11 @@ void heatfloor_dispatcher_set_systime(unsigned char seconds, unsigned char minut
 	lastCorrectionHour = hours;
 }
 
+
+heatfloor_datetime* heatfloor_systime(){
+	return &time;
+}
+
 void requestSystime(){
 	if (on_heatfloor_dispather_request_systime){
 		(*on_heatfloor_dispather_request_systime)( heatfloor_dispatcher_set_systime );

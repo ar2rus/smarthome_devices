@@ -245,8 +245,15 @@ void cmd(clunet_msg* m){
 			}
 			break;
 		case CLUNET_COMMAND_TIME:
+		{
 			//send heatfloor current time for debug
+			heatfloor_datetime* dt = heatfloor_systime();
+			
+			char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
+							
+			clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME_INFO, (char*)&hd, sizeof(hd));
 			break;
+		}
 		case CLUNET_COMMAND_TIME_INFO:
 			if (heatfloor_systime_async_response != NULL){
 				if (m->size == 7){

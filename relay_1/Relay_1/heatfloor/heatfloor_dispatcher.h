@@ -70,6 +70,7 @@ signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channe
 
 unsigned char heatfloor_dispatcher_command(char* data, char size);
 
+heatfloor_datetime* heatfloor_systime();
 
 heatfloor_channel_mode* heatfloor_modes_info();
 heatfloor_program* heatfloor_program_info(unsigned char program_num);
