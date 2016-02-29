@@ -133,16 +133,24 @@ heatfloor_channel_infos* heatfloor_state_info(){
 	return heatfloor_refresh();
 }
 
-heatfloor_channel_mode* heatfloor_mode_info(){
-	return heatfloor_dispatcher_mode_info();
+heatfloor_channel_mode* heatfloor_channel_modes_info(){
+	return heatfloor_dispatcher_channel_modes_info();
+}
+
+heatfloor_program* heatfloor_program_info(unsigned char program_num){
+	return heatfloor_dispatcher_program_info(program_num);
 }
 
 void heatfloor_set_on_state_message(void(*f)(heatfloor_channel_infos* infos)){
 	on_heatfloor_state_message = f;
 }
 
-void heatfloor_set_on_mode_message(void(*f)(heatfloor_channel_mode* modes)){
-	heatfloor_dispatcher_set_on_mode_message(f);
+void heatfloor_set_on_channel_modes_changed(void(*f)(heatfloor_channel_mode* modes)){
+	heatfloor_dispatcher_set_on_channel_modes_changed(f);
+}
+
+void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program)){
+	heatfloor_dispatcher_set_on_program_changed(f);
 }
 
 void heatfloor_on(unsigned char on_){
@@ -164,7 +172,7 @@ void heatfloor_on(unsigned char on_){
 
 void heatfloor_command(char* data, unsigned char size){
 	if (heatfloor_dispatcher_command(data, size)){	//если режим изменен, нужно обновиться
-		_delay_ms(20);	//ждем отправку сообщения о смене режима, оно убивается измерением датчиков, в которых cli, sei
+		_delay_ms(50);	//ждем отправку сообщения о смене режима, оно убивается измерением датчиков, в которых cli, sei
 		heatfloor_refresh_responsible(1);
 	}
 }

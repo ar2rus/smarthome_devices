@@ -126,6 +126,10 @@ void heatfloor_mode_response(unsigned char address, heatfloor_channel_mode* mode
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)modes), HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_mode));
 }
 
+void heatfloor_program_response(unsigned char address, unsigned char program_num, heatfloor_program* program){
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)program), sizeof(heatfloor_program));
+}
+
 
 void (*heatfloor_systime_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
 
@@ -220,12 +224,24 @@ void cmd(clunet_msg* m){
 						case 0x01:
 							heatfloor_on(m->data[0]);
 							break;
-						case 0xFF:
+						case 0xFF:	// запрос текущего состояния всех каналов
 							heatfloor_state_response(m->src_address, heatfloor_state_info());
 							break;
-						case 0xFE:
-							heatfloor_mode_response(m->src_address, heatfloor_mode_info());
+						case 0xFE:	//запрос текущих режимов по всем каналам
+							heatfloor_mode_response(m->src_address, heatfloor_channel_modes_info());
 							break;
+						
+						case 0xF0:
+						case 0xF1:
+						case 0xF2:
+						case 0xF3:
+						case 0xF4:
+						case 0xF5:
+						case 0xF6:
+						case 0xF7:
+						case 0xF8:
+						case 0xF9:	//запрос параметров программы (0-9)
+							heatfloor_program_response(m->src_address, m->data[0] & 0x0F, heatfloor_program_info(m->data[0] & 0x0F));
 						
 						//case 0xFE:	//setup ds18b20 (temporary)
 							//	DS18B20_SetDeviceAccuracy(OWI_BUS, &HEATING_FLOOR_CHANNEL_0_SENSOR_1W_ID, 3);
@@ -308,8 +324,12 @@ void heatfloor_state_message(heatfloor_channel_infos* infos){
 	heatfloor_state_response(CLUNET_BROADCAST_ADDRESS, infos);
 }
 
-void heatfloor_mode_message(heatfloor_channel_mode* modes){
+void heatfloor_channel_modes_message(heatfloor_channel_mode* modes){
 	heatfloor_mode_response(CLUNET_BROADCAST_ADDRESS, modes);
+}
+
+void heatfloor_program_message(unsigned char program_num, heatfloor_program* program){
+	heatfloor_program_response(CLUNET_BROADCAST_ADDRESS, program_num, program);
 }
 
 ISR(TIMER_COMP_VECTOR){
@@ -341,14 +361,12 @@ int main(void){
 		);
 		
 	heatfloor_set_on_state_message(heatfloor_state_message);
-	heatfloor_set_on_mode_message(heatfloor_mode_message);
+	heatfloor_set_on_channel_modes_changed(heatfloor_channel_modes_message);
+	heatfloor_set_on_program_changed(heatfloor_program_message);
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;
-	
-	//heatfloor_enable(HEATING_FLOOR_CHANNEL_KITCHEN, 1);
-	//heatfloor_enable(HEATING_FLOOR_CHANNEL_BATHROOM, 1);
-	
+		
 	while (1){
 		if (!clunet_buffered_is_empty()){
 			cmd(clunet_buffered_pop());
