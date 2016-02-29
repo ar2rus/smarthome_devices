@@ -9,6 +9,7 @@
 
 #include <avr/eeprom.h>
 #include <util/delay.h>
+#include <string.h>
 
 void (*on_heatfloor_dispather_request_systime)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week)) = 0;
 
@@ -16,7 +17,7 @@ void (*on_heatfloor_channel_modes_changed)(heatfloor_channel_mode* modes) = 0;
 void (*on_heatfloor_program_changed)(unsigned char program_num, heatfloor_program* program) = 0;
 
 char channel_modes_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_mode)];
-char channel_programs_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_program)];
+char channel_programs_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_program)];
 
 //global tmp program buf
 char program_buf[sizeof(heatfloor_program)];
@@ -27,6 +28,15 @@ unsigned char lastCorrectionHour;	//час, в котором проводилась последн€€ коррект
 
 unsigned char is_time_valid(){
 	return time.day_of_week;
+}
+
+void heatfloor_clear_channel_programs_cache(){
+	//reset channel program cache
+	heatfloor_channel_program* cpc = (heatfloor_channel_program*)(&channel_programs_buf[0]);
+
+	for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
+		cpc->program_num = -1;
+	}
 }
 
 void heatfloor_dispatcher_set_systime(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week){
@@ -45,28 +55,62 @@ void requestSystime(){
 }
 
 
+
+
 signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channel){
 	
 	if (is_time_valid()){
 		
 		if (time.hours != lastCorrectionHour){	//корректируем каждый час
 			
-			lastCorrectionHour = 0xFF;			//так, спуст€ сутки и более, коррекци€ в этом же часу будет выполнена
+			lastCorrectionHour = 0xFF;			//так, спуст€ сутки и более, коррекци€ в этом же часу не будет пропущена
 			
 			requestSystime();
 			_delay_ms(50);						//ждем установку времени, режетс€ отключением прерываний при замере температуры 
 		}
 		
 		heatfloor_channel_mode* cm = (heatfloor_channel_mode*)(&channel_modes_buf[0]);
+		heatfloor_channel_program* cpc = (heatfloor_channel_program*)(&channel_programs_buf[0]);
+		
 		switch (cm[channel].mode){
 			case HEATFLOOR_MODE_OFF:
 				return 0;	//отключен
 			case HEATFLOOR_MODE_MANUAL:
 				return cm[channel].params[0] * 10;
+			
 			case HEATFLOOR_MODE_DAY:
-				break;
 			case HEATFLOOR_MODE_WEEK:
-				break;
+			{
+				unsigned char program_num;
+				if (cm[channel].mode == HEATFLOOR_MODE_DAY){
+					program_num = cm[channel].params[0];
+				}else{
+					program_num = cm[channel].params[time.day_of_week - 1];
+				}
+				
+				if (program_num >=0 && program_num < 10){
+					//если в кэше нет программы - то выгружаем туда из eeprom
+					if (cpc[channel].program_num != program_num){
+						//сохран€ем в кэш
+						memcpy(&cpc[channel].program, heatfloor_program_info(program_num), sizeof(heatfloor_program));
+						cpc[channel].program_num = program_num;
+					}
+					heatfloor_program* p = &cpc[channel].program;
+				
+					if (p->num_values > 0 && p->num_values < 10){
+						unsigned char i = p->num_values - 1;
+						while (i > 0){
+							if (time.hours >= p->values[i].hour){
+								break;
+							}
+							i--;
+						}
+						return p->values[i].t * 10;
+					}
+				}
+				return -1;
+			}
+			
 			case HEATFLOOR_MODE_PARTY:
 				break;
 			default:
@@ -210,6 +254,8 @@ unsigned char heatfloor_dispatcher_set_program(char* data, char size){
 				eeprom_busy_wait();
 				eeprom_update_block(hp, (void *)EEPROM_ADDRESS_HEATFLOOR_PROGRAMS + (data[1]*sizeof(heatfloor_program)), sizeof(heatfloor_program));
 				
+				heatfloor_clear_channel_programs_cache();
+				
 				//сообщение об изменении режима
 				if (on_heatfloor_program_changed){
 					(*on_heatfloor_program_changed)(data[1], hp);
@@ -259,6 +305,7 @@ void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfl
 void heatfloor_dispatcher_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))){
 	eeprom_read_block(&channel_modes_buf, (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES, sizeof(channel_modes_buf));
 	
+	heatfloor_clear_channel_programs_cache();
 	time.day_of_week = 0;	//undefined time
 	
 	//apply and request for current time

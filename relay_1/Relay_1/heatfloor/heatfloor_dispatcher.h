@@ -53,6 +53,15 @@ typedef struct
 } heatfloor_program;
 
 
+/*для кэширования текущей программы*/
+typedef struct
+{
+	signed char program_num;
+	heatfloor_program program;
+	
+} heatfloor_channel_program;
+
+
 void heatfloor_dispatcher_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week)));
 
 void heatfloor_dispatcher_tick_second();
