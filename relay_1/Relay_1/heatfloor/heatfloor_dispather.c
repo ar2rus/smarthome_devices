@@ -8,7 +8,6 @@
 #include "heatfloor.h"
 
 #include <avr/eeprom.h>
-#include <util/delay.h>
 #include <string.h>
 
 void (*on_heatfloor_dispather_request_systime)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week)) = 0;
@@ -16,14 +15,12 @@ void (*on_heatfloor_dispather_request_systime)(void (*hf_systime_async_response)
 void (*on_heatfloor_channel_modes_changed)(heatfloor_channel_mode* modes) = 0;
 void (*on_heatfloor_program_changed)(unsigned char program_num, heatfloor_program* program) = 0;
 
+heatfloor_datetime time;
+
 char channel_modes_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_mode)];
 char channel_programs_buf[HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_program)];
 
-//global tmp program buf
 char program_buf[sizeof(heatfloor_program)];
-
-heatfloor_datetime time;
-unsigned char lastCorrectionHour;	//час, в котором проводилась последн€€ корректировка времени
 
 
 unsigned char is_time_valid(){
@@ -44,8 +41,6 @@ void heatfloor_dispatcher_set_systime(unsigned char seconds, unsigned char minut
 	time.minutes = minutes;
 	time.hours = hours;
 	time.day_of_week = day_of_week;
-	
-	lastCorrectionHour = hours;
 }
 
 
@@ -59,21 +54,9 @@ void requestSystime(){
 	}
 }
 
-
-
-
 signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channel){
 	
 	if (is_time_valid()){
-		
-		if (time.hours != lastCorrectionHour){	//корректируем каждый час
-			
-			lastCorrectionHour = 0xFF;			//так, спуст€ сутки и более, коррекци€ в этом же часу не будет пропущена
-			
-			requestSystime();
-			_delay_ms(50);						//ждем установку времени, режетс€ отключением прерываний при замере температуры 
-		}
-		
 		heatfloor_channel_mode* cm = (heatfloor_channel_mode*)(&channel_modes_buf[0]);
 		heatfloor_channel_program* cpc = (heatfloor_channel_program*)(&channel_programs_buf[0]);
 		
@@ -138,6 +121,8 @@ void heatfloor_dispatcher_tick_second(){
 						time.day_of_week = 1;
 					}
 				}
+				//корректируем врем€ каждый час
+				requestSystime();
 			}
 		}
 	}else{

@@ -10,7 +10,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
-#include <util/delay.h>
 
 signed int (*on_heatfloor_sensor_temperature_request)(unsigned char channel) = 0;
 
@@ -114,7 +113,7 @@ void heatfloor_init(
 		void (*hf_systime_request)(void (*hf_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))
 		){
 			
-	//читаем активность каналов из EEPROM
+	//читаем состояние из EEPROM
 	on = eeprom_read_byte((void*)EEPROM_ADDRESS_HEATFLOOR);
 	
 	on_heatfloor_sensor_temperature_request = hf_sensor_temperature_request;
@@ -155,7 +154,6 @@ void heatfloor_on(unsigned char on_){
 
 void heatfloor_command(char* data, unsigned char size){
 	if (heatfloor_dispatcher_command(data, size)){	//если режим изменен, нужно обновиться
-		_delay_ms(50);	//ждем отправку сообщения о смене режима, оно убивается измерением датчиков, в которых cli, sei
 		heatfloor_refresh_responsible(1);
 	}
 }

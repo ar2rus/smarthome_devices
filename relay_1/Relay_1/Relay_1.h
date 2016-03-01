@@ -28,7 +28,7 @@
 
 /* main timer controls*/
 #define TIMER_PRESCALER 1024
-#define TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / TIMER_PRESCALER)+1	/*1 second main loop*/
+#define TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / TIMER_PRESCALER) + 204	/*1 second main loop, 202 - just correction*/
 #define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS12, CS10); unset_bit(TCCR1B, CS11); /*1024x prescaler*/}
 
 #define TIMER_REG TCNT1
@@ -76,8 +76,8 @@
 #define RELAY_2_TOGGLE  flip_bit(OUTPORT(RELAY_2_PORT), RELAY_2_PIN)
 #define RELAY_2_STATE bit(OUTPORT(RELAY_2_PORT), RELAY_2_PIN)
 
-#define DOORS_SENSOR_DEVICE_ID 0x1F
-#define WARDROBE_LIGHT_RELAY_ID RELAY_0_ID
+//#define DOORS_SENSOR_DEVICE_ID 0x1F
+//#define WARDROBE_LIGHT_RELAY_ID RELAY_0_ID
 
 
 //bathroom heating floor

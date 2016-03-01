@@ -136,7 +136,7 @@ void heatfloor_systime_request( void (*f)(unsigned char seconds, unsigned char m
 	//пришел запрос на получение нового значения текущего времени
 	//в параметре - функция ответа (асинхронно)
 	heatfloor_systime_async_response = f;
-	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin only!!!
+	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin only!!!
 }
 
 void cmd(clunet_msg* m){
@@ -193,18 +193,18 @@ void cmd(clunet_msg* m){
 				}
 			}
 			break;
-		case CLUNET_COMMAND_DOOR_INFO:
-			if (m->src_address == DOORS_SENSOR_DEVICE_ID){
-				if (m->size==1 && m->data[0] >=0){
-					unsigned char doors_opened = m->data[0]>0;
-					signed char state = switchState(WARDROBE_LIGHT_RELAY_ID);
-					if (state >= 0 && state != doors_opened){
-						switchExecute(WARDROBE_LIGHT_RELAY_ID, doors_opened);
-						switchResponse(CLUNET_BROADCAST_ADDRESS);
-					}
-				}
-			}
-			break;
+// 		case CLUNET_COMMAND_DOOR_INFO:
+// 			if (m->src_address == DOORS_SENSOR_DEVICE_ID){
+// 				if (m->size==1 && m->data[0] >=0){
+// 					unsigned char doors_opened = m->data[0]>0;
+// 					signed char state = switchState(WARDROBE_LIGHT_RELAY_ID);
+// 					if (state >= 0 && state != doors_opened){
+// 						switchExecute(WARDROBE_LIGHT_RELAY_ID, doors_opened);
+// 						switchResponse(CLUNET_BROADCAST_ADDRESS);
+// 					}
+// 				}
+// 			}
+// 			break;
 		case CLUNET_COMMAND_HEATFLOOR:
 			switch (m->size){
 				//case 0x00:
@@ -251,7 +251,7 @@ void cmd(clunet_msg* m){
 			
 			char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
 							
-			clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME_INFO, (char*)&hd, sizeof(hd));
+			clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME_INFO, &hd[0], sizeof(hd));
 			break;
 		}
 		case CLUNET_COMMAND_TIME_INFO:
@@ -270,7 +270,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_SWITCH:
 		case CLUNET_COMMAND_ONEWIRE_SEARCH:
 		case CLUNET_COMMAND_TEMPERATURE:
-		case CLUNET_COMMAND_DOOR_INFO:
+		//case CLUNET_COMMAND_DOOR_INFO:
 		case CLUNET_COMMAND_HEATFLOOR:
 		case CLUNET_COMMAND_TIME:
 		case CLUNET_COMMAND_TIME_INFO:
@@ -291,6 +291,13 @@ signed int heatfloor_sensor_temperature_request(unsigned char channel){
 		break;
 	}
 	if (device){
+		
+		//методы обработки команд oneWire содержат sei() и cli(),
+		//которые будут убивать корректную работу clunet, поэтому
+		//по крайней мере дождемся окончания текущей отправки, если она имеется
+		
+		while(clunet_ready_to_send());
+		
 		if (temperatureRequest(device, &t)){
 			return t;
 		}

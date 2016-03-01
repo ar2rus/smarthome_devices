@@ -1,13 +1,12 @@
 
 #include "Wardrobe.h"
 
-volatile unsigned char doorsStateValue;
+unsigned char doors_state_value;
 
-volatile unsigned int systime = 0;
-volatile unsigned int sensor_check_time = 0;
+volatile unsigned char systime = 0;
 
 void doorsResponse(unsigned char address){
-	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, (char*)&doorsStateValue, sizeof(doorsStateValue));
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, (char*)&doors_state_value, sizeof(doors_state_value));
 }
 
 ISR(TIMER_COMP_VECTOR){
@@ -34,12 +33,14 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 }
 
 
+unsigned char sensor_check_time = 0;
+
 int main(void){
 	cli();
 	
 	DOOR_ADD_INIT;
 	DOORS_SENSORS_INIT;
-	doorsStateValue = !DOORS_SENSORS_READ;
+	doors_state_value = !DOORS_SENSORS_READ;
 	
 	clunet_set_on_data_received(clunet_data_received);
 	clunet_buffered_init();
@@ -55,13 +56,27 @@ int main(void){
 		}
 		
 		if (sensor_check_time != systime){
-			unsigned char doors = DOORS_SENSORS_READ;
+			unsigned char doors_temp_value = DOORS_SENSORS_READ;
 			
 			//check doors
-			if (doorsStateValue != doors){
-				doorsStateValue = doors;
+			if (doors_state_value != doors_temp_value){
+				
+				unsigned char trigger_light = 0;
+				//check should trigger light
+				if ((doors_state_value > 0) ^ (doors_temp_value > 0)){
+					trigger_light = 1;
+				}
+				
+				doors_state_value = doors_temp_value;
 				doorsResponse(CLUNET_BROADCAST_ADDRESS);
+				
+				if (trigger_light){
+					char data[2] = {doors_state_value > 0, WARDROBE_LIGHT_RELAY_ID};
+					clunet_send_fairy(WARDROBE_LIGHT_RELAY_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_SWITCH, &data[0], sizeof(data));
+				}
 			}
+			
+			sensor_check_time = systime;
 		}
 	}
 	
