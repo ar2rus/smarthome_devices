@@ -20,7 +20,7 @@ void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 unsigned char on;				//общий вкл/выкл
 unsigned char sensorCheckTimer;
 
-char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
+char stateMessageBuffer[sizeof(heatfloor_channel_infos)];
 
 
 heatfloor_channel_infos* heatfloor_refresh(){
@@ -87,8 +87,8 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				
 				//тут накапливаем ответ по всем каналам
 				heatfloor_channel_info* ci = &cis->channels[(cis->num)++];
-				ci->num = i;
-				ci->mode = heatfloor_modes_info()[i].mode;
+				//ci->num = i;
+				ci->mode = heatfloor_modes_info()->channel_modes[i].mode;
 				ci->solution = solution;
 				ci->sensorT = sensorT;
 				ci->settingT = settingT;
@@ -134,7 +134,7 @@ void heatfloor_init(
 	
 	heatfloor_dispatcher_init(hf_systime_request);
 	
-	sensorCheckTimer = HEATFLOOR_SENSOR_CHECK_TIME - 1;
+	sensorCheckTimer = HEATFLOOR_SENSOR_CHECK_TIME - 2;
 }
 
 heatfloor_channel_infos* heatfloor_state_info(){

@@ -37,15 +37,21 @@ typedef struct
 	unsigned char mode;
 	union{
 		unsigned char t;
-		unsigned char p;	//program
+		unsigned char p;	//program default
 	};
 	union{
-		unsigned char p_sa_su[2];	//programs for sa and su
+		unsigned char p_sa_su[2];	//programs for saturday & sunday
 		unsigned int timer;	
 	};
 	
 } heatfloor_channel_mode;
 
+typedef struct
+{
+	unsigned char type;	//const 0xFE;
+	
+	heatfloor_channel_mode channel_modes[HEATFLOOR_CHANNELS_COUNT];
+} heatfloor_channel_modes;
 
 typedef struct 
 {
@@ -82,12 +88,12 @@ unsigned char heatfloor_dispatcher_command(char* data, char size);
 
 heatfloor_datetime* heatfloor_systime();
 
-heatfloor_channel_mode* heatfloor_modes_info();
-heatfloor_program* heatfloor_program_info(unsigned char program_num);
 
+heatfloor_channel_modes* heatfloor_modes_info();
+heatfloor_channel_program* heatfloor_program_info(unsigned char program_num);
 
-void heatfloor_set_on_modes_changed(void(*f)(heatfloor_channel_mode* modes));
-void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program));
+void heatfloor_set_on_modes_changed(void(*f)(heatfloor_channel_modes* modes));
+void heatfloor_set_on_program_changed(void(*f)(heatfloor_channel_program* program));
 
 
 #define EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES EEPROM_ADDRESS_HEATFLOOR + 1

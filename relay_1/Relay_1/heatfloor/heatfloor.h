@@ -24,7 +24,7 @@
 
 typedef struct
 {
-	unsigned char num;		//Number of channel
+	//unsigned char num;		//Number of channel
 	unsigned char mode;		//Текущий режим
 	signed char solution;	//see heatfloor_refresh()
 	signed int sensorT;		// (t*10)
@@ -75,7 +75,7 @@ heatfloor_channel_mode* heatfloor_channel_modes_info();
 /************************************************************************/
 /*  Возвращает параметры программы работы теплого пола по ее номеру		*/
 /************************************************************************/
-heatfloor_program* heatfloor_program_info(unsigned char program_num);
+heatfloor_channel_program* heatfloor_program_info(unsigned char program_num);
 
 /***********************************************************************************************************/
 /*Установка функции, которая вызывается для определения моментов обновления							       */
@@ -94,7 +94,7 @@ void heatfloor_set_on_channel_modes_changed(void(*f)(heatfloor_channel_mode* mod
 /***********************************************************************************************************/
 /*Установка функции, которая вызывается при изменении программы работы теплого пола	    				   */
 /***********************************************************************************************************/
-void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfloor_program* program));
+void heatfloor_set_on_program_changed(void(*f)(heatfloor_channel_program* program));
 
 
 void heatfloor_on(unsigned char on_);

@@ -64,12 +64,11 @@ void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned ch
 unsigned char DS18B20_ReadDevice(unsigned char bus, unsigned char* id, signed int* temperature){
 	
 	unsigned char scratchpad[9];
-	unsigned char i;
 	
 	OWI_DetectPresence(bus);
 	OWI_MatchRom(id, bus);
 	OWI_SendByte(DS18B20_READ_SCRATCHPAD, bus);
-	for (i = 0; i <= 8; i++){
+	for (unsigned char i = 0; i <= 8; i++){
 		scratchpad[i] = OWI_ReceiveByte(bus);
 	}
 	
@@ -84,7 +83,10 @@ unsigned char DS18B20_ReadDevice(unsigned char bus, unsigned char* id, signed in
 		*temperature = -(~(*temperature) + 1);
 	}
 	
-	*temperature *= 0.625f;
+	//*temperature *= 0.625f;
+	
+	*temperature *= 5;	//0.625 = 5/8
+	*temperature /= 8;
 	
 	return READ_SUCCESSFUL;
 }

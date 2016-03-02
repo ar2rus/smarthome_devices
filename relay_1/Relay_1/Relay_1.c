@@ -120,12 +120,12 @@ void heatfloor_states_response(unsigned char address, heatfloor_channel_infos* i
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)infos), infos->num * sizeof(heatfloor_channel_info) + 1);
 }
 
-void heatfloor_modes_response(unsigned char address, heatfloor_channel_mode* modes){
-	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)modes), HEATFLOOR_CHANNELS_COUNT * sizeof(heatfloor_channel_mode));
+void heatfloor_modes_response(unsigned char address, heatfloor_channel_modes* modes){
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)modes), sizeof(heatfloor_channel_modes));
 }
 
-void heatfloor_program_response(unsigned char address, unsigned char program_num, heatfloor_program* program){
-	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)program), sizeof(heatfloor_program));
+void heatfloor_program_response(unsigned char address, heatfloor_channel_program* program){
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)program), sizeof(heatfloor_channel_program));
 }
 
 
@@ -207,8 +207,6 @@ void cmd(clunet_msg* m){
 // 			break;
 		case CLUNET_COMMAND_HEATFLOOR:
 			switch (m->size){
-				//case 0x00:
-				//	break;
 				case 0x01:
 					switch(m->data[0]){
 						case 0x00:
@@ -232,7 +230,7 @@ void cmd(clunet_msg* m){
 						case 0xF7:
 						case 0xF8:
 						case 0xF9:	//запрос параметров программы (0-9)
-							heatfloor_program_response(m->src_address, m->data[0] & 0x0F, heatfloor_program_info(m->data[0] & 0x0F));
+							heatfloor_program_response(m->src_address, heatfloor_program_info(m->data[0] ));
 						
 						//case 0xFE:	//setup ds18b20 (temporary)
 							//	DS18B20_SetDeviceAccuracy(OWI_BUS, &HEATING_FLOOR_CHANNEL_0_SENSOR_1W_ID, 3);
@@ -240,7 +238,7 @@ void cmd(clunet_msg* m){
 					}
 					break;
 				default:
-					heatfloor_command(m->data, m->size);
+					heatfloor_command(m->data, m->size);	//применение параметров
 					break;
 			}
 			break;
@@ -279,7 +277,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 }
 
 signed int heatfloor_sensor_temperature_request(unsigned char channel){
-	signed int t;
+	
 	OWI_device* device = NULL;
 	
 	switch (channel){
@@ -297,7 +295,7 @@ signed int heatfloor_sensor_temperature_request(unsigned char channel){
 		//по крайней мере дождемся окончания текущей отправки, если она имеется
 		
 		while(clunet_ready_to_send());
-		
+		signed int t;
 		if (temperatureRequest(device, &t)){
 			return t;
 		}
@@ -329,12 +327,12 @@ void heatfloor_states_message(heatfloor_channel_infos* infos){
 	heatfloor_states_response(CLUNET_BROADCAST_ADDRESS, infos);
 }
 
-void heatfloor_modes_message(heatfloor_channel_mode* modes){
+void heatfloor_modes_message(heatfloor_channel_modes* modes){
 	heatfloor_modes_response(CLUNET_BROADCAST_ADDRESS, modes);
 }
 
-void heatfloor_program_message(unsigned char program_num, heatfloor_program* program){
-	heatfloor_program_response(CLUNET_BROADCAST_ADDRESS, program_num, program);
+void heatfloor_program_message(heatfloor_channel_program* program){
+	heatfloor_program_response(CLUNET_BROADCAST_ADDRESS, program);
 }
 
 
@@ -348,7 +346,7 @@ ISR(TIMER_COMP_VECTOR){
 
 
 
-unsigned int hf_time = 0;
+unsigned char hf_time = 0;
 
 int main(void){
 	
@@ -364,15 +362,15 @@ int main(void){
 	clunet_init();
 	
 	heatfloor_init(
-		heatfloor_sensor_temperature_request,
-		heatfloor_control_switch_request, 
-		heatfloor_systime_request
-		);
+			heatfloor_sensor_temperature_request,
+			heatfloor_control_switch_request, 
+			heatfloor_systime_request
+			);
+			
+			heatfloor_set_on_states_message(heatfloor_states_message);
+			heatfloor_set_on_modes_changed(heatfloor_modes_message);
+			heatfloor_set_on_program_changed(heatfloor_program_message);
 		
-	heatfloor_set_on_states_message(heatfloor_states_message);
-	heatfloor_set_on_modes_changed(heatfloor_modes_message);
-	heatfloor_set_on_program_changed(heatfloor_program_message);
-	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;
 		
