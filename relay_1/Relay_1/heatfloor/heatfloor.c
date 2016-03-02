@@ -17,7 +17,7 @@ void (*on_heatfloor_control_switch_request)(unsigned char channel, unsigned char
 void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
 
-unsigned char on;				//вкл/выкл состояние
+unsigned char on;				//общий вкл/выкл
 unsigned char sensorCheckTimer;
 
 char stateMessageBuffer[HEATFLOOR_CHANNELS_COUNT*sizeof(heatfloor_channel_info)+1];
@@ -32,17 +32,17 @@ heatfloor_channel_infos* heatfloor_refresh(){
 	if (on){
 		for (unsigned char i = 0; i < HEATFLOOR_CHANNELS_COUNT; i++){
 			signed int settingT = heatfloor_dispatcher_resolve_temperature_setting(i);
-			if (settingT != 0){
+			//if (settingT != 0){
 				
 				signed int sensorT = -1;
-				
-				if (on_heatfloor_sensor_temperature_request){
-					sensorT = (*on_heatfloor_sensor_temperature_request)(i);
-				}
-				
 				signed char solution = 0;
 				
 				if (settingT > 0){
+					
+					if (on_heatfloor_sensor_temperature_request){
+						sensorT = (*on_heatfloor_sensor_temperature_request)(i);
+					}
+					
 					if (sensorT >= 0){
 						//check range
 						if (sensorT >= HEATFLOOR_MIN_TEMPERATURE_10 && sensorT <= HEATFLOOR_MAX_TEMPERATURE_10){
@@ -55,7 +55,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 								//сохраняем состояние: удерживаем нагревание, пока не выйдет за верхнюю границу
 								//или удерживаем охлаждение, пока не выйдем за нижнюю границу
 								
-								//при уставке 28 и гистерезисе 0.3 - будем разогреваться до 28(и еще инерция порядка 0,3) и охлаждаться до 27.7
+								//при уставке 28 и допустимом диапазоне 0.3 - будем разогреваться до 28(и еще инерция порядка 0,3) и охлаждаться до 27.7
 						}else{
 							solution = -3;						    //ошибка диапазона значения с датчика (85*, например)
 						}
@@ -63,7 +63,20 @@ heatfloor_channel_infos* heatfloor_refresh(){
 						solution = -2;								//ошибка чтения значения с датчика
 					}
 				}else{
-					solution = -4;									//ошибка получения значения от диспетчера
+					
+					//при таких значения, полученных от диспетчера
+					//измерять значение сенсором не имеет смысла
+					switch (settingT){
+						case INT16_MIN:		//ошибка диспетчера
+							solution = -4;
+							settingT = -1;	//изменяем только для вывода
+							break;
+						//case  0:			//уставка 0 - отключен
+						//case -1:			//режим выкл
+						default:			//прочее
+							solution = -1;	//остужаемся в любом случае
+							break;
+					}
 				}
 				
 				if (solution != 0){
@@ -80,9 +93,9 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				ci->sensorT = sensorT;
 				ci->settingT = settingT;
 				
-			}else{
-				//канал отключен
-			}
+			//}else{
+			//	//канал отключен
+			//}
 		}
 	}
 	return cis;

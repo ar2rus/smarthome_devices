@@ -62,54 +62,60 @@ signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channe
 		
 		switch (cm[channel].mode){
 			case HEATFLOOR_MODE_OFF:
-				return 0;	//отключен
+				return -1;							//отключен (режим)
 			case HEATFLOOR_MODE_MANUAL:
-				return cm[channel].params[0] * 10;
-			
-			case HEATFLOOR_MODE_DAY:
-			case HEATFLOOR_MODE_WEEK:
-			{
-				unsigned char program_num;
-				if (cm[channel].mode == HEATFLOOR_MODE_DAY){
-					program_num = cm[channel].params[0];
-				}else{
-					program_num = cm[channel].params[time.day_of_week - 1];
-				}
-				
-				if (program_num >=0 && program_num < 10){
-					//если в кэше нет программы - то выгружаем туда из eeprom
-					if (cpc[channel].program_num != program_num){
-						//сохраняем в кэш
-						memcpy(&cpc[channel].program, heatfloor_program_info(program_num), sizeof(heatfloor_program));
-						cpc[channel].program_num = program_num;
-					}
-					heatfloor_program* p = &cpc[channel].program;
-				
-					if (p->num_values > 0 && p->num_values < 10){
-						unsigned char i = p->num_values - 1;
-						while (i > 0){
-							if (time.hours >= p->values[i].hour){
-								break;
-							}
-							i--;
-						}
-						return p->values[i].t * 10;
-					}
-				}
-				return -1;
-			}
-			
 			case HEATFLOOR_MODE_PARTY:
+				return cm[channel].t * 10;
+			case HEATFLOOR_MODE_DAY:
+			case HEATFLOOR_MODE_DAY_FOR_TODAY:
+			case HEATFLOOR_MODE_WEEK:
+				{
+					unsigned char program_num = cm[channel].p;
+					if (cm[channel].mode == HEATFLOOR_MODE_WEEK){
+						switch (time.day_of_week){
+							case 6:
+								program_num = cm[channel].p_sa_su[PROGRAM_SA];
+								break;
+							case 7:
+								program_num = cm[channel].p_sa_su[PROGRAM_SU];
+								break;
+						}
+					}
+				
+					if (program_num < 10){
+						//если в кэше нет программы - то выгружаем туда из eeprom
+						if (cpc[channel].program_num != program_num){
+							//сохраняем в кэш
+							memcpy(&cpc[channel].program, heatfloor_program_info(program_num), sizeof(heatfloor_program));
+							cpc[channel].program_num = program_num;
+						}
+						heatfloor_program* p = &cpc[channel].program;
+				
+						if (p->num_values > 0 && p->num_values < 10){
+							unsigned char i = p->num_values - 1;
+							while (i > 0){
+								if (time.hours >= p->values[i].hour){
+									break;
+								}
+								i--;
+							}
+							return p->values[i].t * 10;
+						}
+					}
+				}
 				break;
-			default:
-				return -1;	//неизвестный режим
+			//default:
+			//	return INT16_MIN;	//неизвестный режим (ошибка диспетчера)
 		}
 	}
 	
-	return -1;	//диспетчер не проинициализирован
+	return INT16_MIN; //диспетчер не проинициализирован (ошибка диспетчера)
 }
 
 void heatfloor_dispatcher_tick_second(){
+	
+	heatfloor_channel_mode* cm = (heatfloor_channel_mode*)(&channel_modes_buf[0]);
+	
 	if (is_time_valid()){
 		if (++time.seconds == 60){
 			time.seconds = 0;
@@ -120,11 +126,29 @@ void heatfloor_dispatcher_tick_second(){
 					if (++time.day_of_week == 8){
 						time.day_of_week = 1;
 					}
+					
+					//reset day_for_today programs
+					for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
+						if (cm[i].mode == HEATFLOOR_MODE_DAY_FOR_TODAY){
+							//load default mode from eeprom
+							eeprom_read_block(&cm[i], (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES + i*sizeof(heatfloor_channel_mode), sizeof(heatfloor_channel_mode));
+						}
+					}
 				}
-				//корректируем время каждый час
-				requestSystime();
+				requestSystime();	//корректируем время каждый час
 			}
 		}
+		
+		//dec timers on party modes, if exists
+		for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
+			if (cm[i].mode == HEATFLOOR_MODE_PARTY){
+				if (--cm[i].timer==0){
+					//load default mode from eeprom
+					eeprom_read_block(&cm[i], (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES + i*sizeof(heatfloor_channel_mode), sizeof(heatfloor_channel_mode));
+				}
+			}
+		}
+		
 	}else{
 		requestSystime();
 	}
@@ -139,7 +163,8 @@ void heatfloor_dispatcher_tick_second(){
 //		1 - ручной (с указанием поддерживаемой t*)
 //		2 - дневной (с указанием номера программы)
 //		3 - недельный (с указанием 7 программ на каждый день)
-//		4 - вечеринка (фиксированные 30* в течение 3 часов)
+//		4 - вечеринка (с указанием поддерживаемой t* и времени в секундах)
+//		5 - дневной на сегодня (с указанием программы)
 //  2-байт: битовая маска каналов, на которые распространяется команда
 //  3-9 байты: необходимые доп.параметры для режимов
 
@@ -148,67 +173,52 @@ unsigned char heatfloor_dispatcher_set_mode(char* data, char size){
 	if (size > 1){
 		heatfloor_channel_mode* cm = (heatfloor_channel_mode*)(&channel_modes_buf[0]);
 		
-		switch (data[0]){
-			case HEATFLOOR_MODE_OFF:	//выкл (режим) канал
-			case HEATFLOOR_MODE_PARTY:	//вечеринка
-			if (size == 2){
-				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-					if (test_bit(data[1],i)){
-						cm[i].mode = data[0];
-						if (data[0] == HEATFLOOR_MODE_OFF){
-							r = 1;
-						}else{
-							r = -1;	//не сохраняем в eeprom, если вечеринка
-						}
-					}
-				}
-			}
-			break;
-			case HEATFLOOR_MODE_MANUAL:	//ручной режим, с установленной t*
-			case HEATFLOOR_MODE_DAY:	//дневной режим с установленной программой
-			if (size == 3){
-				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-					if (test_bit(data[1],i)){
-						cm[i].mode = data[0];
-						cm[i].params[0] = data[2];
-						r = 1;
-					}
-				}
-			}
-			break;
-			case HEATFLOOR_MODE_WEEK: //недельный режим, с указанием 7-ми программ
-			if (size == 9){
-				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-					if (test_bit(data[1],i)){
-						cm[i].mode = data[0];
-						for (int j=0; j<7; j++){
-							cm[i].params[j] = data[2+j];
-						}
-						r = 1;
-					}
-				}
-			}
-			break;
+		//check size
+		switch(data[0]){
+			case HEATFLOOR_MODE_OFF:
+				r = size == 2;
+				break;
+			case HEATFLOOR_MODE_MANUAL:
+			case HEATFLOOR_MODE_DAY:
+			case HEATFLOOR_MODE_DAY_FOR_TODAY:
+				r = size == 3;
+				break;
+			case HEATFLOOR_MODE_WEEK:
+			case HEATFLOOR_MODE_PARTY:
+				r = size == 5;
+				break;
 		}
 		
-		if (r != 0){
-			if (r > 0){	//сохраняем в eeprom
-				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-					if (test_bit(data[1],i)){
-						eeprom_busy_wait();
-						eeprom_update_block(&cm[i], (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES + (i*sizeof(heatfloor_channel_mode)), sizeof(heatfloor_channel_mode));
+		if (r){
+			r = 0;
+			for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
+				if (test_bit(data[1], i)){
+					memcpy(&cm[i], &data[0], size);	//копируем все как есть
+					
+					//определяем режимы, при которых сохраняем в eeprom
+					switch (data[0]){
+						case HEATFLOOR_MODE_OFF:
+						case HEATFLOOR_MODE_MANUAL:
+						case HEATFLOOR_MODE_DAY:
+						case HEATFLOOR_MODE_WEEK:
+							eeprom_busy_wait();
+							eeprom_update_block(&cm[i], (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES + (i*sizeof(heatfloor_channel_mode)), sizeof(heatfloor_channel_mode));
+							break;
 					}
+					r = 1;
 				}
 			}
 			
-			//сообщение об изменении режима
-			if (on_heatfloor_channel_modes_changed){
-				(*on_heatfloor_channel_modes_changed)(cm);
+			if (r){
+				//сообщение об изменении режима
+				if (on_heatfloor_channel_modes_changed){
+					(*on_heatfloor_channel_modes_changed)(cm);
+				}
 			}
-			return 1;
+			
 		}
 	}
-	return 0;
+	return r;
 }
 
 
@@ -221,34 +231,38 @@ unsigned char heatfloor_dispatcher_set_mode(char* data, char size){
 unsigned char heatfloor_dispatcher_set_program(char* data, char size){
 	signed char r = 0;
 	if (size > 3){
-		if (data[1] >= 0 && data[1] < 10){	//номер программы
-			heatfloor_program* hp = (heatfloor_program*)(&program_buf[0]);
-			
-			hp->num_values = 0;
-			signed char h = -1;
+		
+		char programNum = data[0];
+		
+		if (programNum >=0 && programNum < 10){	//номер программы
 			r = 1;
-			for (int i=2; i<size; i+=2){
-				if (data[i] <= h && data[i] > 23){	//нарушен порядок часов в программе, или указан неверный час
+			
+			heatfloor_program* hp = (heatfloor_program*)(&program_buf[0]);
+			hp->num_values = 0;
+			
+			signed char h = -1;
+			for (int i=1; i<size; i+=2){
+				if (data[i] <= h || data[i] > 23){	//нарушен порядок часов в программе, или указан неверный час
 					r= 0;
 					break;
 				}else{
 					h = data[i];
 				}
 				hp->values[hp->num_values].hour = data[i + 0];
-				hp->values[hp->num_values].t = data[i + 1];
+				hp->values[hp->num_values].t    = data[i + 1];
 				hp->num_values++;
 			}
 			
 			//если программа корректная -> сохраняем в eeprom
 			if (r){
 				eeprom_busy_wait();
-				eeprom_update_block(hp, (void *)EEPROM_ADDRESS_HEATFLOOR_PROGRAMS + (data[1]*sizeof(heatfloor_program)), sizeof(heatfloor_program));
+				eeprom_update_block(hp, (void *)EEPROM_ADDRESS_HEATFLOOR_PROGRAMS + (programNum * sizeof(heatfloor_program)), sizeof(heatfloor_program));
 				
 				heatfloor_clear_channel_programs_cache();
 				
 				//сообщение об изменении режима
 				if (on_heatfloor_program_changed){
-					(*on_heatfloor_program_changed)(data[1], hp);
+					(*on_heatfloor_program_changed)(programNum, hp);
 				}
 			}
 		}
@@ -266,7 +280,7 @@ unsigned char heatfloor_dispatcher_command(char* data, char size){
 			case HEATFLOOR_MODE_PARTY:
 				return heatfloor_dispatcher_set_mode(data, size);
 			case 0xFD:
-				return heatfloor_dispatcher_set_program(data, size);
+				return heatfloor_dispatcher_set_program(&data[1], size-1);	//отдаем только программу, без первого байта 0xFD
 		}
 	}
 	return 0;
@@ -294,11 +308,10 @@ void heatfloor_set_on_program_changed(void(*f)(unsigned char program_num, heatfl
 
 void heatfloor_dispatcher_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))){
 	eeprom_read_block(&channel_modes_buf, (void *)EEPROM_ADDRESS_HEATFLOOR_CHANNEL_MODES, sizeof(channel_modes_buf));
-	
 	heatfloor_clear_channel_programs_cache();
-	time.day_of_week = 0;	//undefined time
 	
-	//apply and request for current time
+	time.day_of_week = 0;	//undefined time
 	on_heatfloor_dispather_request_systime = f_request_systime;
-	requestSystime();
+	
+	//requestSystime();
 }

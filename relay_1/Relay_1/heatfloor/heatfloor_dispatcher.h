@@ -17,7 +17,7 @@
 #define HEATFLOOR_MODE_DAY 2
 #define HEATFLOOR_MODE_WEEK 3
 #define HEATFLOOR_MODE_PARTY 4
-
+#define HEATFLOOR_MODE_DAY_FOR_TODAY 5
 
 typedef struct
 {
@@ -29,10 +29,20 @@ typedef struct
 } heatfloor_datetime;
 
 
+#define PROGRAM_SA 0
+#define PROGRAM_SU 1
+
 typedef struct
 {
 	unsigned char mode;
-	unsigned char params[7];
+	union{
+		unsigned char t;
+		unsigned char p;	//program
+	};
+	union{
+		unsigned char p_sa_su[2];	//programs for sa and su
+		unsigned int timer;	
+	};
 	
 } heatfloor_channel_mode;
 
