@@ -43,8 +43,8 @@ void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned ch
 	OWI_SendByte(DS18B20_COPY_SCRATCHPAD, bus);
 	
 	/*ждем, когда запись в EEPROM завершится*/
-	//while (!OWI_ReadBit(bus));
-	while (!(OWI_PIN & bus));		//without sei(), cli();
+	while (!OWI_ReadBit(bus));
+	//while (!(OWI_PIN & bus));		//without sei(), cli();
 }
 
 

@@ -325,7 +325,7 @@ void heatfloor_program_message(heatfloor_program* program){
 }
 
 
-volatile unsigned char systime = 0;
+volatile unsigned int systime = 0;
 
 ISR(TIMER_COMP_VECTOR){
 	++systime;
@@ -335,7 +335,7 @@ ISR(TIMER_COMP_VECTOR){
 
 
 
-unsigned char hf_time = 0;
+unsigned int hf_time = 0;
 
 int main(void){
 	
@@ -368,10 +368,10 @@ int main(void){
 			cmd(clunet_buffered_pop());
 		}
 		
-		if (hf_time != systime){
-			heatfloor_tick_second();
-			
+		if (hf_time + 1000 < systime){
 			hf_time = systime;
+			
+			heatfloor_tick_second();
 		}
 	}
 	return 0;

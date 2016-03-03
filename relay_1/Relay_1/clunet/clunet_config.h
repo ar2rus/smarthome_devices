@@ -65,11 +65,11 @@
 //Максимальный размер сообщения возможный сохранить в буффер.
 //Устанавливать по максимальной длине сообщения (data) необходимых 
 //к сохранению команд
-#define CLUNET_BUFFERED_DATA_MAX_LENGTH 48
+#define CLUNET_BUFFERED_DATA_MAX_LENGTH 24
 
 /* Размер буфера входящих сообщений 
 	Устанавливать исходя из свободной ОЗУ (2-20 шт) 
 */
-#define CLUNET_BUFFERED_BUFFER_SIZE 5
+#define CLUNET_BUFFERED_BUFFER_SIZE 10
 
 #endif
