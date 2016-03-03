@@ -12,6 +12,9 @@
 //number of active channel -> for memory buffer allocating
 #define HEATFLOOR_CHANNELS_COUNT 2
 
+//max number of different dispatcher programs -> for eeprom allocating
+#define HEATFLOOR_PROGRAMS_COUNT 10
+
 //in seconds
 #define HEATFLOOR_SENSOR_CHECK_TIME 30
 //in degrees, Celsius

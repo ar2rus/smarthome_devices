@@ -3,7 +3,7 @@
 
 OWI_device devices[OWI_MAX_BUS_DEVICES];
 
-signed char switchState(char id){
+signed char switchState(unsigned char id){
 	switch(id){
 		case RELAY_0_ID:
 			return RELAY_0_STATE;
@@ -18,7 +18,7 @@ signed char switchState(char id){
 	return -1;
 }
 
-void switchExecute(char id, char command){
+void switchExecute(unsigned char id, unsigned char command){
 	switch(command){
 		case 0x00:	//откл
 		switch(id){
@@ -93,15 +93,15 @@ char temperatureRequest(OWI_device* device, signed int* temperature){
 }
 
 /*
-* Запрос температуры для устройств devices одновременно
+* Запрос температуры для устройств devices одновременно и выдача ответа по clunet
 */
 void temperatureResponse(unsigned char address, OWI_device* devices, unsigned char size){
 	char temperatureInfo[11 * size + 1];
-	unsigned char cnt = 0;
 	
+	unsigned char cnt = 0;
 	if (size > 0){
 		DS18B20_StartAllDevicesConverting(OWI_BUS);
-		for (char i=0; i<size; i++){
+		for (int i=0; i<size; i++){
 			unsigned char pos = 1 + 11*cnt;
 			if (DS18B20_ReadDevice(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9]) != READ_CRC_ERROR){
 				temperatureInfo[pos] = 0; //1-wire
@@ -124,8 +124,8 @@ void heatfloor_modes_response(unsigned char address, heatfloor_channel_modes* mo
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)modes), sizeof(heatfloor_channel_modes));
 }
 
-void heatfloor_program_response(unsigned char address, heatfloor_channel_program* program){
-	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)program), sizeof(heatfloor_channel_program));
+void heatfloor_program_response(unsigned char address, heatfloor_program* program){
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HEATFLOOR_INFO, ((char*)program), sizeof(heatfloor_program));
 }
 
 
@@ -136,7 +136,7 @@ void heatfloor_systime_request( void (*f)(unsigned char seconds, unsigned char m
 	//пришел запрос на получение нового значения текущего времени
 	//в параметре - функция ответа (асинхронно)
 	heatfloor_systime_async_response = f;
-	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin only!!!
+	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin clients only!!!
 }
 
 void cmd(clunet_msg* m){
@@ -220,17 +220,8 @@ void cmd(clunet_msg* m){
 							heatfloor_modes_response(m->src_address, heatfloor_modes_info());
 							break;
 						
-						case 0xF0:
-						case 0xF1:
-						case 0xF2:
-						case 0xF3:
-						case 0xF4:
-						case 0xF5:
-						case 0xF6:
-						case 0xF7:
-						case 0xF8:
-						case 0xF9:	//запрос параметров программы (0-9)
-							heatfloor_program_response(m->src_address, heatfloor_program_info(m->data[0] ));
+						case 0xF0 ... 0xF9:	//запрос параметров программы (0-9)
+							heatfloor_program_response(m->src_address, heatfloor_program_info(m->data[0]));
 						
 						//case 0xFE:	//setup ds18b20 (temporary)
 							//	DS18B20_SetDeviceAccuracy(OWI_BUS, &HEATING_FLOOR_CHANNEL_0_SENSOR_1W_ID, 3);
@@ -242,13 +233,11 @@ void cmd(clunet_msg* m){
 					break;
 			}
 			break;
-		case CLUNET_COMMAND_TIME:
-		{
+		case CLUNET_COMMAND_TIME: {
 			//send heatfloor current time for debug
 			heatfloor_datetime* dt = heatfloor_systime();
 			
 			char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
-							
 			clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME_INFO, &hd[0], sizeof(hd));
 			break;
 		}
@@ -331,7 +320,7 @@ void heatfloor_modes_message(heatfloor_channel_modes* modes){
 	heatfloor_modes_response(CLUNET_BROADCAST_ADDRESS, modes);
 }
 
-void heatfloor_program_message(heatfloor_channel_program* program){
+void heatfloor_program_message(heatfloor_program* program){
 	heatfloor_program_response(CLUNET_BROADCAST_ADDRESS, program);
 }
 
@@ -380,8 +369,9 @@ int main(void){
 		}
 		
 		if (hf_time != systime){
-			hf_time = systime;
 			heatfloor_tick_second();
+			
+			hf_time = systime;
 		}
 	}
 	return 0;

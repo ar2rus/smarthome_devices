@@ -43,7 +43,8 @@ void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned ch
 	OWI_SendByte(DS18B20_COPY_SCRATCHPAD, bus);
 	
 	/*ждем, когда запись в EEPROM завершится*/
-	while (!OWI_ReadBit(bus));
+	//while (!OWI_ReadBit(bus));
+	while (!(OWI_PIN & bus));		//without sei(), cli();
 }
 
 
@@ -104,7 +105,8 @@ void DS18B20_StartAllDevicesConverting(unsigned char bus){
     OWI_SendByte(DS18B20_CONVERT_T, bus);
 
     /*ждем, когда датчик завершит преобразование*/ 
-    while (!OWI_ReadBit(bus));
+    //while (!OWI_ReadBit(bus));
+	while (!(OWI_PIN & bus));		//without sei(), cli();
 }
 
 /*****************************************************************************
@@ -127,7 +129,8 @@ unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned c
     OWI_SendByte(DS18B20_CONVERT_T, bus);
 
     /*ждем, когда датчик завершит преобразование*/ 
-    while (!OWI_ReadBit(bus));
+    //while (!OWI_ReadBit(bus));
+	while (!(OWI_PIN & bus));		//without sei(), cli();
 
    return DS18B20_ReadDevice(bus, id, temperature);
 }

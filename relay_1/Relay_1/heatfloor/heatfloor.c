@@ -12,22 +12,19 @@
 #include <avr/eeprom.h>
 
 signed int (*on_heatfloor_sensor_temperature_request)(unsigned char channel) = 0;
-
 void (*on_heatfloor_control_switch_request)(unsigned char channel, unsigned char on_) = 0;
-void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
+void (*on_heatfloor_state_message)(heatfloor_channel_infos* infos) = 0;
 
 unsigned char on;				//общий вкл/выкл
 unsigned char sensorCheckTimer;
 
-char stateMessageBuffer[sizeof(heatfloor_channel_infos)];
-
+heatfloor_channel_infos channel_infos;
 
 heatfloor_channel_infos* heatfloor_refresh(){
 	sensorCheckTimer = 0;
 	
-	heatfloor_channel_infos* cis = (heatfloor_channel_infos*)(&stateMessageBuffer[0]);
-	cis->num = 0;
+	channel_infos.num = 0;
 	
 	if (on){
 		for (unsigned char i = 0; i < HEATFLOOR_CHANNELS_COUNT; i++){
@@ -65,7 +62,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				}else{
 					
 					//при таких значения, полученных от диспетчера
-					//измерять значение сенсором не имеет смысла
+					//измерять значение t* сенсором не имеет смысла
 					switch (settingT){
 						case INT16_MIN:		//ошибка диспетчера
 							solution = -4;
@@ -86,9 +83,9 @@ heatfloor_channel_infos* heatfloor_refresh(){
 				}
 				
 				//тут накапливаем ответ по всем каналам
-				heatfloor_channel_info* ci = &cis->channels[(cis->num)++];
+				heatfloor_channel_info* ci = &channel_infos.channels[channel_infos.num++];
 				//ci->num = i;
-				ci->mode = heatfloor_modes_info()->channel_modes[i].mode;
+				ci->mode = heatfloor_modes_info()->channels[i].mode;
 				ci->solution = solution;
 				ci->sensorT = sensorT;
 				ci->settingT = settingT;
@@ -98,7 +95,7 @@ heatfloor_channel_infos* heatfloor_refresh(){
 			//}
 		}
 	}
-	return cis;
+	return &channel_infos;
 }
 
 //вызывает рефреш и генерирует события ответа
@@ -134,7 +131,7 @@ void heatfloor_init(
 	
 	heatfloor_dispatcher_init(hf_systime_request);
 	
-	sensorCheckTimer = HEATFLOOR_SENSOR_CHECK_TIME - 2;
+	sensorCheckTimer = HEATFLOOR_SENSOR_CHECK_TIME - 2;		//2 seconds on startup and then refresh
 }
 
 heatfloor_channel_infos* heatfloor_state_info(){
@@ -166,7 +163,7 @@ void heatfloor_on(unsigned char on_){
 }
 
 void heatfloor_command(char* data, unsigned char size){
-	if (heatfloor_dispatcher_command(data, size)){	//если режим изменен, нужно обновиться
-		heatfloor_refresh_responsible(1);
+	if (heatfloor_dispatcher_command(data, size)){	//если режим/программа изменены, нужно обновиться
+		heatfloor_refresh_responsible(1);			//и отправить ответ
 	}
 }
