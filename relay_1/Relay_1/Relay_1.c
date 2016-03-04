@@ -266,7 +266,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 }
 
 signed int heatfloor_sensor_temperature_request(unsigned char channel){
-	
+	/*
 	OWI_device* device = NULL;
 	
 	switch (channel){
@@ -290,6 +290,8 @@ signed int heatfloor_sensor_temperature_request(unsigned char channel){
 		}
 	}
 	return -1;
+	*/
+	return 270;
 }
 
 void heatfloor_control_switch_request(unsigned char channel, unsigned char on_){
@@ -368,7 +370,7 @@ int main(void){
 			cmd(clunet_buffered_pop());
 		}
 		
-		if (hf_time + 1000 < systime){
+		if (systime - hf_time >= 1000){
 			hf_time = systime;
 			
 			heatfloor_tick_second();

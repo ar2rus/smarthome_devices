@@ -162,14 +162,14 @@ void heatfloor_dispatcher_tick_second(){
 			}
 		}
 		
-		//dec timers on party modes, if exists
-		for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
-			if (modes.channels[i].mode == HEATFLOOR_MODE_PARTY){
-				if (!(--modes.channels[i].timer)){
-					loadDefaultMode(i);
-				}
-			}
-		}
+// 		dec timers on party modes, if exists
+// 				for (int i=0; i<HEATFLOOR_CHANNELS_COUNT; i++){
+// 					if (modes.channels[i].mode == HEATFLOOR_MODE_PARTY){
+// 						if (!(--modes.channels[i].timer)){
+// 							loadDefaultMode(i);
+// 						}
+// 					}
+// 				}
 		
 	}else{
 		requestSystime();
