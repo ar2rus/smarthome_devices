@@ -25,8 +25,10 @@
 
 void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned char accuracy);
 
-void DS18B20_StartAllDevicesConverting(unsigned char bus);
-unsigned char DS18B20_ReadDevice(unsigned char bus, unsigned char* id, signed int* temperature);
-unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned char* id, signed int* temperature);
+//void DS18B20_StartAllDevicesConverting(unsigned char bus);
+//unsigned char DS18B20_ReadDevice(unsigned char bus, unsigned char* id, signed int* temperature);
+//unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned char* id, signed int* temperature);
+
+unsigned char DS18B20_ReadDeviceCache(unsigned char bus, unsigned char* id, signed int* temperature, unsigned int curTime);
 
 #endif /* DS18B20_H_ */

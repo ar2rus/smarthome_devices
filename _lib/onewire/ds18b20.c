@@ -12,7 +12,10 @@
 #include "OWIHighLevelFunctions.h"
 #include "OWIcrc.h"
 
+#include "utils/bits.h"
+
 #include <util/delay.h>
+#include <avr/interrupt.h>
 
 /*****************************************************************************
 *   Function name : DS18B20_SetDeviceAccuracy
@@ -42,9 +45,7 @@ void DS18B20_SetDeviceAccuracy(unsigned char bus, unsigned char* id, unsigned ch
 	OWI_MatchRom(id, bus);
 	OWI_SendByte(DS18B20_COPY_SCRATCHPAD, bus);
 	
-	/*ждем, когда запись в EEPROM завершится*/
 	while (!OWI_ReadBit(bus));
-	//while (!(OWI_PIN & bus));		//without sei(), cli();
 }
 
 
@@ -105,8 +106,8 @@ void DS18B20_StartAllDevicesConverting(unsigned char bus){
     OWI_SendByte(DS18B20_CONVERT_T, bus);
 
     /*ждем, когда датчик завершит преобразование*/ 
-    //while (!OWI_ReadBit(bus));
-	while (!(OWI_PIN & bus));		//without sei(), cli();
+	//while (!OWI_ReadBit(bus));
+	_delay_ms(750);
 }
 
 /*****************************************************************************
@@ -130,7 +131,18 @@ unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned c
 
     /*ждем, когда датчик завершит преобразование*/ 
     //while (!OWI_ReadBit(bus));
-	while (!(OWI_PIN & bus));		//without sei(), cli();
-
+	_delay_ms(750);
+	
    return DS18B20_ReadDevice(bus, id, temperature);
+}
+
+
+unsigned int cacheTime;
+
+unsigned char DS18B20_ReadDeviceCache(unsigned char bus, unsigned char* id, signed int* temperature, unsigned int curTime){
+	if (curTime - cacheTime > 3){
+		cacheTime = curTime;
+		DS18B20_StartAllDevicesConverting(bus);
+	}
+	return DS18B20_ReadDevice(bus,id,temperature);
 }

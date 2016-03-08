@@ -1,6 +1,8 @@
 
 #include "Relay_1.h"
 
+volatile unsigned int systime = 0;
+
 OWI_device devices[OWI_MAX_BUS_DEVICES];
 
 signed char switchState(unsigned char id){
@@ -86,7 +88,7 @@ char oneWireSearch(OWI_device* devices){
 *  ¬озвращает 1 если запрос выполнен и 0 - если нет
 */
 char temperatureRequest(OWI_device* device, signed int* temperature){
-	if (DS18B20_StartDeviceConvertingAndRead(OWI_BUS, (*device).id, temperature) != READ_CRC_ERROR){
+	if (DS18B20_ReadDeviceCache(OWI_BUS, (*device).id, temperature, systime) != READ_CRC_ERROR){
 		return 1;
 	}
 	return 0;
@@ -99,17 +101,18 @@ void temperatureResponse(unsigned char address, OWI_device* devices, unsigned ch
 	char temperatureInfo[11 * size + 1];
 	
 	unsigned char cnt = 0;
-	if (size > 0){
-		DS18B20_StartAllDevicesConverting(OWI_BUS);
-		for (int i=0; i<size; i++){
-			unsigned char pos = 1 + 11*cnt;
-			if (DS18B20_ReadDevice(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9]) != READ_CRC_ERROR){
-				temperatureInfo[pos] = 0; //1-wire
-				memcpy(&temperatureInfo[pos + 1], (*devices).id, sizeof((*devices).id));
-				cnt++;
-			}
-			devices++;
+	//DS18B20_StartAllDevicesConverting(OWI_BUS);
+	for (unsigned char i=0; i<size; i++){
+		unsigned char pos = 1 + 11*cnt;
+		
+		while(clunet_ready_to_send());
+		
+		if (DS18B20_ReadDeviceCache(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9], systime) != READ_CRC_ERROR){
+			temperatureInfo[pos] = 0; //1-wire
+			memcpy(&temperatureInfo[pos + 1], (*devices).id, sizeof((*devices).id));
+			cnt++;
 		}
+		devices++;
 	}
 
 	temperatureInfo[0] = cnt;
@@ -234,7 +237,7 @@ void cmd(clunet_msg* m){
 			}
 			break;
 		case CLUNET_COMMAND_TIME: {
-			//send heatfloor current time for debug
+ 			//send heatfloor current time for debug
 			heatfloor_datetime* dt = heatfloor_systime();
 			
 			char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
@@ -266,7 +269,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 }
 
 signed int heatfloor_sensor_temperature_request(unsigned char channel){
-	/*
+	
 	OWI_device* device = NULL;
 	
 	switch (channel){
@@ -290,8 +293,6 @@ signed int heatfloor_sensor_temperature_request(unsigned char channel){
 		}
 	}
 	return -1;
-	*/
-	return 270;
 }
 
 void heatfloor_control_switch_request(unsigned char channel, unsigned char on_){
@@ -325,9 +326,6 @@ void heatfloor_modes_message(heatfloor_channel_modes* modes){
 void heatfloor_program_message(heatfloor_program* program){
 	heatfloor_program_response(CLUNET_BROADCAST_ADDRESS, program);
 }
-
-
-volatile unsigned int systime = 0;
 
 ISR(TIMER_COMP_VECTOR){
 	++systime;
@@ -370,7 +368,7 @@ int main(void){
 			cmd(clunet_buffered_pop());
 		}
 		
-		if (systime - hf_time >= 1000){
+		if (systime != hf_time){
 			hf_time = systime;
 			
 			heatfloor_tick_second();
