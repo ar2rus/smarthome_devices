@@ -3,7 +3,13 @@
 
 volatile unsigned int systime = 0;
 
+
+//определяет кол-во активных 1-wire устройств; запрашивается только 1 раз после инициализации.
+//если это число не соответствует действительности, следует вызвать команду oneWireSearch 
+
+char owi_num_devices = 0;
 OWI_device devices[OWI_MAX_BUS_DEVICES];
+
 
 signed char switchState(unsigned char id){
 	switch(id){
@@ -75,6 +81,13 @@ void switchResponse(unsigned char address){
 *	или -1 в случае ошибки
 */
 char oneWireSearch(OWI_device* devices){
+	
+	//итак, методы работы с 1-wire содержат
+	//sei() и cli(), что будет убивать текущую передачу по clunet (если она есть)
+	//поэтому дождемся ее конца и начнем обращаться к 1-wire
+	
+	clunet_wait_sending();
+	
 	unsigned char num = 0;
 	if (OWI_SearchDevices(devices, OWI_MAX_BUS_DEVICES, OWI_BUS, &num) == SEARCH_CRC_ERROR){
 		return -1;
@@ -88,6 +101,9 @@ char oneWireSearch(OWI_device* devices){
 *  Возвращает 1 если запрос выполнен и 0 - если нет
 */
 char temperatureRequest(OWI_device* device, signed int* temperature){
+	
+	clunet_wait_sending();
+	
 	if (DS18B20_ReadDeviceCache(OWI_BUS, (*device).id, temperature, systime) != READ_CRC_ERROR){
 		return 1;
 	}
@@ -105,7 +121,7 @@ void temperatureResponse(unsigned char address, OWI_device* devices, unsigned ch
 	for (unsigned char i=0; i<size; i++){
 		unsigned char pos = 1 + 11*cnt;
 		
-		while(clunet_ready_to_send());
+		clunet_wait_sending();
 		
 		if (DS18B20_ReadDeviceCache(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9], systime) != READ_CRC_ERROR){
 			temperatureInfo[pos] = 0; //1-wire
@@ -170,8 +186,8 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_ONEWIRE_SEARCH:
 			if (m->size == 0){
-				char num = oneWireSearch(devices);
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_ONEWIRE_INFO, (char*)&devices, num * sizeof(OWI_device));
+				owi_num_devices = oneWireSearch(devices);
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_ONEWIRE_INFO, (char*)&devices, owi_num_devices * sizeof(OWI_device));
 			}
 			break;
 		case CLUNET_COMMAND_TEMPERATURE:
@@ -184,8 +200,15 @@ void cmd(clunet_msg* m){
 							break;
 						}
 					case 0:	{	//все устройства
-							char num = oneWireSearch(devices);
-							temperatureResponse(m->src_address, devices, num);
+						
+							//теперь не делаем поиск устройств при каждом запросе,
+							//а используем массив полученный при первом обращении
+							//или при вызове команды oneWireSearch 
+							//т.к. вызывает зависания устройства
+							if (!owi_num_devices){
+								owi_num_devices = oneWireSearch(devices);
+							}
+							temperatureResponse(m->src_address, devices, owi_num_devices);
 						}
 						break;
 					case 2:		//запрос по серийнику
@@ -286,7 +309,6 @@ signed int heatfloor_sensor_temperature_request(unsigned char channel){
 		//которые будут убивать корректную работу clunet, поэтому
 		//по крайней мере дождемся окончания текущей отправки, если она имеется
 		
-		while(clunet_ready_to_send());
 		signed int t;
 		if (temperatureRequest(device, &t)){
 			return t;

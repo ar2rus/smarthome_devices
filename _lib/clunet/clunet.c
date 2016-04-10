@@ -282,6 +282,10 @@ int clunet_ready_to_send(){	 // Возвращает 0, если готов к �
 	return clunetCurrentPrio;
 }
 
+void clunet_wait_sending(){
+	while (clunetSendingState != CLUNET_SENDING_STATE_IDLE){};
+}
+
 void clunet_set_on_data_received(void (*f)(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size)){
 	on_data_received = f;
 }

@@ -420,6 +420,9 @@ void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char 
 // Возвращает 0, если готов к передаче, иначе приоритет текущей задачи
 int clunet_ready_to_send();
 
+// Ожидает пока сообщение не будет отправлено (блокирующее)
+void clunet_wait_sending();
+
 // Установка функций, которые вызываются при получении пакетов
 // Эта - получает пакеты, которые адресованы нам
 void clunet_set_on_data_received(void (*f)(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size));
