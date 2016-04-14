@@ -15,7 +15,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/wdt.h>
-#include <avr/eeprom.h>
 
 #define BUF ((struct uip_eth_hdr *)&uip_buf[0])
 
@@ -82,8 +81,8 @@ void poll_ethernet(){
 int main(void){
 	wdt_disable(); 
 	
-	uint32_t reboot_counter = eeprom_read_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER);
-	eeprom_write_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER, ++reboot_counter);
+	//uint32_t reboot_counter = eeprom_read_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER);
+	//eeprom_write_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER, ++reboot_counter);
 	
 	
 	//define mac (never change the first byte 0x00)

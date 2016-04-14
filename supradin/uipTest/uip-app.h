@@ -72,7 +72,7 @@ void uip_app_init(void);
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size);
 
 
-#define EEPROM_ADDRESS_REBOOT_COUNTER 0x00
+//#define EEPROM_ADDRESS_REBOOT_COUNTER 0x00
 
 //
 

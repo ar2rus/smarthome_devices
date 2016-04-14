@@ -149,6 +149,21 @@ ISR(TIMER1_COMPA_vect){
 					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_EQUALIZER_RESET);
 					necResetValue();
 					break;
+					
+					
+				//debugging supradin freezes
+				case 0x8A:{
+					clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, 0, 0);
+					necResetValue();
+				}
+				break;
+				case 0xc8:{
+					clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_REBOOT, 0, 0);
+					necResetValue();
+				}
+				break;
+				
+				
 			}
 		}
 // 		else{

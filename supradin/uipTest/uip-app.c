@@ -4,8 +4,6 @@
 #include <avr/io.h>
 #include <string.h>
 
-#include <avr/eeprom.h>
-
 #include "clunet/clunet.h"
 
 
@@ -164,12 +162,12 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		}
 		
 		//debugging of freezes
-		if (dst_address == CLUNET_DEVICE_ID && command == CLUNET_COMMAND_DEBUG){
-				//should send registers debugging values
-				
-				uint32_t reboot_counter = eeprom_read_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER);
-				clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &reboot_counter, sizeof(reboot_counter));
-		}
+// 		if (dst_address == CLUNET_DEVICE_ID && command == CLUNET_COMMAND_DEBUG){
+// 				//should send registers debugging values
+// 				
+// 				uint32_t reboot_counter = eeprom_read_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER);
+// 				clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &reboot_counter, sizeof(reboot_counter));
+// 		}
 }
  
 /*---------------------------------------------------------------------------*/
