@@ -112,12 +112,11 @@ int main(void){
 	ETH_POLL_TIMER_INIT;
 	ENABLE_ETH_POLL_TIMER_OVF;
 
-	//init clunet (sei() is in it)
 	clunet_init();
 	clunet_set_on_data_received_sniff(clunet_data_received);
 
 
-	 wdt_enable(WDTO_2S);
+    wdt_enable(WDTO_2S);
 	 
     while(1){
  		check_ethernet();
