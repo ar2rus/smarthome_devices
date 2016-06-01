@@ -17,6 +17,7 @@
 
 //in seconds
 #define HEATFLOOR_SENSOR_CHECK_TIME 30
+
 //in degrees, Celsius
 #define HEATFLOOR_SENSOR_HYSTERESIS_TEMPERATURE 0.3
 
