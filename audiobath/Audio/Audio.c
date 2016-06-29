@@ -4,7 +4,7 @@
 
 volatile unsigned int systime = 0;
 
-volatile unsigned char delayedResponseAddress = 0;
+volatile signed   int delayedResponseAddress = -1;
 volatile unsigned int delayedResponseCounterValue = 0;
 
 volatile unsigned char powerState = 1;	//флаг вкл/выкл
@@ -42,16 +42,17 @@ void sendResponse(unsigned char address, char response){
 void power(unsigned char on_){
 	if (powerState !=  on_){
 		if (on_){
-			//read eeprom:
-				//set channel
-				//set volume, equalize
+			lc75341_eeprom_load();
 			//tea_poweron
 		}else{
-			lc75341_mute();			// отключаем звук
-			lc75341_input(2);		// переключаем на неиспользуемый канал, дл€ полного устранени€ звука
+			lc75341_eeprom_enable(0);  // выключаем сохранение в eeprom
+			lc75341_mute();			   // отключаем звук
+			lc75341_input(2);		   // переключаем на неиспользуемый канал, дл€ полного устранени€ звука
+			lc75341_eeprom_enable(1);  // теперь дальше можно писать в eeprom
 			//tea_poweroff
 		}
 		powerState = on_;
+		eeprom_write_byte((void*)EEPROM_ADDRESS_AUDIOBATH_POWER, powerState);
 	}
 }
 
@@ -71,6 +72,9 @@ void cmd(clunet_msg* m){
 						break;
 					case 2:
 						power(!powerState);
+						response = RESPONSE_POWER;
+						break;
+					case 0xFF:
 						response = RESPONSE_POWER;
 						break;
 				}
@@ -134,14 +138,16 @@ void cmd(clunet_msg* m){
 						response = RESPONSE_VOLUME;
 						break;
 					case 0x02:
-						lc75341_volume_up(2);
+						lc75341_eeprom_enable(0);  // отрубаем запись в eeprom дл€ многократно повтор€ющихс€ команд
+						lc75341_volume_up_exp(2);
 					
 						delayedResponseAddress = m->src_address;
 						delayedResponseCounterValue = systime;
 						//response = RESPONSE_VOLUME;
 						break;
 					case 0x03:
-						lc75341_volume_down(2);
+						lc75341_eeprom_enable(0);  // отрубаем запись в eeprom дл€ многократно повтор€ющихс€ команд
+						lc75341_volume_down_exp(2);
 					
 						delayedResponseAddress = m->src_address;
 						delayedResponseCounterValue = systime;
@@ -166,29 +172,26 @@ void cmd(clunet_msg* m){
 		break;
 		
 		case CLUNET_COMMAND_MUTE:
-		if (powerState){
-			if (m->size == 1){
-				switch(m->data[0]){
-					case 0:
-						lc75341_volume_percent(0);
-						response = RESPONSE_VOLUME;
-						break;
-					case 1:
-						lc75341_mute_toggle();
-						response = RESPONSE_VOLUME;
-						break;
-				}
+		if (m->size == 1){
+			switch(m->data[0]){
+				case 0:
+					lc75341_volume_percent(0);
+					response = RESPONSE_VOLUME;
+					break;
+				case 1:
+					lc75341_mute_toggle();
+					response = RESPONSE_VOLUME;
+					break;
 			}
 		}
 		break;
 		
 		case CLUNET_COMMAND_EQUALIZER:
-		if (powerState){
 			switch(m->size){
 				case 1:
 				switch(m->data[0]){
 					case 0x00:
-						lc75341_reset_equalizer();
+						lc75341_equalizer_reset();
 						response = RESPONSE_EQUALIZER;
 						break;
 					case 0xFF:
@@ -268,27 +271,25 @@ void cmd(clunet_msg* m){
 				}
 				break;
 			}
-		}
 		break;
 	}
 	
-	if (response >= 0){
-		sendResponse(m->src_address, response);
-	}
+	sendResponse(m->src_address, response);
 	
 	LED_OFF;
 }
 
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 							unsigned char command, char* data, unsigned char size){
-	switch(command){
-		case CLUNET_COMMAND_POWER:
-		case CLUNET_COMMAND_CHANNEL:
-		case CLUNET_COMMAND_VOLUME:
-		case CLUNET_COMMAND_MUTE:
-		case CLUNET_COMMAND_EQUALIZER:
-			clunet_buffered_push(src_address, dst_address, command, data, size);
-	}
+		switch(command){
+			case CLUNET_COMMAND_CHANNEL:
+			case CLUNET_COMMAND_VOLUME:
+			case CLUNET_COMMAND_MUTE:
+			case CLUNET_COMMAND_EQUALIZER:
+				if (!powerState) break;	//игнорим все запросы при выключенном девайсе
+			case CLUNET_COMMAND_POWER:
+				clunet_buffered_push(src_address, dst_address, command, data, size);
+		}
 }
 
 ISR(TIMER_COMP_VECTOR){
@@ -302,16 +303,21 @@ int main(void){
 	
 	LED_INIT;
 	TWI_INIT;
-		
-	tea5767_init();
-	lc75341_init();
 	
-	tea5767_set_LO_PLL(99.1);
-	lc75341_volume_percent(50);
-
 	clunet_set_on_data_received(clunet_data_received);
 	clunet_buffered_init();
 	clunet_init();
+	
+	tea5767_init();
+	lc75341_init();
+	
+	unsigned char state = eeprom_read_byte((void*)EEPROM_ADDRESS_AUDIOBATH_POWER);	//читаем сохраненное состо€ние (вкл/выкл)
+	powerState = !state;
+	power(state);
+	sendResponse(CLUNET_BROADCAST_ADDRESS, RESPONSE_POWER);
+	
+	tea5767_set_LO_PLL(99.1);
+
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
@@ -323,13 +329,15 @@ int main(void){
 		
 		//отправл€ем отложенный ответ дл€ повтор€ющихс€ команд
 		//отправл€ем при паузе между одинаковыми командами более чем TIMER_SKIP_EVENTS_DELAY мс
-		if (delayedResponseAddress && (systime - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
+		if ((delayedResponseAddress >=0) && (systime - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
 			
 			unsigned char address = delayedResponseAddress;
-			delayedResponseAddress = 0;
-			sendResponse(address, RESPONSE_VOLUME);
+			delayedResponseAddress = -1;
 			
-			//also need to save to eeprom
+			lc75341_eeprom_enable(1);
+			lc75341_eeprom_flush();
+			
+			sendResponse(address, RESPONSE_VOLUME);
 		}
 	}
 	return 0;

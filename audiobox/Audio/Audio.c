@@ -281,7 +281,7 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 			break;
 		
 		case COMMAND_EQUALIZER_RESET:
-			lc75341_reset_equalizer();
+			lc75341_equalizer_reset();
 			responseType = 2;
 			break;
 		case COMMAND_EQUALIZER_INFO:

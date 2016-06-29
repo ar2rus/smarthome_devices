@@ -22,6 +22,8 @@
 #include <avr/io.h>
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
+
 #include <util/delay.h>
 
 
@@ -88,5 +90,10 @@
 #define RESPONSE_VOLUME    1
 #define RESPONSE_EQUALIZER 2
 #define RESPONSE_POWER 3
+
+
+//тек.состояние (вкл/выкл)
+#define EEPROM_ADDRESS_AUDIOBATH_POWER 0x00
+
 
 #endif /* AUDIO_H_ */

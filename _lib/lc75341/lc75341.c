@@ -74,29 +74,55 @@ void ccb_write(char address, char *data, char dataLength){
 
 
 /**data to write */
-char data[4] = { 0x0, 0x0, 0x0, 0xC };
+char registry[4] = {0x00, 0x00, 0x00, 0x0C};
 
 /** saved volume value for mute/unmute **/
 char muted_volume = LC75341_VOLUME_MIN;
 
-
 void lc75341_write(){
-	ccb_write(LC75341_ADDRESS, data, 4);
+	ccb_write(LC75341_ADDRESS, registry, sizeof(registry));
+	#ifdef LC75341_EEPROM_ADDRESS
+		lc75341_eeprom_flush();
+	#endif
 }
 
-void lc75341_init(){
-	ccb_init();   
+
+#ifdef LC75341_EEPROM_ADDRESS
+
+unsigned char eeprom_enabled = 1;	//определ€ет - писать в EEPROM при каждой записи в lc75341
+
+void lc75341_eeprom_enable(unsigned char enable){
+	eeprom_enabled = enable;
+}
+
+void lc75341_eeprom_flush(){
+	if (eeprom_enabled){
+		eeprom_update_block((void*)&registry,(void*)LC75341_EEPROM_ADDRESS, 3);
+		if (muted_volume < LC75341_VOLUME_MIN){	//если мы в mute - то сохран€ем значение до выключени€ звука
+			eeprom_update_byte(((void*)LC75341_EEPROM_ADDRESS)+1, muted_volume);
+		}
+	}
+}
+
+void lc75341_eeprom_load(){
+	eeprom_read_block((void*)&registry,(void*)LC75341_EEPROM_ADDRESS, 3);
+	lc75341_write();
+}
+#endif
+
+void lc75341_init(){	
+	ccb_init();
 	 _delay_ms(50);  //???
 }
 
 unsigned char lc75341_input_value(){
-	return data[0] & 0x03;
+	return registry[0] & 0x03;
 }
 
 char lc75341_input(unsigned char input){
 	if (input >= LC75341_INPUT_1 && input <= LC75341_INPUT_4){
 		if (lc75341_input_value() != input){	//call write if need to set a new value only
-			data[0] = (data[0] & 0xF0) | input;
+			registry[0] = (registry[0] & 0xF0) | input;
 			lc75341_write();
 		}
 		return 1;
@@ -105,7 +131,7 @@ char lc75341_input(unsigned char input){
 }
 
 char lc75341_input_next(){
-	char input = data[0] & 0x0F;
+	char input = registry[0] & 0x0F;
 	input++;
 	if (input > LC75341_INPUT_4){
 		input = LC75341_INPUT_1;
@@ -114,7 +140,7 @@ char lc75341_input_next(){
 }
 
 char lc75341_input_prev(){
-	signed char input = data[0] & 0x0F;
+	signed char input = registry[0] & 0x0F;
 	input--;
 	if (input < LC75341_INPUT_1){
 		input = LC75341_INPUT_4;
@@ -124,7 +150,7 @@ char lc75341_input_prev(){
 
 
 unsigned char lc75341_volume_value(){
-	return data[1];
+	return registry[1];
 }
 
 signed char lc75341_volume_dB_value(){
@@ -138,7 +164,7 @@ unsigned char lc75341_volume_percent_value(){
 char lc75341_volume(char volume){
 	if (volume >= LC75341_VOLUME_MAX && volume <= LC75341_VOLUME_MIN){
 		if (lc75341_volume_value() != volume){
-			data[1] = volume;
+			registry[1] = volume;
 			lc75341_write();
 		}
 		return 1;
@@ -269,7 +295,7 @@ void lc75341_mute_toggle(){
 }
 
 unsigned char lc75341_gain_value(){
-	return (data[0] & 0xF0) >> 4;
+	return (registry[0] & 0xF0) >> 4;
 }
 
 unsigned char lc75341_gain_dB_value(){
@@ -279,7 +305,7 @@ unsigned char lc75341_gain_dB_value(){
 char lc75341_gain(char gain){
 	if (gain >= LC75341_GAIN_MIN && gain <= LC75341_GAIN_MAX){
 		if (gain != lc75341_gain_value()){
-			data[0] = (data[0] & 0x0F) | (gain<<4);
+			registry[0] = (registry[0] & 0x0F) | (gain<<4);
 			lc75341_write();
 		}
 		return 1;
@@ -310,7 +336,7 @@ char lc75341_gain_down(){
 }
 
 signed char lc75341_treble_value(){
-	signed char treble = data[2] & 0x0F;
+	signed char treble = registry[2] & 0x0F;
 	if (treble & 0x08){ //minus dB treble
 		treble = -(treble & 0x07);
 	}
@@ -327,7 +353,7 @@ char lc75341_treble(signed char treble){
 			if (treble < 0){
 				treble = (-treble) | 0x08;
 			}
-			data[2] = (data[2] & 0xF0) | treble;
+			registry[2] = (registry[2] & 0xF0) | treble;
 			lc75341_write();
 		}
 		return 1;
@@ -360,7 +386,7 @@ char lc75341_treble_down(){
 
 
 unsigned char lc75341_bass_value(){
-	return (data[2] & 0xF0) >> 4;
+	return (registry[2] & 0xF0) >> 4;
 }
 
 unsigned char lc75341_bass_dB_value(){
@@ -370,7 +396,7 @@ unsigned char lc75341_bass_dB_value(){
 char lc75341_bass(unsigned char bass){
 	if (bass >= LC75341_BASS_MIN && bass <= LC75341_BASS_MAX){
 		if (bass != lc75341_bass_value()){
-			data[2] = (data[2] & 0x0F) | (bass<<4);
+			registry[2] = (registry[2] & 0x0F) | (bass<<4);
 			lc75341_write();
 		}
 		return 1;
@@ -402,8 +428,8 @@ char lc75341_bass_down(){
 /*
 *	—брасывает значени€ эквалайзера (выс.частоты, низ.частоты, усиление)
 */
-void lc75341_reset_equalizer(){
-		data[0] = data[0] & 0x0F;
-		data[2] = 0x00;
+void lc75341_equalizer_reset(){
+		registry[0] = registry[0] & 0x0F;
+		registry[2] = 0x00;
 		lc75341_write();
 }
