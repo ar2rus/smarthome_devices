@@ -139,7 +139,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_LIGHT_LEVEL:
 		
-		case CLUNET_COMMAND_PING_REPLY:
+		//case CLUNET_COMMAND_PING_REPLY:
 		
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
@@ -204,7 +204,7 @@ int main(void){
 				switch (nec_command){
 					case 0xA2:{		//switch on/off
 						data[0] = 2;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_SWITCH, data, 1);
+						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_POWER, data, 1);
 						necResetValue();
 					}
 					break;

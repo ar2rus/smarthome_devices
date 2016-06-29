@@ -7,8 +7,15 @@ volatile unsigned int systime = 0;
 volatile unsigned char delayedResponseAddress = 0;
 volatile unsigned int delayedResponseCounterValue = 0;
 
+volatile unsigned char powerState = 1;	//флаг вкл/выкл
+
+
 void sendResponse(unsigned char address, char response){
 	switch (response){
+		case RESPONSE_POWER:{
+			clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_POWER_INFO, (char*)&powerState, sizeof(powerState));
+			break;
+		}
 		case RESPONSE_CHANNEL:{
 			char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
 			clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
@@ -32,218 +39,250 @@ void sendResponse(unsigned char address, char response){
 	}
 }
 
+void power(unsigned char on_){
+	if (powerState !=  on_){
+		if (on_){
+			//read eeprom:
+				//set channel
+				//set volume, equalize
+			//tea_poweron
+		}else{
+			lc75341_mute();			// отключаем звук
+			lc75341_input(2);		// переключаем на неиспользуемый канал, для полного устранения звука
+			//tea_poweroff
+		}
+		powerState = on_;
+	}
+}
+
 void cmd(clunet_msg* m){
 	LED_ON;
 	char response = -1;
 	
 	switch(m->command){
 		
-		case CLUNET_COMMAND_SWITCH:
+		case CLUNET_COMMAND_POWER:
 			if (m->size == 1){
 				switch (m->data[0]){
 					case 0:
-						break;
 					case 1:
+						power(m->data[0]);
+						response = RESPONSE_POWER;
 						break;
 					case 2:
+						power(!powerState);
+						response = RESPONSE_POWER;
 						break;
 				}
 			}
 			break;
 		
 		case CLUNET_COMMAND_CHANNEL:
-		switch (m->size){
-			case 1:
-			switch (m->data[0]){
-				case 0xFF:
-					response = RESPONSE_CHANNEL;
-					break;
-				case 0x01:
-					switch (lc75341_input_value()){
-						case 0:{		//android tablet
-							char data = 0x06;	//next
-							clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, &data, 1);
-							break;
+		if (powerState){
+			switch (m->size){
+				case 1:
+				switch (m->data[0]){
+					case 0xFF:
+						response = RESPONSE_CHANNEL;
+						break;
+					case 0x01:
+						switch (lc75341_input_value()){
+							case 0:{		//android tablet
+								char data = 0x06;	//next
+								clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, &data, 1);
+								break;
+							}
+							case 3:{		//fm tuner
+								break;
+								//do here tea next channel searching
+							}
 						}
-						case 3:{		//fm tuner
-							break;
+						break;
+					case 0x02:
+						switch (lc75341_input_value()){
+							case 0:{		//android tablet
+								char data = 0x05;	//prev
+								clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, &data, 1);
+								break;
+							}
+							case 3:{		//fm tuner
+								break;
+								//do here tea prev channel searching
+							}
 						}
-					}
-					break;
-				case 0x02:
-					switch (lc75341_input_value()){
-						case 0:{		//android tablet
-							char data = 0x05;	//prev
-							clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, &data, 1);
-							break;
-						}
-						case 3:{		//fm tuner
-							break;
-						}
-					}
-					break;
+						break;
+				}
+				break;
+				case 2:
+				switch(m->data[0]){
+					case 0x00:
+						lc75341_input(m->data[1] - 1);	//1 channel -> 0 channel, etc
+						response = RESPONSE_CHANNEL;
+						break;
+				}
+				break;
 			}
-			break;
-			case 2:
-			switch(m->data[0]){
-				case 0x00:
-					lc75341_input(m->data[1] - 1);	//1 channel -> 0 channel, etc
-					response = RESPONSE_CHANNEL;
-					break;
-			}
-			break;
 		}
 		break;
 		
 		case CLUNET_COMMAND_VOLUME:
-		switch (m->size){
-			case 1:
-			switch (m->data[0]){
-				case 0xFF:
-					response = RESPONSE_VOLUME;
-					break;
-				case 0x02:
-					lc75341_volume_up(2);
+		if (powerState){
+			switch (m->size){
+				case 1:
+				switch (m->data[0]){
+					case 0xFF:
+						response = RESPONSE_VOLUME;
+						break;
+					case 0x02:
+						lc75341_volume_up(2);
 					
-					delayedResponseAddress = m->src_address;
-					delayedResponseCounterValue = systime;
-					//response = RESPONSE_VOLUME;
-					break;
-				case 0x03:
-					lc75341_volume_down(2);
+						delayedResponseAddress = m->src_address;
+						delayedResponseCounterValue = systime;
+						//response = RESPONSE_VOLUME;
+						break;
+					case 0x03:
+						lc75341_volume_down(2);
 					
-					delayedResponseAddress = m->src_address;
-					delayedResponseCounterValue = systime;
-					//response = RESPONSE_VOLUME;
-					break;
+						delayedResponseAddress = m->src_address;
+						delayedResponseCounterValue = systime;
+						//response = RESPONSE_VOLUME;
+						break;
+				}
+				break;
+				case 2:
+				switch(m->data[0]){
+					case 0x00:
+						lc75341_volume_percent(m->data[1]);
+						response = RESPONSE_VOLUME;
+						break;
+					case 0x01:
+						lc75341_volume_dB(m->data[1]);
+						response = RESPONSE_VOLUME;
+						break;
+				}
+				break;
 			}
-			break;
-			case 2:
-			switch(m->data[0]){
-				case 0x00:
-					lc75341_volume_percent(m->data[1]);
-					response = RESPONSE_VOLUME;
-					break;
-				case 0x01:
-					lc75341_volume_dB(m->data[1]);
-					response = RESPONSE_VOLUME;
-					break;
-			}
-			break;
 		}
 		break;
 		
 		case CLUNET_COMMAND_MUTE:
-		if (m->size == 1){
-			switch(m->data[0]){
-				case 0:
-					lc75341_volume_percent(0);
-					response = RESPONSE_VOLUME;
-					break;
-				case 1:
-					lc75341_mute_toggle();
-					response = RESPONSE_VOLUME;
-					break;
+		if (powerState){
+			if (m->size == 1){
+				switch(m->data[0]){
+					case 0:
+						lc75341_volume_percent(0);
+						response = RESPONSE_VOLUME;
+						break;
+					case 1:
+						lc75341_mute_toggle();
+						response = RESPONSE_VOLUME;
+						break;
+				}
 			}
 		}
 		break;
 		
 		case CLUNET_COMMAND_EQUALIZER:
-		switch(m->size){
-			case 1:
-			switch(m->data[0]){
-				case 0x00:
-					lc75341_reset_equalizer();
-					response = RESPONSE_EQUALIZER;
-					break;
-				case 0xFF:
-					response = RESPONSE_EQUALIZER;
-					break;
-			}
-			break;
-			case 2:
-			case 3:
-			switch(m->data[0]){
-				case 0x01:	//gain
-				switch(m->data[1]){
-					case 0x00:	//reset
-						lc75341_gain_dB(0);
+		if (powerState){
+			switch(m->size){
+				case 1:
+				switch(m->data[0]){
+					case 0x00:
+						lc75341_reset_equalizer();
 						response = RESPONSE_EQUALIZER;
 						break;
-					case 0x01:	//dB
-						if (m->size == 3){
-							lc75341_gain_dB(m->data[2]);
-							response = RESPONSE_EQUALIZER;
-						}
-						break;
-					case 0x02:	//+
-						lc75341_gain_up();
-						response = RESPONSE_EQUALIZER;
-						break;
-					case 0x03:	//-
-						lc75341_gain_down();
+					case 0xFF:
 						response = RESPONSE_EQUALIZER;
 						break;
 				}
 				break;
-				case 0x02:	//treble
-				switch(m->data[1]){
+				case 2:
+				case 3:
+				switch(m->data[0]){
+					case 0x01:	//gain
+					switch(m->data[1]){
 						case 0x00:	//reset
-						lc75341_treble_dB(0);
-						response = RESPONSE_EQUALIZER;
-						break;
-					case 0x01:	//dB
-						if (m->size == 3){
-							lc75341_treble_dB(m->data[2]);
+							lc75341_gain_dB(0);
 							response = RESPONSE_EQUALIZER;
-						}
-						break;
-					case 0x02:	//+
-						lc75341_treble_up();
-						response = RESPONSE_EQUALIZER;
-						break;
-					case 0x03:	//-
-						lc75341_treble_down();
-						response = RESPONSE_EQUALIZER;
-						break;
-				}
-				break;
-				case 0x03:	//bass
-				switch(m->data[1]){
-					case 0x00:	//reset
-						lc75341_bass_dB(0);
-						response = RESPONSE_EQUALIZER;
-						break;
-					case 0x01:	//dB
-						if (m->size == 3){
-							lc75341_bass_dB(m->data[2]);
+							break;
+						case 0x01:	//dB
+							if (m->size == 3){
+								lc75341_gain_dB(m->data[2]);
+								response = RESPONSE_EQUALIZER;
+							}
+							break;
+						case 0x02:	//+
+							lc75341_gain_up();
 							response = RESPONSE_EQUALIZER;
-						}
-						break;
-					case 0x02:	//+
-						lc75341_bass_up();
-						response = RESPONSE_EQUALIZER;
-						break;
-					case 0x03:	//-
-						lc75341_bass_down();
-						response = RESPONSE_EQUALIZER;
-						break;
+							break;
+						case 0x03:	//-
+							lc75341_gain_down();
+							response = RESPONSE_EQUALIZER;
+							break;
+					}
+					break;
+					case 0x02:	//treble
+					switch(m->data[1]){
+							case 0x00:	//reset
+							lc75341_treble_dB(0);
+							response = RESPONSE_EQUALIZER;
+							break;
+						case 0x01:	//dB
+							if (m->size == 3){
+								lc75341_treble_dB(m->data[2]);
+								response = RESPONSE_EQUALIZER;
+							}
+							break;
+						case 0x02:	//+
+							lc75341_treble_up();
+							response = RESPONSE_EQUALIZER;
+							break;
+						case 0x03:	//-
+							lc75341_treble_down();
+							response = RESPONSE_EQUALIZER;
+							break;
+					}
+					break;
+					case 0x03:	//bass
+					switch(m->data[1]){
+						case 0x00:	//reset
+							lc75341_bass_dB(0);
+							response = RESPONSE_EQUALIZER;
+							break;
+						case 0x01:	//dB
+							if (m->size == 3){
+								lc75341_bass_dB(m->data[2]);
+								response = RESPONSE_EQUALIZER;
+							}
+							break;
+						case 0x02:	//+
+							lc75341_bass_up();
+							response = RESPONSE_EQUALIZER;
+							break;
+						case 0x03:	//-
+							lc75341_bass_down();
+							response = RESPONSE_EQUALIZER;
+							break;
+					}
+					break;
 				}
 				break;
 			}
-			break;
 		}
 		break;
 	}
 	
-	sendResponse(m->src_address, response);
+	if (response >= 0){
+		sendResponse(m->src_address, response);
+	}
 	
 	LED_OFF;
 }
 
-void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
+void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
+							unsigned char command, char* data, unsigned char size){
 	switch(command){
-		case CLUNET_COMMAND_SWITCH:
+		case CLUNET_COMMAND_POWER:
 		case CLUNET_COMMAND_CHANNEL:
 		case CLUNET_COMMAND_VOLUME:
 		case CLUNET_COMMAND_MUTE:

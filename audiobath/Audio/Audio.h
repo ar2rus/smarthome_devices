@@ -87,5 +87,6 @@
 #define RESPONSE_CHANNEL   0
 #define RESPONSE_VOLUME    1
 #define RESPONSE_EQUALIZER 2
+#define RESPONSE_POWER 3
 
 #endif /* AUDIO_H_ */
