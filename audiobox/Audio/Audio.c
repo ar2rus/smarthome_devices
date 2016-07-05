@@ -1,7 +1,7 @@
 
 #include "lc75341/lc75341.h"
 #include "nec/rx.h"
-#include "tea5767/tea5767.h"
+#include "tea5767/TEA5767.h"
 
 #include "clunet/clunet.h"
 
@@ -57,10 +57,12 @@ ISR(TIMER1_COMPA_vect){
 		}
 	}else
 	if (BUTTON_L_READ){
-		tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_MID);
+		//tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_MID);
+		TEA5767_search_down();
 	}else
 	if (BUTTON_R_READ){
-		tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_MID);
+		//tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_MID);
+		TEA5767_search_up();
 	}else{
 		buttonStates = 0;
 	}
@@ -505,14 +507,17 @@ int main(void){
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
 	
-	tea5767_init();
+	//tea5767_init();
+	TEA5767_init();
+	TEA5767_tune(99900UL);
+	TEA5767_write();
+		
 	lc75341_init();
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
 	sei();
 	
-	tea5767_set_LO_PLL(104.3);
 	lc75341_volume_percent(80);
 	
 	while (1){}

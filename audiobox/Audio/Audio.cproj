@@ -143,13 +143,13 @@
       <SubType>compile</SubType>
       <Link>nec\rx.h</Link>
     </Compile>
-    <Compile Include="..\..\_lib\tea5767\tea5767.c">
+    <Compile Include="..\..\_lib\tea5767\TEA5767.c">
       <SubType>compile</SubType>
-      <Link>tea5767\tea5767.c</Link>
+      <Link>tea5767\TEA5767.c</Link>
     </Compile>
-    <Compile Include="..\..\_lib\tea5767\tea5767.h">
+    <Compile Include="..\..\_lib\tea5767\TEA5767.h">
       <SubType>compile</SubType>
-      <Link>tea5767\tea5767.h</Link>
+      <Link>tea5767\TEA5767.h</Link>
     </Compile>
     <Compile Include="Audio.c">
       <SubType>compile</SubType>
@@ -164,9 +164,6 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="nec\nec_config.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="tea5767\tea5767_config.h">
       <SubType>compile</SubType>
     </Compile>
   </ItemGroup>
