@@ -58,11 +58,11 @@ ISR(TIMER1_COMPA_vect){
 	}else
 	if (BUTTON_L_READ){
 		//tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_MID);
-		TEA5767_search_down();
+		//TEA5767_search_down();
 	}else
 	if (BUTTON_R_READ){
 		//tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_MID);
-		TEA5767_search_up();
+		//TEA5767_search_up();
 	}else{
 		buttonStates = 0;
 	}
@@ -502,15 +502,15 @@ int main(void){
 	cli();
 	LED_INIT;
 	BUTTONS_INIT;
+	
 	TWI_INIT;
 	
 	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
 	
-	//tea5767_init();
-	TEA5767_init();
-	TEA5767_tune(99900UL);
-	TEA5767_write();
+
+	//TEA5767_tune(99900UL);
+	//TEA5767_write();
 		
 	lc75341_init();
 	
