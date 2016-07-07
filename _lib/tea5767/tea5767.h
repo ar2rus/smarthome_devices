@@ -25,6 +25,7 @@
 #define TEA5767_SRCH_HIGH_LVL	0x60///< ADC output = 10
 #define TEA5767_SRCH_MID_LVL	0x40///< ADC output = 7
 #define TEA5767_SRCH_LOW_LVL	0x20///< ADC output = 5
+
 #define TEA5767_HIGH_LO_INJECT	0x10///< High/Low Side Injection
 #define TEA5767_MONO		0x08	///< Force mono
 #define TEA5767_MUTE_RIGHT	0x04	///< Mute right channel and force mono

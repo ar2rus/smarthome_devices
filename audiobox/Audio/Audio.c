@@ -59,8 +59,12 @@ ISR(TIMER1_COMPA_vect){
 	if (BUTTON_L_READ){
 		//tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_MID);
 		//TEA5767_search_down();
+		TEA5767N_setSearchUp(0);
+		TEA5767N_searchNextMuting();
 	}else
 	if (BUTTON_R_READ){
+		TEA5767N_setSearchUp(1);
+		TEA5767N_searchNextMuting();
 		//tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_MID);
 		//TEA5767_search_up();
 	}else{
@@ -140,11 +144,23 @@ ISR(TIMER1_COMPA_vect){
 					necResetValue();
 					break;
 				case 0x60:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);
+					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);
+							TEA5767N_setSearchUp(1);
+							TEA5767N_searchNextMuting();
+							
+							//uint16_t f = TEA5767N_readFrequencyInMHz()/1000000UL;
+							//clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &f, sizeof(f));
+							
 					necResetValue();
 					break;
 				case 0x90:
-					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);
+					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);
+							TEA5767N_setSearchUp(0);
+							TEA5767N_searchNextMuting();
+							
+							// f = TEA5767N_readFrequencyInMHz()/1000000UL;
+							//clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &f, sizeof(f));
+							
 					necResetValue();
 					break;
 				case 0x00:
@@ -511,6 +527,9 @@ int main(void){
 
 	//TEA5767_tune(99900UL);
 	//TEA5767_write();
+	
+	TEA5767N_selectFrequency(99.9);
+	TEA5767N_setSearchLowStopLevel();
 		
 	lc75341_init();
 	
