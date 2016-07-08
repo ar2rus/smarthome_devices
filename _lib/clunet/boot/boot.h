@@ -32,7 +32,7 @@ typedef struct bootloader_header_data{
 } bootloader_header_data_t;
 
 
-#define APP_END (uint32_t)(FLASHEND - (BOOTSIZE * 2))
+#define APP_END (FLASHEND - (BOOTSIZE * 2))
 
 #define COMMAND_FIRMWARE_UPDATE_START 0
 #define COMMAND_FIRMWARE_UPDATE_INIT 1
