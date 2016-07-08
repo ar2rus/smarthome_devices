@@ -113,6 +113,10 @@ signed char readEncoder();
 #define COMMAND_EQUALIZER_RESET	50
 #define COMMAND_EQUALIZER_INFO	51
 
+#define COMMAND_FM_INFO			60
+#define COMMAND_FM_PREV			61
+#define COMMAND_FM_NEXT			62
+
 void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, ...);
 
 

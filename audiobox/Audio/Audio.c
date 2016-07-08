@@ -144,23 +144,11 @@ ISR(TIMER1_COMPA_vect){
 					necResetValue();
 					break;
 				case 0x60:
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);
-							TEA5767N_setSearchUp(1);
-							TEA5767N_searchNextMuting();
-							
-							//uint16_t f = TEA5767N_readFrequencyInMHz()/1000000UL;
-							//clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &f, sizeof(f));
-							
+					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);		
 					necResetValue();
 					break;
 				case 0x90:
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);
-							TEA5767N_setSearchUp(0);
-							TEA5767N_searchNextMuting();
-							
-							// f = TEA5767N_readFrequencyInMHz()/1000000UL;
-							//clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &f, sizeof(f));
-							
+					cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);		
 					necResetValue();
 					break;
 				case 0x00:
@@ -305,6 +293,20 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 		case COMMAND_EQUALIZER_INFO:
 			responseType = 2;
 			break;
+			
+		case COMMAND_FM_PREV:
+			TEA5767N_setSearchUp(0);
+			TEA5767N_searchNextMuting();
+			responseType = 3;
+			break;
+		case COMMAND_FM_NEXT:
+			TEA5767N_setSearchUp(1);
+			TEA5767N_searchNextMuting();
+			responseType = 3;
+			break;
+		case COMMAND_FM_INFO:
+			responseType = 3;
+			break;
 	}
 	va_end(va);
 	LED_OFF;
@@ -331,6 +333,10 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 				data[2] = lc75341_bass_dB_value();
 				clunet_send(responseAddress, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
 				break;
+			}
+			case 3:{
+				uint16_t f = TEA5767N_readFrequencyInMHz();
+				clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, &f, sizeof(f));
 			}
 		}
 	}
@@ -511,6 +517,21 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 					break;
 			}
 			break;
+		case CLUNET_COMMAND_DEBUG:
+			if (size == 1){
+				switch(data[0]){
+					case 0xFF:
+						cmd(1, src_address, COMMAND_FM_INFO);
+						break;
+					case 0:
+						cmd(1, src_address, COMMAND_FM_PREV);
+						break;
+					case 1:
+						cmd(1, src_address, COMMAND_FM_NEXT);
+						break;
+				}
+			}
+			break;
 	}
 }
 
@@ -528,7 +549,7 @@ int main(void){
 	//TEA5767_tune(99900UL);
 	//TEA5767_write();
 	
-	TEA5767N_selectFrequency(99.9);
+	TEA5767N_selectFrequency(9990);
 	TEA5767N_setSearchLowStopLevel();
 		
 	lc75341_init();

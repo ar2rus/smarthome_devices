@@ -38,9 +38,7 @@ static unsigned char write_bytes[5] = {
 	
 static unsigned char read_bytes[5] =  { 0x00, 0x00, 0x00, 0x00, 0x00 };
 	
-	
-	
-static float frequency;
+
 static uint8_t hiInjection;	
 static uint8_t muted = 0;
 
@@ -141,16 +139,16 @@ void TEA5767N_setSideLOInjection(uint8_t high) {
 	}
 }
 
-void TEA5767N_setFrequency(float _frequency) {
-	frequency = _frequency;
+/*example 99.9 -> 9990 */
+void TEA5767N_setFrequency(uint16_t _frequency) {
 	unsigned int frequencyW;
 	
 	if (hiInjection) {
 		TEA5767N_setSideLOInjection(1);
-		frequencyW = 4 * ((frequency * 1000000) + 225000) / 32768;
+		frequencyW = 4 * ((_frequency * 10000UL) + 225000UL) / 32768UL;
 	} else {
 		TEA5767N_setSideLOInjection(0);
-		frequencyW = 4 * ((frequency * 1000000) - 225000) / 32768;
+		frequencyW = 4 * ((_frequency * 10000UL) - 225000UL) / 32768UL;
 	}
 	
 	write_bytes[0] = ((write_bytes[0] & 0xC0) | ((frequencyW >> 8) & 0x3F));
@@ -221,18 +219,18 @@ uint8_t TEA5767N_getSignalLevel(uint8_t refresh) {
 	return (read_bytes[3] & TEA5767_ADC_LEVEL) >> 4;
 }
 
-void TEA5767N_calculateOptimalHiLoInjection(float freq) {
+void TEA5767N_calculateOptimalHiLoInjection(uint16_t frequency) {
 	uint8_t signalHigh;
 	uint8_t signalLow;
 	
 	TEA5767N_setSideLOInjection(1);
-	TEA5767N_setFrequency((float) (freq + 0.45));
+	TEA5767N_setFrequency((float) (frequency + 45));	//+0.45 MHz
 	TEA5767_write();
 	
 	signalHigh = TEA5767N_getSignalLevel(0);
 	
 	TEA5767N_setSideLOInjection(0);
-	TEA5767N_setFrequency((float) (freq - 0.45));
+	TEA5767N_setFrequency((float) (frequency - 45));	//-0.45 MHz
 	TEA5767_write();
 	
 	signalLow = TEA5767N_getSignalLevel(0);
@@ -241,17 +239,17 @@ void TEA5767N_calculateOptimalHiLoInjection(float freq) {
 }
 
 
-void TEA5767N_transmitFrequency(float frequency) {
+void TEA5767N_transmitFrequency(uint16_t frequency) {
 	TEA5767N_setFrequency(frequency);
 	TEA5767_write();
 }
 
-void TEA5767N_selectFrequency(float frequency) {
+void TEA5767N_selectFrequency(uint16_t frequency) {
 	TEA5767N_calculateOptimalHiLoInjection(frequency);
 	TEA5767N_transmitFrequency(frequency);
 }
 
-void TEA5767N_selectFrequencyMuting(float frequency) {
+void TEA5767N_selectFrequencyMuting(uint16_t frequency) {
 	TEA5767N_mute(1);
 	TEA5767N_selectFrequency(frequency);
 	TEA5767N_mute(0);
@@ -266,15 +264,15 @@ void TEA5767N_loadFrequency() {
 	write_bytes[1] = read_bytes[1];
 }
 
-float TEA5767N_getFrequencyInMHz(unsigned int frequencyW) {
+uint16_t TEA5767N_getFrequencyInMHz(unsigned int frequencyW) {
 	if (hiInjection) {
-		return (((frequencyW / 4.0) * 32768.0) - 225000.0) / 1000000.0;
+		return (((frequencyW / 4) * 32768UL) - 225000UL) / 10000UL;
 	} else {
-		return (((frequencyW / 4.0) * 32768.0) + 225000.0) / 1000000.0;
+		return (((frequencyW / 4) * 32768UL) + 225000UL) / 10000UL;
 	}
 }
 
-float TEA5767N_readFrequencyInMHz() {
+uint16_t TEA5767N_readFrequencyInMHz() {
 	TEA5767N_loadFrequency();
 	
 	unsigned int frequencyW = (((read_bytes[0] & 0x3F) * 256) + read_bytes[1]);
@@ -309,15 +307,15 @@ uint8_t TEA5767N_searchNext() {
 	uint8_t bandLimitReached;
 	
 	if (TEA5767N_isSearchUp()) {
-		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() + 0.1);
+		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() + 10);	//+0.1 MHz
 	} else {
-		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() - 0.1);
+		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() - 10);	//-0.1 MHz
 	}
 	
 	//Turns the search on
 	write_bytes[0] |= 0b01000000;
 	TEA5767_write();
-	
+		
 	while(!TEA5767N_isReady()) { }
 	//Read Band Limit flag
 	bandLimitReached = TEA5767N_isBandLimitReached();
@@ -341,19 +339,19 @@ uint8_t TEA5767N_searchNextMuting() {
 	return bandLimitReached;
 }
 
-uint8_t TEA5767N_startSearchFrom(float frequency) {
+uint8_t TEA5767N_startSearchFrom(uint16_t frequency) {
 	TEA5767N_selectFrequency(frequency);
 	return TEA5767N_searchNext();
 }
 
 uint8_t TEA5767N_startSearchFromBegin() {
 	TEA5767N_setSearchUp(1);
-	return TEA5767N_startSearchFrom(87.0);
+	return TEA5767N_startSearchFrom(8700);		//87.0
 }
 
 uint8_t TEA5767N_startSearchFromEnd() {
 	TEA5767N_setSearchUp(0);
-	return TEA5767N_startSearchFrom(108.0);
+	return TEA5767N_startSearchFrom(10800);		//108.0
 }
 
 uint8_t TEA5767N_startSearchMutingFromBegin() {
