@@ -265,8 +265,8 @@ void cmd(clunet_msg* m){
 			
 			char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
 			clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME_INFO, &hd[0], sizeof(hd));
+			}
 			break;
-		}
 		case CLUNET_COMMAND_TIME_INFO:
 			if (heatfloor_systime_async_response != NULL){
 				if (m->size == 7){
