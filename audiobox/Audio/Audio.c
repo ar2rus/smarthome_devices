@@ -528,7 +528,7 @@ int main(void){
 	//TEA5767_tune(99900UL);
 	//TEA5767_write();
 	
-	TEA5767N_selectFrequency(99.9);
+	TEA5767N_selectFrequency(92.9);
 	TEA5767N_setSearchLowStopLevel();
 		
 	lc75341_init();
