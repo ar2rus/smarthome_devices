@@ -120,8 +120,8 @@ int main(void){
 	 
     while(1){
 		
-		poll_ethernet();	//сначала проверяем сторонние сообщения
- 		check_ethernet();	//так как сообщения sniff затрут сторонние, если они были
+		poll_ethernet();
+ 		check_ethernet();
  		periodic_ethernet();
 		 
 		wdt_reset();
