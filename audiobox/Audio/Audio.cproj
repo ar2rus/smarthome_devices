@@ -127,6 +127,14 @@
       <SubType>compile</SubType>
       <Link>clunet\clunet.h</Link>
     </Compile>
+    <Compile Include="..\..\_lib\clunet\clunet_buffered.c">
+      <SubType>compile</SubType>
+      <Link>clunet\clunet_buffered.c</Link>
+    </Compile>
+    <Compile Include="..\..\_lib\clunet\clunet_buffered.h">
+      <SubType>compile</SubType>
+      <Link>clunet\clunet_buffered.h</Link>
+    </Compile>
     <Compile Include="..\..\_lib\lc75341\lc75341.c">
       <SubType>compile</SubType>
       <Link>lc75341\lc75341.c</Link>

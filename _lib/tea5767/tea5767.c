@@ -38,10 +38,8 @@ static unsigned char write_bytes[5] = {
 	
 static unsigned char read_bytes[5] =  { 0x00, 0x00, 0x00, 0x00, 0x00 };
 	
-	
-	
-static float frequency;
-static uint8_t hiInjection;	
+
+static uint8_t hiInjection;
 static uint8_t muted = 0;
 
 int TEA5767_write(void){
@@ -85,15 +83,8 @@ int TEA5767_write(void){
 	while(TWCR & (1<<TWSTO));	
 	return ret;
 }
- 
- 
-//setup the I2C hardware to ACK the next transmission
-//and indicate that we've handled the last one.
-#define TWACK (TWCR=(1<<TWINT)|(1<<TWEN)|(1<<TWEA))
-//setup the I2C hardware to NACK the next transmission
-#define TWNACK (TWCR=(1<<TWINT)|(1<<TWEN)) 
- 
-int TEA5767_read(void){  // Odczyt danych z TEA5767
+
+int TEA5767_read(void){
 	uint8_t ret = 0;
 	TWCR = (1<<TWINT)|(1<<TWSTA)|(1<<TWEN);	// I2C start
 	while (!(TWCR & (1<<TWINT)));   
@@ -133,84 +124,6 @@ int TEA5767_read(void){  // Odczyt danych z TEA5767
 	return ret;
 }
 
-void TEA5767N_setSideLOInjection(uint8_t high) {
-	if (high){
-		write_bytes[2] |= TEA5767_HIGH_LO_INJECT;
-	}else{
-		write_bytes[2] &= ~TEA5767_HIGH_LO_INJECT;
-	}
-}
-
-void TEA5767N_setFrequency(float _frequency) {
-	frequency = _frequency;
-	unsigned int frequencyW;
-	
-	if (hiInjection) {
-		TEA5767N_setSideLOInjection(1);
-		frequencyW = 4 * ((frequency * 1000000) + 225000) / 32768;
-	} else {
-		TEA5767N_setSideLOInjection(0);
-		frequencyW = 4 * ((frequency * 1000000) - 225000) / 32768;
-	}
-	
-	write_bytes[0] = ((write_bytes[0] & 0xC0) | ((frequencyW >> 8) & 0x3F));
-	write_bytes[1] = frequencyW & 0XFF;
-}
-
-void TEA5767N_setMute(uint8_t mute) {
-	if (mute){
-		write_bytes[0] |= TEA5767_MUTE;
-	}else{
-		write_bytes[0] &= ~TEA5767_MUTE;
-	}
-}
-
-void TEA5767N_setSearchUp(uint8_t up) {
-	if (up){
-		write_bytes[2] |= TEA5767_SUD;
-	}else{
-		write_bytes[2] &= ~TEA5767_SUD;
-	}
-}
-
-void TEA5767N_setSearchLowStopLevel() {
-	write_bytes[2] &= 0b10011111;
-	write_bytes[2] |= (1 << 5);
-}
-
-void TEA5767N_setSearchMidStopLevel() {
-	write_bytes[2] &= 0b10011111;
-	write_bytes[2] |= (2 << 5);
-}
-
-void TEA5767N_setSearchHighStopLevel() {
-	write_bytes[2] &= 0b10011111;
-	write_bytes[2] |= (3 << 5);
-}
-
-void TEA5767N_setMono(uint8_t mono) {
-	if (mono){
-		write_bytes[2] |= TEA5767_MONO;
-	}else{
-		write_bytes[2] &= ~TEA5767_MONO;
-	}
-}
-
-void TEA5767N_mono(uint8_t mono) {
-	TEA5767N_setMono(mono);
-	TEA5767_write();
-}
-
-void TEA5767N_mute(uint8_t mute) {
-	muted = mute;
-	TEA5767N_setMute(mute);
-	TEA5767_write();
-}
-
-uint8_t TEA5767N_isMuted() {
-	return muted;
-}
-
 uint8_t TEA5767N_getSignalLevel(uint8_t refresh) {
 	//Necessary before read status
 	if (refresh){
@@ -221,18 +134,42 @@ uint8_t TEA5767N_getSignalLevel(uint8_t refresh) {
 	return (read_bytes[3] & TEA5767_ADC_LEVEL) >> 4;
 }
 
-void TEA5767N_calculateOptimalHiLoInjection(float freq) {
+void TEA5767N_setSideLOInjection(uint8_t high) {
+	if (high){
+		write_bytes[2] |= TEA5767_HIGH_LO_INJECT;
+		}else{
+		write_bytes[2] &= ~TEA5767_HIGH_LO_INJECT;
+	}
+}
+
+/*example 99.9 -> 9990 */
+void TEA5767N_setFrequency(uint16_t _frequency) {
+	unsigned int frequencyW;
+	
+	if (hiInjection) {
+		TEA5767N_setSideLOInjection(1);
+		frequencyW = 4 * ((_frequency * 10000UL) + 225000UL) / 32768UL;
+	} else {
+		TEA5767N_setSideLOInjection(0);
+		frequencyW = 4 * ((_frequency * 10000UL) - 225000UL) / 32768UL;
+	}
+	
+	write_bytes[0] = ((write_bytes[0] & 0xC0) | ((frequencyW >> 8) & TEA5767_PLL_MASK));
+	write_bytes[1] = frequencyW & 0XFF;
+}
+
+void TEA5767N_calculateOptimalHiLoInjection(uint16_t frequency) {
 	uint8_t signalHigh;
 	uint8_t signalLow;
 	
 	TEA5767N_setSideLOInjection(1);
-	TEA5767N_setFrequency((float) (freq + 0.45));
+	TEA5767N_setFrequency(frequency + 45);	//+0.45 MHz
 	TEA5767_write();
 	
 	signalHigh = TEA5767N_getSignalLevel(0);
 	
 	TEA5767N_setSideLOInjection(0);
-	TEA5767N_setFrequency((float) (freq - 0.45));
+	TEA5767N_setFrequency(frequency - 45);	//-0.45 MHz
 	TEA5767_write();
 	
 	signalLow = TEA5767N_getSignalLevel(0);
@@ -240,138 +177,234 @@ void TEA5767N_calculateOptimalHiLoInjection(float freq) {
 	hiInjection = (signalHigh < signalLow) ? 1 : 0;
 }
 
-
-void TEA5767N_transmitFrequency(float frequency) {
-	TEA5767N_setFrequency(frequency);
+void TEA5767N_mono(uint8_t mono) {
+	if (mono){
+		write_bytes[2] |= TEA5767_MONO;
+	}else{
+		write_bytes[2] &= ~TEA5767_MONO;
+	}
 	TEA5767_write();
 }
 
-void TEA5767N_selectFrequency(float frequency) {
-	TEA5767N_calculateOptimalHiLoInjection(frequency);
-	TEA5767N_transmitFrequency(frequency);
+void TEA5767N_mute(uint8_t mute) {
+	muted = mute;
+	
+	if (mute){
+		write_bytes[0] |= TEA5767_MUTE;
+	}else{
+		write_bytes[0] &= ~TEA5767_MUTE;
+	}
+	TEA5767_write();
 }
 
-void TEA5767N_selectFrequencyMuting(float frequency) {
-	TEA5767N_mute(1);
-	TEA5767N_selectFrequency(frequency);
-	TEA5767N_mute(0);
+void TEA5767N_standby(uint8_t on) {
+	if (on){
+		write_bytes[3] |= TEA5767_STDBY;
+	}else{
+		write_bytes[3] &= ~TEA5767_STDBY;
+	}
+	TEA5767_write();
+}
+
+void TEA5767N_highCutControl(uint8_t on) {
+	if (on){
+		write_bytes[3] |= TEA5767_HCC;
+	}else{
+		write_bytes[3] &= ~TEA5767_HCC;
+	}
+	TEA5767_write();
+}
+
+void TEA5767N_stereoNoiseCancelling(uint8_t on) {
+	if (on){
+		write_bytes[3] |= TEA5767_SNC;
+	}else{
+		write_bytes[3] &= ~TEA5767_SNC;
+	}
+	TEA5767_write();
+}
+
+void TEA5767N_selectFrequency(uint16_t frequency) {
+	TEA5767N_calculateOptimalHiLoInjection(frequency);
+	TEA5767N_setFrequency(frequency);
+	TEA5767_write();
 }
 
 void TEA5767N_loadFrequency() {
 	TEA5767_read();
 	
-	//Stores the read frequency that can be the result of a search and it?s not yet in transmission data
+	//Stores the read frequency that can be the result of a search and it's not yet in transmission data
 	//and is necessary to subsequent calls to search.
-	write_bytes[0] = (write_bytes[0] & 0xC0) | (read_bytes[0] & 0x3F);
+	write_bytes[0] = (write_bytes[0] & 0xC0) | (read_bytes[0] & TEA5767_PLL_MASK);
 	write_bytes[1] = read_bytes[1];
 }
 
-float TEA5767N_getFrequencyInMHz(unsigned int frequencyW) {
-	if (hiInjection) {
-		return (((frequencyW / 4.0) * 32768.0) - 225000.0) / 1000000.0;
-	} else {
-		return (((frequencyW / 4.0) * 32768.0) + 225000.0) / 1000000.0;
-	}
-}
-
-float TEA5767N_readFrequencyInMHz() {
+//99.9 -> 9990
+uint16_t TEA5767N_readFrequencyInMHz() {
 	TEA5767N_loadFrequency();
+		
+	unsigned int frequencyW = (((read_bytes[0] & TEA5767_PLL_MASK) << 8) + read_bytes[1]);
 	
-	unsigned int frequencyW = (((read_bytes[0] & 0x3F) * 256) + read_bytes[1]);
-	return TEA5767N_getFrequencyInMHz(frequencyW);
+	if (hiInjection) {
+		//return (((frequencyW / 4.0) * 32768.0) - 225000.0) / 1000000.0;
+		return  ((frequencyW * 8192) - 225000) / 10000;
+	} else {
+		//return (((frequencyW / 4.0) * 32768.0) + 225000.0) / 1000000.0;
+		return  ((frequencyW * 8192) + 225000) / 10000;
+	}
 }
 
 uint8_t TEA5767N_isReady() {
 	TEA5767_read();
-	return read_bytes[0] >> 7;
+	return (read_bytes[0] & TEA5767_READY_FLAG) != 0;
 }
 
 uint8_t TEA5767N_isBandLimitReached() {
 	TEA5767_read();
-	return (read_bytes[0] >> 6) & 1;
+	return (read_bytes[0] & TEA5767_BAND_LIMIT_FLAG) != 0;
 }
 
 uint8_t TEA5767N_isStereo() {
 	TEA5767_read();
-	return read_bytes[2] >> 7;
+	return (read_bytes[2] & TEA5767_STEREO) != 0;
 }
 
 uint8_t TEA5767N_isSearchUp() {
-	return (write_bytes[2] & 0b10000000) != 0;
+	return (write_bytes[2] & TEA5767_SUD) != 0;
 }
 
 uint8_t TEA5767N_isStandBy() {
 	TEA5767_read();
-	return (write_bytes[3] & 0b01000000) != 0;
+	return (write_bytes[3] & TEA5767_STDBY) != 0;
 }
 
-uint8_t TEA5767N_searchNext() {
+uint8_t TEA5767N_isMuted() {
+	return muted;
+}
+
+uint8_t TEA5767N_searchNext(uint8_t up, uint8_t stop_level) {
 	uint8_t bandLimitReached;
 	
-	if (TEA5767N_isSearchUp()) {
-		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() + 0.1);
+	if (up) {
+		write_bytes[2] |= TEA5767_SUD;
+		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() + 10);	//+0.1 MHz
 	} else {
-		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() - 0.1);
+		write_bytes[2] &= ~TEA5767_SUD;
+		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() - 10);	//-0.1 MHz
+	}
+	
+	//stop levels
+	write_bytes[2] &= 0b10011111;
+	switch(stop_level){
+		case 0:
+			write_bytes[2] |= TEA5767_SRCH_LOW_LVL;
+			break;
+		case 1:
+			write_bytes[2] |= TEA5767_SRCH_MID_LVL;
+			break;
+		case 2:
+			write_bytes[2] |= TEA5767_SRCH_HIGH_LVL;
+			break;
 	}
 	
 	//Turns the search on
-	write_bytes[0] |= 0b01000000;
+	write_bytes[0] |= TEA5767_SEARCH;
 	TEA5767_write();
-	
+		
 	while(!TEA5767N_isReady()) { }
 	//Read Band Limit flag
 	bandLimitReached = TEA5767N_isBandLimitReached();
 	//Loads the new selected frequency
 	TEA5767N_loadFrequency();
 	
-	//Turns de search off
-	write_bytes[0] &= 0b10111111;
+	//Turns the search off
+	write_bytes[0] &= ~TEA5767_SEARCH;
 	TEA5767_write();
 	
 	return bandLimitReached;
 }
 
-uint8_t TEA5767N_searchNextMuting() {
-	uint8_t bandLimitReached;
-	
-	TEA5767N_mute(1);
-	bandLimitReached = TEA5767N_searchNext();
-	TEA5767N_mute(0);
-	
-	return bandLimitReached;
-}
-
-uint8_t TEA5767N_startSearchFrom(float frequency) {
+uint8_t TEA5767N_startSearchFrom(uint16_t frequency, uint8_t up, uint8_t stop_level) {
 	TEA5767N_selectFrequency(frequency);
-	return TEA5767N_searchNext();
+	return TEA5767N_searchNext(up, stop_level);
 }
 
-uint8_t TEA5767N_startSearchFromBegin() {
-	TEA5767N_setSearchUp(1);
-	return TEA5767N_startSearchFrom(87.0);
+uint8_t TEA5767N_startSearchFromBegin(uint8_t stop_level) {
+	return TEA5767N_startSearchFrom(8700, 1, stop_level);				//87.0
 }
 
-uint8_t TEA5767N_startSearchFromEnd() {
-	TEA5767N_setSearchUp(0);
-	return TEA5767N_startSearchFrom(108.0);
+uint8_t TEA5767N_startSearchFromEnd(uint8_t stop_level) {
+	return TEA5767N_startSearchFrom(10800, 0, stop_level);				//108.0
 }
 
-uint8_t TEA5767N_startSearchMutingFromBegin() {
-	uint8_t bandLimitReached;
-	
-	TEA5767N_mute(1);
-	bandLimitReached = TEA5767N_startSearchFromBegin();
-	TEA5767N_mute(0);
-	
-	return bandLimitReached;
+
+
+
+char num_channels = -1;	//cache
+char cur_channel = -1;
+
+void FM_set_num_channels(uint8_t num){
+	num_channels = num;	
+	eeprom_write_byte((void*)FM_PROGRAMS_EEPROM_OFFSET, num_channels);
 }
 
-uint8_t TEA5767N_startSearchMutingFromEnd() {
-	uint8_t bandLimitReached;
+void FM_clear_channels(){
+	FM_set_num_channels(0);
+}
+
+uint8_t FM_get_num_channels(){
+	if (num_channels < 0){
+		num_channels = eeprom_read_byte((void*)FM_PROGRAMS_EEPROM_OFFSET);
+	}
 	
-	TEA5767N_mute(1);
-	bandLimitReached = TEA5767N_startSearchFromEnd();
-	TEA5767N_mute(0);
-	
-	return bandLimitReached;
+	return num_channels;
+}
+
+uint8_t FM_save_channel(uint8_t num_channel, uint16_t frequency){
+	if (num_channel < FM_MAX_NUM_CHANNELS && num_channels <= FM_get_num_channels()){
+		eeprom_write_word((void*)FM_PROGRAMS_EEPROM_OFFSET + num_channel*2 + 1, frequency);
+		if (FM_get_num_channels() == num_channel){
+			FM_set_num_channels(num_channel + 1);
+		}
+		return 1;
+	}
+	return 0;
+}
+
+uint8_t FM_add_channel(uint16_t frequency){
+	return FM_save_channel(FM_get_num_channels(), frequency);
+}
+
+uint16_t FM_get_channel_frequency(uint8_t num_channel){
+	if (num_channel < FM_get_num_channels()){
+		return eeprom_read_word((void*)FM_PROGRAMS_EEPROM_OFFSET + num_channel*2 + 1);
+	}
+	return 0;
+}
+
+uint16_t FM_select_channel(uint8_t num_channel){
+	uint16_t freq = FM_get_channel_frequency(num_channel);
+	if (freq){
+		cur_channel = num_channel;
+	}
+	return freq;
+}
+
+uint16_t FM_select_next_channel(uint8_t up){
+	if (FM_get_num_channels() > 0){
+		if (up){
+			cur_channel++;
+		}else{
+			cur_channel--;
+		}
+		
+		if (cur_channel > FM_get_num_channels()){
+			cur_channel = 0;
+		} else if (cur_channel < 0){
+			cur_channel = FM_get_num_channels() - 1;
+		}
+		
+		return FM_select_channel(cur_channel);
+	}
+	return 0;
 }

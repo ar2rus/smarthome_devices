@@ -141,7 +141,9 @@ static void firmware_update(){
 					if (state == COMMAND_FIRMWARE_UPDATE_START){
 						bootloader_header_ready_t *hr = ((bootloader_header_ready_t *)&send_buffer[CLUNET_OFFSET_DATA]);
 						hr->header.subcommand = COMMAND_FIRMWARE_UPDATE_READY;
+						
 						hr->spm_pagesize = SPM_PAGESIZE;
+						
 						send(sizeof(bootloader_header_ready_t));
 						state = COMMAND_FIRMWARE_UPDATE_READY;
 						break;

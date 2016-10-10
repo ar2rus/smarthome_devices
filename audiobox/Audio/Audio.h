@@ -10,6 +10,15 @@
 #define AUDIO_H_
 
 #include "utils/bits.h"
+#include "clunet/clunet.h"
+#include "clunet/clunet_buffered.h"
+#include "lc75341/lc75341.h"
+#include "nec/rx.h"
+#include "tea5767/TEA5767.h"
+
+#include <stdarg.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
 
 /*led port description*/
 #define LED_PORT C
@@ -112,6 +121,23 @@ signed char readEncoder();
 
 #define COMMAND_EQUALIZER_RESET	50
 #define COMMAND_EQUALIZER_INFO	51
+
+#define COMMAND_FM_OFF				60
+#define COMMAND_FM_ON				61
+#define COMMAND_FM_INFO				62
+#define COMMAND_FM_TUNE				63
+#define COMMAND_FM_SELECT_CHANNEL	64
+#define COMMAND_FM_NEXT_CHANNEL		65
+#define COMMAND_FM_PREV_CHANNEL		66
+#define COMMAND_FM_SEARCH			67
+#define COMMAND_FM_COMAND			68
+#define COMMAND_FM_SAVED_NUM		69
+#define COMMAND_FM_SAVED_REQ		70
+#define COMMAND_FM_SAVED_ADD		71
+#define COMMAND_FM_SAVED_ADD_CUR	72
+#define COMMAND_FM_SAVED_SAVE		73
+#define COMMAND_FM_SAVED_SAVE_CUR	74
+#define COMMAND_FM_SAVED_CLEAR		75
 
 void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, ...);
 
