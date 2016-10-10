@@ -119,8 +119,9 @@ int main(void){
     wdt_enable(WDTO_2S);
 	 
     while(1){
- 		check_ethernet();
-		poll_ethernet();
+		
+		poll_ethernet();	//сначала проверяем сторонние сообщения
+ 		check_ethernet();	//так как сообщения sniff затрут сторонние, если они были
  		periodic_ethernet();
 		 
 		wdt_reset();
