@@ -1,18 +1,6 @@
 
-#include "lc75341/lc75341.h"
-#include "nec/rx.h"
-#include "tea5767/TEA5767.h"
-
-#include "clunet/clunet.h"
-
 #include "Audio.h"
 
-
-#include <stdarg.h>
-#include <avr/io.h>
-#include <avr/sleep.h>
-#include <avr/interrupt.h>
-#include <util/delay.h>
 
 ISR(TIMER1_COMPB_vect){
 	if (necReadSignal()){
@@ -57,16 +45,10 @@ ISR(TIMER1_COMPA_vect){
 		}
 	}else
 	if (BUTTON_L_READ){
-		//tea5767_search(TEA5767_SUD_DOWN, TEA5767_SSL_MID);
-		//TEA5767_search_down();
-		TEA5767N_setSearchUp(0);
-		TEA5767N_searchNextMuting();
+		TEA5767N_searchNext(0, 0);
 	}else
 	if (BUTTON_R_READ){
-		TEA5767N_setSearchUp(1);
-		TEA5767N_searchNextMuting();
-		//tea5767_search(TEA5767_SUD_UP, TEA5767_SSL_MID);
-		//TEA5767_search_up();
+		TEA5767N_searchNext(1, 0);
 	}else{
 		buttonStates = 0;
 	}
@@ -294,18 +276,46 @@ void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, .
 			responseType = 2;
 			break;
 			
-		case COMMAND_FM_PREV:
-			TEA5767N_setSearchUp(0);
-			TEA5767N_searchNextMuting();
+		case COMMAND_FM_TUNE:
+			//TEA5767N_startSearchFromBegin(0);
 			responseType = 3;
 			break;
-		case COMMAND_FM_NEXT:
-			TEA5767N_setSearchUp(1);
-			TEA5767N_searchNextMuting();
+		case COMMAND_FM_SELECT_CHANNEL:
+			FM_select_channel(va_arg(va, int));
 			responseType = 3;
 			break;
-		case COMMAND_FM_INFO:
+		case COMMAND_FM_NEXT_CHANNEL:
+			FM_select_next_channel(1);
 			responseType = 3;
+			break;
+		case COMMAND_FM_PREV_CHANNEL:
+			FM_select_next_channel(0);
+			responseType = 3;
+			break;
+			
+		case COMMAND_FM_SAVED_NUM:
+			responseType = 4;
+			break;
+		case COMMAND_FM_SAVED_REQ:
+			responseType = 5;
+			break;
+		case COMMAND_FM_SAVED_ADD:
+			FM_add_channel(va_arg(va, int));
+			responseType = 4;
+			break;
+		case COMMAND_FM_SAVED_ADD_CUR:
+			responseType = 4;
+			break;
+		case COMMAND_FM_SAVED_SAVE:
+			FM_save_channel(va_arg(va, int),va_arg(va, int));
+			responseType = 4;
+			break;
+		case COMMAND_FM_SAVED_SAVE_CUR:
+			responseType = 4;
+			break;
+		case COMMAND_FM_SAVED_CLEAR:
+			FM_clear_channels();
+			responseType = 4;
 			break;
 	}
 	va_end(va);
@@ -382,156 +392,12 @@ signed char readEncoder(){
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
 	switch(command){
 		case CLUNET_COMMAND_CHANNEL:
-			switch (size){
-				case 1:
-					switch (data[0]){
-						case 0xFF:
-							cmd(1, src_address, COMMAND_INPUT_INFO);
-							break;
-						case 0x01:
-							cmd(1, src_address, COMMAND_INPUT_NEXT);
-							break;
-						case 0x02:
-							cmd(1, src_address, COMMAND_INPUT_PREV);
-							break;
-					}
-					break;
-				case 2:
-					switch(data[0]){
-						case 0x00:
-							cmd(1, src_address, COMMAND_INPUT, data[1] - 1);	//1 channel -> 0 channel
-							break;
-					}
-					break;
-			}
-			break;
 		case CLUNET_COMMAND_VOLUME:
-			switch (size){
-				case 1:
-					switch (data[0]){
-						case 0xFF:
-							cmd(1, src_address, COMMAND_VOLUME_INFO);
-							break;
-						case 0x02:
-							cmd(1, src_address, COMMAND_VOLUME_UP, 2);
-							break;
-						case 0x03:
-							cmd(1, src_address, COMMAND_VOLUME_DOWN, 2);
-							break;
-					}
-					break;
-				case 2:
-					switch(data[0]){
-						case 0x00:
-							cmd(1, src_address, COMMAND_VOLUME_PCNT, data[1]);
-							break;
-						case 0x01:
-							cmd(1, src_address, COMMAND_VOLUME_DB, data[1]);
-							break;
-					}
-					break;
-			}
-			break;
 		case CLUNET_COMMAND_MUTE:
-			if (size == 1){
-				switch(data[0]){
-					case 0:
-						cmd(1, src_address, COMMAND_VOLUME_PCNT, 0);
-						break;
-					case 1:
-						cmd(1, src_address, COMMAND_MUTE_TOGGLE);
-						break;
-				}
-			}
-			break;
 		case CLUNET_COMMAND_EQUALIZER:
-			switch(size){
-				case 1:
-					switch(data[0]){
-						case 0x00:
-							cmd(1, src_address, COMMAND_EQUALIZER_RESET);
-							break;
-						case 0xFF:
-							cmd(1, src_address, COMMAND_EQUALIZER_INFO);
-							break;
-					}
-					break;
-				case 2:
-				case 3:
-					switch(data[0]){
-						case 0x01:	//gain
-							switch(data[1]){
-								case 0x00:	//reset
-									cmd(1, src_address, COMMAND_GAIN_DB, 0);
-									break;
-								case 0x01:	//dB
-									if (size == 3){
-										cmd(1, src_address, COMMAND_GAIN_DB, data[2]);
-									}
-									break;
-								case 0x02:	//+
-									cmd(1, src_address, COMMAND_GAIN_UP);
-									break;
-								case 0x03:	//-
-									cmd(1, src_address, COMMAND_GAIN_DOWN);
-									break;
-							}
-							break;
-						case 0x02:	//treble
-							switch(data[1]){
-								case 0x00:	//reset
-									cmd(1, src_address, COMMAND_TREBLE_DB, 0);
-									break;
-								case 0x01:	//dB
-									if (size == 3){
-										cmd(1, src_address, COMMAND_TREBLE_DB, data[2]);
-									}
-									break;
-								case 0x02:	//+
-									cmd(1, src_address, COMMAND_TREBLE_UP);
-									break;
-								case 0x03:	//-
-									cmd(1, src_address, COMMAND_TREBLE_DOWN);
-									break;
-							}
-							break;
-						case 0x03:	//bass
-							switch(data[1]){
-								case 0x00:	//reset
-									cmd(1, src_address, COMMAND_BASS_DB, 0);
-									break;
-								case 0x01:	//dB
-									if (size == 3){
-										cmd(1, src_address, COMMAND_BASS_DB, data[2]);
-									}
-									break;
-								case 0x02:	//+
-									cmd(1, src_address, COMMAND_BASS_UP);
-									break;
-								case 0x03:	//-
-									cmd(1, src_address, COMMAND_BASS_DOWN);
-									break;
-							}
-							break;
-					}
-					break;
-			}
-			break;
+		case CLUNET_COMMAND_FM:
 		case CLUNET_COMMAND_DEBUG:
-			if (size == 1){
-				switch(data[0]){
-					case 0xFF:
-						cmd(1, src_address, COMMAND_FM_INFO);
-						break;
-					case 0:
-						cmd(1, src_address, COMMAND_FM_PREV);
-						break;
-					case 1:
-						cmd(1, src_address, COMMAND_FM_NEXT);
-						break;
-				}
-			}
-			break;
+			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }
 
@@ -542,25 +408,248 @@ int main(void){
 	
 	TWI_INIT;
 	
-	clunet_init();
 	clunet_set_on_data_received(clunet_data_received);
-	
-
-	//TEA5767_tune(99900UL);
-	//TEA5767_write();
+	clunet_buffered_init();
+	clunet_init();
 	
 	TEA5767N_selectFrequency(9990);
-	TEA5767N_setSearchLowStopLevel();
 		
 	lc75341_init();
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
-	sei();
 	
 	lc75341_volume_percent(80);
 	
-	while (1){}
+	while (1){
+		if (!clunet_buffered_is_empty()){
+			
+			clunet_msg* m = clunet_buffered_pop();
+			
+			switch(m->command){
+				case CLUNET_COMMAND_CHANNEL:
+				switch (m->size){
+					case 1:
+					switch (m->data[0]){
+						case 0xFF:
+						cmd(1, m->src_address, COMMAND_INPUT_INFO);
+						break;
+						case 0x01:
+						cmd(1, m->src_address, COMMAND_INPUT_NEXT);
+						break;
+						case 0x02:
+						cmd(1, m->src_address, COMMAND_INPUT_PREV);
+						break;
+					}
+					break;
+					case 2:
+					switch(m->data[0]){
+						case 0x00:
+						cmd(1, m->src_address, COMMAND_INPUT, m->data[1] - 1);	//1 channel -> 0 channel
+						break;
+					}
+					break;
+				}
+				break;
+				case CLUNET_COMMAND_VOLUME:
+				switch (m->size){
+					case 1:
+					switch (m->data[0]){
+						case 0xFF:
+						cmd(1, m->src_address, COMMAND_VOLUME_INFO);
+						break;
+						case 0x02:
+						cmd(1, m->src_address, COMMAND_VOLUME_UP, 2);
+						break;
+						case 0x03:
+						cmd(1, m->src_address, COMMAND_VOLUME_DOWN, 2);
+						break;
+					}
+					break;
+					case 2:
+					switch(m->data[0]){
+						case 0x00:
+						cmd(1, m->src_address, COMMAND_VOLUME_PCNT, m->data[1]);
+						break;
+						case 0x01:
+						cmd(1, m->src_address, COMMAND_VOLUME_DB, m->data[1]);
+						break;
+					}
+					break;
+				}
+				break;
+				case CLUNET_COMMAND_MUTE:
+				if (m->size == 1){
+					switch(m->data[0]){
+						case 0:
+						cmd(1, m->src_address, COMMAND_VOLUME_PCNT, 0);
+						break;
+						case 1:
+						cmd(1, m->src_address, COMMAND_MUTE_TOGGLE);
+						break;
+					}
+				}
+				break;
+				case CLUNET_COMMAND_EQUALIZER:
+				switch(m->size){
+					case 1:
+					switch(m->data[0]){
+						case 0x00:
+						cmd(1, m->src_address, COMMAND_EQUALIZER_RESET);
+						break;
+						case 0xFF:
+						cmd(1, m->src_address, COMMAND_EQUALIZER_INFO);
+						break;
+					}
+					break;
+					case 2:
+					case 3:
+					switch(m->data[0]){
+						case 0x01:	//gain
+						switch(m->data[1]){
+							case 0x00:	//reset
+							cmd(1, m->src_address, COMMAND_GAIN_DB, 0);
+							break;
+							case 0x01:	//dB
+							if (m->size == 3){
+								cmd(1, m->src_address, COMMAND_GAIN_DB, m->data[2]);
+							}
+							break;
+							case 0x02:	//+
+							cmd(1, m->src_address, COMMAND_GAIN_UP);
+							break;
+							case 0x03:	//-
+							cmd(1, m->src_address, COMMAND_GAIN_DOWN);
+							break;
+						}
+						break;
+						case 0x02:	//treble
+						switch(m->data[1]){
+							case 0x00:	//reset
+							cmd(1, m->src_address, COMMAND_TREBLE_DB, 0);
+							break;
+							case 0x01:	//dB
+							if (m->size == 3){
+								cmd(1, m->src_address, COMMAND_TREBLE_DB, m->data[2]);
+							}
+							break;
+							case 0x02:	//+
+							cmd(1, m->src_address, COMMAND_TREBLE_UP);
+							break;
+							case 0x03:	//-
+							cmd(1, m->src_address, COMMAND_TREBLE_DOWN);
+							break;
+						}
+						break;
+						case 0x03:	//bass
+						switch(m->data[1]){
+							case 0x00:	//reset
+							cmd(1, m->src_address, COMMAND_BASS_DB, 0);
+							break;
+							case 0x01:	//dB
+							if (m->size == 3){
+								cmd(1, m->src_address, COMMAND_BASS_DB, m->data[2]);
+							}
+							break;
+							case 0x02:	//+
+							cmd(1, m->src_address, COMMAND_BASS_UP);
+							break;
+							case 0x03:	//-
+							cmd(1, m->src_address, COMMAND_BASS_DOWN);
+							break;
+						}
+						break;
+					}
+					break;
+				}
+				break;
+				
+				case CLUNET_COMMAND_FM:
+					if (m->size > 0){
+						switch(m->data[0]){
+							case 0x00:
+								cmd(1, m->src_address, COMMAND_FM_OFF);
+								break;
+							case 0x01:
+								cmd(1, m->src_address, COMMAND_FM_ON);
+								break;
+							case 0xFF:
+								cmd(1, m->src_address, COMMAND_FM_INFO);
+								break;
+							case 0x02:
+								if (m->size == 3){
+									cmd(1, m->src_address, COMMAND_FM_TUNE, (uint16_t)(&m->data[1]));
+								}
+								break;
+							case 0x03:
+								if (m->size == 2){
+									cmd(1, m->src_address, COMMAND_FM_SELECT_CHANNEL, m->data[1]);
+								}
+								break;
+							case 0x04:
+								cmd(1, m->src_address, COMMAND_FM_NEXT_CHANNEL);
+								break;
+							case 0x05:
+								cmd(1, m->src_address, COMMAND_FM_PREV_CHANNEL);
+								break;
+							
+							case 0xEA:
+								cmd(1, m->src_address, COMMAND_FM_SAVED_NUM);
+								break;
+							case 0xEB:
+								if (m->size == 2){
+									cmd(1, m->src_address, COMMAND_FM_SAVED_REQ, m->data[1]);
+								}
+								break;
+							case 0xEC:
+								switch (m->size){
+									case 1:
+										cmd(1, m->src_address, COMMAND_FM_SAVED_ADD_CUR);
+										break;
+									case 2:
+										cmd(1, m->src_address, COMMAND_FM_SAVED_ADD, m->data[1]);
+										break;
+								}
+								break;
+							case 0xED:
+								switch (m->size){
+									case 2:
+										cmd(1, m->src_address, COMMAND_FM_SAVED_SAVE_CUR, m->data[1]);
+										break;
+									case 4:
+										cmd(1, m->src_address, COMMAND_FM_SAVED_SAVE, m->data[1], (uint16_t)(&m->data[2]));
+										break;
+								}
+								break;
+							case 0xEE:
+								if (m->size == 3){
+									if (m->data[1] == 0xEE && m->data[2] == 0xEF){
+										cmd(1, m->src_address, COMMAND_FM_SAVED_CLEAR);
+									}
+								}
+								break;
+						}
+					}
+				break;
+				
+// 				case CLUNET_COMMAND_DEBUG:
+// 				if (m->size == 1){
+// 					switch(m->data[0]){
+// 						case 0xFF:
+// 						cmd(1, m->src_address, COMMAND_FM_INFO);
+// 						break;
+// 						case 0:
+// 						cmd(1, m->src_address, COMMAND_FM_PREV);
+// 						break;
+// 						case 1:
+// 						cmd(1, m->src_address, COMMAND_FM_NEXT);
+// 						break;
+// 					}
+// 				}
+// 				break;
+			}
+		}
+	}
 	return 0;
 }
 

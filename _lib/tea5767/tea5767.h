@@ -2,6 +2,7 @@
 #define TEA5767_H
 
 #include <stdint.h>
+#include <avr/eeprom.h>
 
 #define TEA5767_SLA_W (0b11000000)		///< I2C write address
 #define TEA5767_SLA_R (TEA5767_SLA_W | 0x01)	///< I2C read address
@@ -59,6 +60,7 @@
 #define TEA5767_BAND_LIMIT_FLAG	0X40///< Band Limit Flag: if BLF = 1 then the band limit has been reached; if
 ///< BLF = 0 then the band limit has not been reached
 //  bits 5...0: PLL[13:8] setting of synthesizer programmable counter after search or preset
+#define TEA5767_PLL_MASK 0x3F
 
 // REGISTER R2
 //  bits 7...0: PLL[7:0] setting of synthesizer programmable counter after search or preset
@@ -74,27 +76,25 @@
 // REGISTER R5
 /// - reserved for future use -
 
-/** \param value Tuned frequency in kHz */
-void TEA5767_tune(uint32_t value);
 
-void TEA5767_search(uint8_t up);
-void TEA5767_exit_search(void);
-int TEA5767_write(void);
+//setup the I2C hardware to ACK the next transmission
+//and indicate that we've handled the last one.
+#define TWACK (TWCR=(1<<TWINT)|(1<<TWEN)|(1<<TWEA))
+//setup the I2C hardware to NACK the next transmission
+#define TWNACK (TWCR=(1<<TWINT)|(1<<TWEN))
 
 
-struct TEA5767_status
-{
-	uint32_t frequency;
-	uint8_t ready;
-	uint8_t band_limit;
-	uint8_t tuned;
-	uint8_t stereo;
-	uint8_t rx_power;
-};
 
-int TEA5767_get_status(struct TEA5767_status *status);
+#define FM_MAX_NUM_CHANNELS	30
+#define FM_PROGRAMS_EEPROM_OFFSET 0x100
 
-void TEA5767_search_up();
-void TEA5767_search_down();
+void FM_clear_channels();
+uint8_t FM_get_num_channels();
+uint8_t FM_save_channel(uint8_t num_channel, uint16_t frequency);
+uint8_t FM_add_channel(uint16_t frequency);
+uint16_t FM_get_channel_frequency(uint8_t num_channel);
+
+uint16_t FM_select_channel(uint8_t num_channel);
+uint16_t FM_select_next_channel(uint8_t up);
 
 #endif
