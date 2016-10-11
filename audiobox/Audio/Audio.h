@@ -16,7 +16,6 @@
 #include "nec/rx.h"
 #include "tea5767/TEA5767.h"
 
-#include <stdarg.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -90,56 +89,6 @@
 
 /* i2c controls */
 #define TWI_INIT {set_bit(OUTPORT(C), 4); set_bit(OUTPORT(C), 5);}
-
-signed char readEncoder();
-
-
-/*commands descriptions*/
-#define COMMAND_INPUT			1
-#define COMMAND_INPUT_NEXT		2
-#define COMMAND_INPUT_PREV		3
-#define COMMAND_INPUT_INFO		4
-
-#define COMMAND_MUTE_TOGGLE		10
-#define COMMAND_VOLUME_DB		11
-#define COMMAND_VOLUME_PCNT		12
-#define COMMAND_VOLUME_UP		13
-#define COMMAND_VOLUME_DOWN		14
-#define COMMAND_VOLUME_INFO		15
-
-#define COMMAND_TREBLE_DB		20
-#define COMMAND_TREBLE_UP		21
-#define COMMAND_TREBLE_DOWN		22
-
-#define COMMAND_BASS_DB			30
-#define COMMAND_BASS_UP			31
-#define COMMAND_BASS_DOWN		32
-
-#define COMMAND_GAIN_DB			40
-#define COMMAND_GAIN_UP			41
-#define COMMAND_GAIN_DOWN		42
-
-#define COMMAND_EQUALIZER_RESET	50
-#define COMMAND_EQUALIZER_INFO	51
-
-#define COMMAND_FM_OFF				60
-#define COMMAND_FM_ON				61
-#define COMMAND_FM_INFO				62
-#define COMMAND_FM_TUNE				63
-#define COMMAND_FM_SELECT_CHANNEL	64
-#define COMMAND_FM_NEXT_CHANNEL		65
-#define COMMAND_FM_PREV_CHANNEL		66
-#define COMMAND_FM_SEARCH			67
-#define COMMAND_FM_COMAND			68
-#define COMMAND_FM_SAVED_NUM		69
-#define COMMAND_FM_SAVED_REQ		70
-#define COMMAND_FM_SAVED_ADD		71
-#define COMMAND_FM_SAVED_ADD_CUR	72
-#define COMMAND_FM_SAVED_SAVE		73
-#define COMMAND_FM_SAVED_SAVE_CUR	74
-#define COMMAND_FM_SAVED_CLEAR		75
-
-void cmd(uint8_t sendResponse, uint8_t responseAddress, const uint8_t command, ...);
 
 
 #endif /* AUDIO_H_ */

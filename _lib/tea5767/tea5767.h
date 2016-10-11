@@ -90,11 +90,14 @@
 
 void FM_clear_channels();
 uint8_t FM_get_num_channels();
-uint8_t FM_save_channel(uint8_t num_channel, uint16_t frequency);
-uint8_t FM_add_channel(uint16_t frequency);
+int8_t FM_save_channel(uint8_t num_channel, uint16_t frequency);
+int8_t FM_add_channel(uint16_t frequency);
 uint16_t FM_get_channel_frequency(uint8_t num_channel);
 
-uint16_t FM_select_channel(uint8_t num_channel);
-uint16_t FM_select_next_channel(uint8_t up);
+uint8_t FM_select_channel(uint8_t num_channel);
+uint8_t FM_select_next_channel(uint8_t up);
+
+void FM_select_frequency(uint16_t frequency);
+void FM_power(uint8_t on);
 
 #endif

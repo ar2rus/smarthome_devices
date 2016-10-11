@@ -360,18 +360,18 @@ uint8_t FM_get_num_channels(){
 	return num_channels;
 }
 
-uint8_t FM_save_channel(uint8_t num_channel, uint16_t frequency){
+int8_t FM_save_channel(uint8_t num_channel, uint16_t frequency){
 	if (num_channel < FM_MAX_NUM_CHANNELS && num_channels <= FM_get_num_channels()){
 		eeprom_write_word((void*)FM_PROGRAMS_EEPROM_OFFSET + num_channel*2 + 1, frequency);
 		if (FM_get_num_channels() == num_channel){
 			FM_set_num_channels(num_channel + 1);
 		}
-		return 1;
+		return num_channel;
 	}
-	return 0;
+	return -1;
 }
 
-uint8_t FM_add_channel(uint16_t frequency){
+int8_t FM_add_channel(uint16_t frequency){
 	return FM_save_channel(FM_get_num_channels(), frequency);
 }
 
@@ -382,15 +382,17 @@ uint16_t FM_get_channel_frequency(uint8_t num_channel){
 	return 0;
 }
 
-uint16_t FM_select_channel(uint8_t num_channel){
+uint8_t FM_select_channel(uint8_t num_channel){
 	uint16_t freq = FM_get_channel_frequency(num_channel);
 	if (freq){
 		cur_channel = num_channel;
+		TEA5767N_selectFrequency(freq);
+		return 1;
 	}
-	return freq;
+	return 0;
 }
 
-uint16_t FM_select_next_channel(uint8_t up){
+uint8_t FM_select_next_channel(uint8_t up){
 	if (FM_get_num_channels() > 0){
 		if (up){
 			cur_channel++;
@@ -407,4 +409,12 @@ uint16_t FM_select_next_channel(uint8_t up){
 		return FM_select_channel(cur_channel);
 	}
 	return 0;
+}
+
+void FM_select_frequency(uint16_t frequency){
+	TEA5767N_selectFrequency(frequency);
+}
+
+void FM_power(uint8_t on){
+	TEA5767N_standby(on);
 }
