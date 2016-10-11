@@ -12,7 +12,7 @@
 #define CLUNET_DEVICE_ID 0
 
 /* Device name */
-#define CLUNET_DEVICE_NAME "Supradin (clu-eth bridge)"
+#define CLUNET_DEVICE_NAME "Supradin"
 
 /* Buffer sized (memory usage) */
 /* 128 + header + crc; so we can send <=128 bytes */
@@ -55,5 +55,10 @@
 #define CLUNET_TIMER_COMP_VECTOR TIMER2_COMP_vect
 #define CLUNET_TIMER_OVF_VECTOR TIMER2_OVF_vect
 #define CLUNET_INT_VECTOR INT1_vect
+
+
+/* auto reply on ping & discovery commands */
+// disable it for dataToSend additional usage
+#define CLUNET_AUTOREPLY_PING_DISCOVERY_CONF 0
 
 #endif

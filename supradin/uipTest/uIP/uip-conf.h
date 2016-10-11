@@ -110,10 +110,12 @@ typedef unsigned short uip_stats_t;
    причем в этих последних байтах собственно располагаетс€ uip_udp_conns[] - массив описателей udp коннектов.
    
    ƒл€ исключени€ конфликта следует использовать UIP_CONF_BUFFER_SIZE размером пакета clunet 128 + 5 (хидеры clunet) + хидеры ethernet с небольшим запасом.
-   “аким образом существенное увеличение этого буфера невозможно.
+   “аким образом существенное увеличение этого буфера невозможно.	
+   
+   40 bytes IP header + 8 bytes UDP header + payload (128+5) = 179
 */
 
-#define UIP_CONF_BUFFER_SIZE     192
+#define UIP_CONF_BUFFER_SIZE     196
 
 /**
  * CPU byte order.

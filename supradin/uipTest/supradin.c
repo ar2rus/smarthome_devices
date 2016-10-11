@@ -119,10 +119,16 @@ int main(void){
     wdt_enable(WDTO_2S);
 	 
     while(1){
-		
+		//проверяем входящие сообщения по udp и
+		//1) сразу отвечаем, если управляющие сообщения
+		//2) сохраняем в буфер для дальнейшей пересылки в clunet
+		check_ethernet();
+		//пересылаем по udp сообщения из clunet
 		poll_ethernet();
- 		check_ethernet();
- 		periodic_ethernet();
+		//и только теперь пересылаем сообщения в clunet (см. uip-app.c, line 120)
+		clunet_data_flush();
+		
+		periodic_ethernet();
 		 
 		wdt_reset();
     }

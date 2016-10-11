@@ -69,8 +69,9 @@ typedef struct supradin_header{
 
 void uip_app_init(void);
 
-void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size);
 
+void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size);
+void clunet_data_flush();
 
 //#define EEPROM_ADDRESS_REBOOT_COUNTER 0x00
 

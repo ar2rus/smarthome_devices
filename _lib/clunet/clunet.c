@@ -28,9 +28,6 @@ volatile unsigned char clunetReceivingState = 0;
 volatile unsigned char clunetTimerStart = 0;
 volatile unsigned char clunetTimerPeriods = 0;
 
-volatile char dataToSend[CLUNET_SEND_BUFFER_SIZE];
-volatile char dataToRead[CLUNET_READ_BUFFER_SIZE];
-
 char check_crc(char* data, unsigned char size){
       uint8_t crc=0;
       uint8_t i,j;
@@ -164,22 +161,32 @@ inline void clunet_data_received(unsigned char src_address, unsigned char dst_ad
 		while(1);
 	}
 
+#if CLUNET_AUTOREPLY_PING_DISCOVERY == 1
+
 	if ((clunetSendingState == CLUNET_SENDING_STATE_IDLE) || (clunetCurrentPrio <= CLUNET_PRIORITY_MESSAGE)){
 		if (command == CLUNET_COMMAND_DISCOVERY){ // Ответ на поиск устройств
-#ifdef CLUNET_DEVICE_NAME
+			
+			#ifdef CLUNET_DEVICE_NAME
+			
 			char buf[] = CLUNET_DEVICE_NAME;
 			int len = 0; while(buf[len]) len++;
 			clunetSendingState = CLUNET_SENDING_STATE_PREINIT;
 			clunet_send(src_address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY_RESPONSE, buf, len);
-#else
+			
+			#else
+			
 			clunetSendingState = CLUNET_SENDING_STATE_PREINIT;
 			clunet_send(src_address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY_RESPONSE, 0, 0);
-#endif		
+			
+			#endif		
+		
 		} else if (command == CLUNET_COMMAND_PING){ // Ответ на пинг
 			clunetSendingState = CLUNET_SENDING_STATE_PREINIT;
 			clunet_send(src_address, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_PING_REPLY, data, size);
 		}
 	}
+	
+#endif
 	
 	if (on_data_received)
 		(*on_data_received)(src_address, dst_address, command, data, size);

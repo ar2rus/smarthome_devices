@@ -454,6 +454,17 @@
 #  error CLUNET_READ_BUFFER_SIZE must be <= 255
 #endif
 
+
+#ifdef CLUNET_AUTOREPLY_PING_DISCOVERY_CONF
+#define CLUNET_AUTOREPLY_PING_DISCOVERY CLUNET_AUTOREPLY_PING_DISCOVERY_CONF
+#else
+#define CLUNET_AUTOREPLY_PING_DISCOVERY 1
+#endif
+
+
+volatile char dataToSend[CLUNET_SEND_BUFFER_SIZE];
+volatile char dataToRead[CLUNET_READ_BUFFER_SIZE];
+
 // Инициализация
 void clunet_init();
 
