@@ -340,16 +340,20 @@ uint8_t TEA5767N_startSearchFromEnd(uint8_t stop_level) {
 
 
 
-char num_channels = -1;	//cache
-char cur_channel = -1;
+int8_t num_channels = -1;	//cache
+int8_t cur_channel = -1;
 
-void FM_set_num_channels(uint8_t num){
-	num_channels = num;	
-	eeprom_write_byte((void*)FM_PROGRAMS_EEPROM_OFFSET, num_channels);
+uint8_t FM_set_num_channels(uint8_t num){
+	if (num <= FM_MAX_NUM_CHANNELS){
+		num_channels = num;	
+		eeprom_write_byte((void*)FM_PROGRAMS_EEPROM_OFFSET, num_channels);
+		return 1;
+	}
+	return 0;
 }
 
-void FM_clear_channels(){
-	FM_set_num_channels(0);
+uint8_t FM_clear_channels(){
+	return FM_set_num_channels(0);
 }
 
 uint8_t FM_get_num_channels(){

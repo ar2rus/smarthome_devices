@@ -86,9 +86,9 @@
 
 
 #define FM_MAX_NUM_CHANNELS	30
-#define FM_PROGRAMS_EEPROM_OFFSET 0x100
+#define FM_PROGRAMS_EEPROM_OFFSET 0x40
 
-void FM_clear_channels();
+uint8_t FM_clear_channels();
 uint8_t FM_get_num_channels();
 int8_t FM_save_channel(uint8_t num_channel, uint16_t frequency);
 int8_t FM_add_channel(uint16_t frequency);

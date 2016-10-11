@@ -18,7 +18,7 @@ struct uip_udp_conn* find_uip_udp_conn(uip_ipaddr_t *ripaddr, u16_t lport, u16_t
 	return 0;
 }
 
-uint8_t udp_data_to_clunet_size = 0;
+//uint8_t udp_data_to_clunet_size = 0;
 
 uint8_t supradin_frame_size;
 char supradin_buffer[sizeof(supradin_header_t) + CLUNET_READ_BUFFER_SIZE];
@@ -124,10 +124,10 @@ void uip_udp_appcall(void){
 					//Единственным массивом, в который это все можно положить является clunet dataToSend.
 					//И для гарантии целостности надо срубить автоответ для ping и discovery, которые все равно у supradin не используются, но могут изменить dataToSend
 					
-					memcpy(dataToSend, uip_appdata, uip_datalen());
-					udp_data_to_clunet_size = uip_datalen();
+					//memcpy(dataToSend, uip_appdata, uip_datalen());
+					//udp_data_to_clunet_size = uip_datalen();
 					
-					//clunet_send_fairy(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
+					clunet_send_fairy(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
 				}
 			}
 			break;
@@ -175,13 +175,13 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		}
 }
 
-void clunet_data_flush(){
-	if (udp_data_to_clunet_size){
-		udp_data_to_clunet_size = 0;
-		struct supradin_header *sh = dataToSend;
-		
-		clunet_send_fairy(sh->dst_address, sh->prio, sh->command, dataToSend + sizeof(supradin_header_t), sh->size);
-	}
-}
+// void clunet_data_flush(){
+// 	if (udp_data_to_clunet_size){
+// 		udp_data_to_clunet_size = 0;
+// 		struct supradin_header *sh = dataToSend;
+// 		
+// 		clunet_send_fairy(sh->dst_address, sh->prio, sh->command, dataToSend + sizeof(supradin_header_t), sh->size);
+// 	}
+// }
  
 /*---------------------------------------------------------------------------*/

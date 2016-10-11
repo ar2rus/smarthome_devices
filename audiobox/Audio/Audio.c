@@ -71,7 +71,7 @@ void button_channel(uint8_t button){
 }
 
 ISR(TIMER1_COMPA_vect){
-	char data[2];
+	sei();
 	
 	if (BUTTON1_READ){
 		button_channel(1);
@@ -99,23 +99,24 @@ ISR(TIMER1_COMPA_vect){
 	}else{
 		buttonStates = 0;
 	}
-
-	signed char a = readEncoder();
-	if (a > 0){
-		shouldSendDelayedResponse = 1;
-		delayedResponseCounterValue = TCNT1;
+	
+  	char data[2];
+ 	signed char a = readEncoder();
+ 	if (a > 0){
+ 		shouldSendDelayedResponse = 1;
+ 		delayedResponseCounterValue = TCNT1;
+ 		
+ 		data[0] = 2;
+ 		//src_address == CLUNET_DEVICE_ID -> silent
+ 		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+ 	}else if (a < 0){
+ 		shouldSendDelayedResponse = 1;
+ 		delayedResponseCounterValue = TCNT1;
 		
-		data[0] = 2;
-		//src_address == CLUNET_DEVICE_ID -> silent
-		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
-	}else if (a < 0){
-		shouldSendDelayedResponse = 1;
-		delayedResponseCounterValue = TCNT1;
-		
-		data[0] = 3;
-		//src_address == CLUNET_DEVICE_ID -> silent
-		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
-	}
+ 		data[0] = 3;
+ 		//src_address == CLUNET_DEVICE_ID -> silent
+ 		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+ 	}
 	
 	if (necCheckSignal()){
 		OCR1B  = TCNT1 + NEC_TIMER_CMP_TICKS;
@@ -145,13 +146,13 @@ ISR(TIMER1_COMPA_vect){
 					channel(4);
 					necResetValue();
 					break;
-				case 0xC1:
+				//case 0xC1:
 				case 0xF8:
 					data[0] = 2;
 					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 1);
 					necResetValue();
 					break;
-				case 0x41:
+				//case 0x41:
 				case 0xD8:
 					data[0] = 1;
 					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 1);
@@ -168,20 +169,20 @@ ISR(TIMER1_COMPA_vect){
 					shouldSendDelayedResponse = 1;
 					delayedResponseCounterValue = TCNT1;
 					data[0] = 2;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_VOLUME, data, 1);
+					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
 					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_UP, 2);
 					break;
 				case 0x78:
 					shouldSendDelayedResponse = 1;
 					delayedResponseCounterValue = TCNT1;
 					data[0] = 3;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_VOLUME, data, 1);
+					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
 					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_DOWN, 2);
 					break;
 				case 0xA0:
 					data[0] = 2;
 					data[1] = 2;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_EQUALIZER, data, 2);
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
 					
 					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_TREBLE_UP);
 					necResetValue();
@@ -189,22 +190,30 @@ ISR(TIMER1_COMPA_vect){
 				case 0x10:
 					data[0] = 2;
 					data[1] = 3;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_EQUALIZER, data, 2);
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
 				
 					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_TREBLE_DOWN);
 					necResetValue();
 					break;
 				case 0x60:
-					//FM_select_next_channel(0);
+					data[0] = 3;
+					data[1] = 2;
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+					
+					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);
 					necResetValue();
 					break;
 				case 0x90:
-					//FM_select_next_channel(1);
+					data[0] = 3;
+					data[1] = 3;
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+					
+					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);
 					necResetValue();
 					break;
 				case 0x00:
 					data[0] = 0;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_EQUALIZER, data, 1);
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 1);
 					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_EQUALIZER_RESET);
 					necResetValue();
 					break;
@@ -225,8 +234,8 @@ ISR(TIMER1_COMPA_vect){
 	if (shouldSendDelayedResponse && (TCNT1 - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
 		shouldSendDelayedResponse = 0;
 		
-		data[0] = 0xFF;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+		char d = 0xFF;
+		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &d, 1);
 	}
 	
 	
@@ -424,7 +433,7 @@ void cmd(clunet_msg* m){
 					break;
 				case 0x02:	//freq
 					if (m->size == 3){
-						FM_select_frequency((uint16_t)(&m->data[1]));
+						FM_select_frequency(*(uint16_t*)&m->data[1]);
 						response = 10;
 					}
 					break;
@@ -436,7 +445,7 @@ void cmd(clunet_msg* m){
 					}
 					break;
 				case 0x04:	//next saved
-				case 0x05:	//next prev
+				case 0x05:	//prev saved
 				if (m->size == 1){
 					if (FM_select_next_channel(m->data[1] == 0x04)){
 						response = 10;
@@ -466,6 +475,9 @@ void cmd(clunet_msg* m){
 					}
 					break;
 				
+				case 0xE9:
+					
+				
 				case 0xEA:	//request num saved channels
 					if (m->size == 1){
 						m->data[1] = FM_get_num_channels();
@@ -487,7 +499,7 @@ void cmd(clunet_msg* m){
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
 							break;
 						case 3:	//specified freq
-							m->data[1] = FM_add_channel((uint16_t)(&m->data[1]));
+							m->data[1] = FM_add_channel(*(uint16_t*)&m->data[1]);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
 							break;
 					}
@@ -499,7 +511,7 @@ void cmd(clunet_msg* m){
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
 							break;
 						case 4:	//specified freq
-							m->data[1] = FM_save_channel(m->data[1], (uint16_t)(&m->data[2]));
+							m->data[1] = FM_save_channel(m->data[1], *(uint16_t*)&m->data[2]);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
 							break;
 					}
@@ -571,11 +583,11 @@ int main(void){
 	clunet_buffered_init();
 	clunet_init();
 	
+	lc75341_init();
+	lc75341_volume_percent(60);
+	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
-	
-	lc75341_init();
-	lc75341_volume_percent(80);
 	
 	while (1){
 		if (!clunet_buffered_is_empty()){

@@ -81,10 +81,6 @@ void poll_ethernet(){
 int main(void){
 	wdt_disable(); 
 	
-	//uint32_t reboot_counter = eeprom_read_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER);
-	//eeprom_write_dword((void*)EEPROM_ADDRESS_REBOOT_COUNTER, ++reboot_counter);
-	
-	
 	//define mac (never change the first byte 0x00)
 	struct uip_eth_addr mac = {{ 0xFA, 0xD8, 0x49, 0x34, 0x68, 0x23 }};	
 	enc28j60_init(mac.addr);
@@ -119,14 +115,9 @@ int main(void){
     wdt_enable(WDTO_2S);
 	 
     while(1){
-		//проверяем входящие сообщения по udp и
-		//1) сразу отвечаем, если управляющие сообщения
-		//2) сохраняем в буфер для дальнейшей пересылки в clunet
 		check_ethernet();
-		//пересылаем по udp сообщения из clunet
 		poll_ethernet();
-		//и только теперь пересылаем сообщения в clunet (см. uip-app.c, line 120)
-		clunet_data_flush();
+		//clunet_data_flush();
 		
 		periodic_ethernet();
 		 

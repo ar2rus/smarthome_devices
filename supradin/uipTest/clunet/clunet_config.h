@@ -59,6 +59,6 @@
 
 /* auto reply on ping & discovery commands */
 // disable it for dataToSend additional usage
-#define CLUNET_AUTOREPLY_PING_DISCOVERY_CONF 0
+//#define CLUNET_AUTOREPLY_PING_DISCOVERY_CONF 0
 
 #endif
