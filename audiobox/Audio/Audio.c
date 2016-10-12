@@ -88,13 +88,19 @@ ISR(TIMER1_COMPA_vect){
 	if (BUTTON_L_READ){
 		if (!test_bit(buttonStates, 4)){
 			buttonStates = _BV(4);
-			FM_select_next_channel(0);
+			
+			//prev channel
+			char data = 0x03;
+			clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, &data, 1);
 		}
 	}else
 	if (BUTTON_R_READ){
 		if (!test_bit(buttonStates, 5)){
 			buttonStates = _BV(5);
-			FM_select_next_channel(1);
+			
+			//next channel
+			char data = 0x02;
+			clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, &data, 1);
 		}
 	}else{
 		buttonStates = 0;
@@ -413,13 +419,6 @@ void cmd(clunet_msg* m){
 		case CLUNET_COMMAND_FM:
 		if (m->size > 0){
 			switch(m->data[0]){
-				case 0x00:	//power off
-				case 0x01:	//power on
-					if (m->size == 1){
-						FM_power(m->data[0]);
-					}
-					response = 10;
-					break;
 				case 0xFF:	//info
 					if (m->size == 2){
 						switch (m->data[1]){
@@ -431,21 +430,22 @@ void cmd(clunet_msg* m){
 						}
 					}
 					break;
-				case 0x02:	//freq
+				case 0x00:	//freq
 					if (m->size == 3){
-						FM_select_frequency(*(uint16_t*)&m->data[1]);
+						uint16_t* f = (uint16_t*)&m->data[1];
+						FM_select_frequency(*f);
 						response = 10;
 					}
 					break;
-				case 0x03:	//saved channel
+				case 0x01:	//saved channel
 					if (m->size == 2){
 						if (FM_select_channel(m->data[1])){
 							response = 10;
 						}
 					}
 					break;
-				case 0x04:	//next saved
-				case 0x05:	//prev saved
+				case 0x02:	//next saved
+				case 0x03:	//prev saved
 				if (m->size == 1){
 					if (FM_select_next_channel(m->data[1] == 0x04)){
 						response = 10;
@@ -453,31 +453,18 @@ void cmd(clunet_msg* m){
 				}
 				break;
 				
-				case 0x07:	//search
-					response = 11;
+				case 0x05:	//search
+					response = 12;
 					break;
 				
 				case 0x0A:
 					if (m->size == 3){
-						switch(m->data[1]){
-							case 0x00:	//standby
-								break;
-							case 0x01:	//mono
-								break;
-							case 0x02:	//mute
-								break;
-							case 0x03:	//hcc
-								break;	
-							case 0x04:	//snc
-								break;
+						if (FM_control(m->data[1], m->data[2])){
+							response = 11;
 						}
-						response = 10;	//?
 					}
 					break;
-				
-				case 0xE9:
-					
-				
+								
 				case 0xEA:	//request num saved channels
 					if (m->size == 1){
 						m->data[1] = FM_get_num_channels();
@@ -498,9 +485,11 @@ void cmd(clunet_msg* m){
 							//data[1] = FM_add_channel(cur_freq);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
 							break;
-						case 3:	//specified freq
-							m->data[1] = FM_add_channel(*(uint16_t*)&m->data[1]);
+						case 3: {	//specified freq
+							uint16_t* f = (uint16_t*)&m->data[1];
+							m->data[1] = FM_add_channel(*f);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
+							}
 							break;
 					}
 					break;
@@ -510,9 +499,11 @@ void cmd(clunet_msg* m){
 							//data[1] = FM_add_channel(m->data[1], cur_freq);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
 							break;
-						case 4:	//specified freq
-							m->data[1] = FM_save_channel(m->data[1], *(uint16_t*)&m->data[2]);
+						case 4:	{//specified freq
+							uint16_t* f = (uint16_t*)&m->data[2];
+							m->data[1] = FM_save_channel(m->data[1], *f);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
+							}
 							break;
 					}
 					break;
@@ -553,6 +544,16 @@ void cmd(clunet_msg* m){
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
 			}
 			break;
+			case 10:{
+				fm_channel_info* info = FM_channel_info();
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
+			}
+			break;
+			case 11:{
+				fm_state_info* info = FM_state_info();
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
+			}
+			break;
 		}
 	}
 	LED_OFF;
@@ -584,7 +585,7 @@ int main(void){
 	clunet_init();
 	
 	lc75341_init();
-	lc75341_volume_percent(60);
+	lc75341_volume_percent(3);
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms

@@ -98,6 +98,37 @@ uint8_t FM_select_channel(uint8_t num_channel);
 uint8_t FM_select_next_channel(uint8_t up);
 
 void FM_select_frequency(uint16_t frequency);
-void FM_power(uint8_t on);
+
+
+
+#define FM_CONTROL_STANDBY 0
+#define FM_CONTROL_MUTE 1
+#define FM_CONTROL_MONO 2
+#define FM_CONTROL_HCC 3
+#define FM_CONTROL_SNC 4
+
+uint8_t FM_control(uint8_t control, uint8_t on);
+
+
+typedef struct{
+	uint8_t type;			//Тип ответа (всегда 0)
+	int8_t channel;			//Номер текущего канала
+	uint16_t frequency;		//Частота
+	uint8_t level;			//Уровень сигнала
+	uint8_t stereo;			//Стерео
+} fm_channel_info;
+
+fm_channel_info* FM_channel_info();
+
+typedef struct{
+	uint8_t type;			//Тип ответа (всегда 1)
+	uint8_t standby;		
+	uint8_t mono;
+	uint8_t mute;
+	uint8_t hcc;
+	uint8_t snc;
+} fm_state_info;
+
+fm_state_info* FM_state_info();
 
 #endif

@@ -40,9 +40,8 @@ static unsigned char read_bytes[5] =  { 0x00, 0x00, 0x00, 0x00, 0x00 };
 	
 
 uint8_t hiInjection;
-uint8_t muted = 0;
-
 uint16_t frequency = 0;
+
 
 int TEA5767_write(void){
 	uint8_t ret = 0;
@@ -126,20 +125,23 @@ int TEA5767_read(void){
 	return ret;
 }
 
-uint8_t TEA5767N_getSignalLevel(uint8_t refresh) {
-	//Necessary before read status
-	if (refresh){
-		TEA5767_write();
-	}
+uint8_t TEA5767N_getSignalLevel() {
+	//Necessary refresh before read status
+	TEA5767_write();
 	//Read updated status
 	TEA5767_read();
 	return (read_bytes[3] & TEA5767_ADC_LEVEL) >> 4;
 }
 
+uint8_t TEA5767N_isStereo() {
+	TEA5767_read();
+	return (read_bytes[2] & TEA5767_STEREO) != 0;
+}
+
 void TEA5767N_setSideLOInjection(uint8_t high) {
 	if (high){
 		write_bytes[2] |= TEA5767_HIGH_LO_INJECT;
-		}else{
+	}else{
 		write_bytes[2] &= ~TEA5767_HIGH_LO_INJECT;
 	}
 }
@@ -162,25 +164,6 @@ void TEA5767N_setFrequency(uint16_t _frequency) {
 	write_bytes[1] = f & 0XFF;
 }
 
-void TEA5767N_calculateOptimalHiLoInjection(uint16_t frequency) {
-	uint8_t signalHigh;
-	uint8_t signalLow;
-	
-	TEA5767N_setSideLOInjection(1);
-	TEA5767N_setFrequency(frequency + 45);	//+0.45 MHz
-	TEA5767_write();
-	
-	signalHigh = TEA5767N_getSignalLevel(0);
-	
-	TEA5767N_setSideLOInjection(0);
-	TEA5767N_setFrequency(frequency - 45);	//-0.45 MHz
-	TEA5767_write();
-	
-	signalLow = TEA5767N_getSignalLevel(0);
-
-	hiInjection = (signalHigh < signalLow) ? 1 : 0;
-}
-
 void TEA5767N_mono(uint8_t mono) {
 	if (mono){
 		write_bytes[2] |= TEA5767_MONO;
@@ -190,15 +173,21 @@ void TEA5767N_mono(uint8_t mono) {
 	TEA5767_write();
 }
 
+uint8_t TEA5767N_getMono() {
+	return (write_bytes[2] & TEA5767_MONO) != 0;
+}
+
 void TEA5767N_mute(uint8_t mute) {
-	muted = mute;
-	
 	if (mute){
 		write_bytes[0] |= TEA5767_MUTE;
 	}else{
 		write_bytes[0] &= ~TEA5767_MUTE;
 	}
 	TEA5767_write();
+}
+
+uint8_t TEA5767N_getMute() {
+	return (write_bytes[0] & TEA5767_MUTE) != 0;
 }
 
 void TEA5767N_standby(uint8_t on) {
@@ -210,6 +199,10 @@ void TEA5767N_standby(uint8_t on) {
 	TEA5767_write();
 }
 
+uint8_t TEA5767N_getStandby() {
+	return (write_bytes[3] & TEA5767_STDBY) != 0;
+}
+
 void TEA5767N_highCutControl(uint8_t on) {
 	if (on){
 		write_bytes[3] |= TEA5767_HCC;
@@ -217,6 +210,10 @@ void TEA5767N_highCutControl(uint8_t on) {
 		write_bytes[3] &= ~TEA5767_HCC;
 	}
 	TEA5767_write();
+}
+
+uint8_t TEA5767N_getHighCutControl() {
+	return (write_bytes[3] & TEA5767_HCC) != 0;
 }
 
 void TEA5767N_stereoNoiseCancelling(uint8_t on) {
@@ -228,12 +225,33 @@ void TEA5767N_stereoNoiseCancelling(uint8_t on) {
 	TEA5767_write();
 }
 
+uint8_t TEA5767N_getStereoNoiseCancelling() {
+	return (write_bytes[3] & TEA5767_SNC) != 0;
+}
+
 void TEA5767N_selectFrequency(uint16_t frequency) {
-	TEA5767N_calculateOptimalHiLoInjection(frequency);
+	//calculate optimal HiLoInjection
+	
+	uint8_t signalHigh;
+	uint8_t signalLow;
+		
+	TEA5767N_setSideLOInjection(1);
+	TEA5767N_setFrequency(frequency + 45);	//+0.45 MHz
+	signalHigh = TEA5767N_getSignalLevel();
+		
+	TEA5767N_setSideLOInjection(0);
+	TEA5767N_setFrequency(frequency - 45);	//-0.45 MHz
+	signalLow = TEA5767N_getSignalLevel();
+
+	hiInjection = (signalHigh < signalLow) ? 1 : 0;
+	
 	TEA5767N_setFrequency(frequency);
 	TEA5767_write();
 }
 
+
+
+//search routines
 void TEA5767N_loadFrequency() {
 	TEA5767_read();
 	
@@ -266,24 +284,6 @@ uint8_t TEA5767N_isReady() {
 uint8_t TEA5767N_isBandLimitReached() {
 	TEA5767_read();
 	return (read_bytes[0] & TEA5767_BAND_LIMIT_FLAG) != 0;
-}
-
-uint8_t TEA5767N_isStereo() {
-	TEA5767_read();
-	return (read_bytes[2] & TEA5767_STEREO) != 0;
-}
-
-uint8_t TEA5767N_isSearchUp() {
-	return (write_bytes[2] & TEA5767_SUD) != 0;
-}
-
-uint8_t TEA5767N_isStandBy() {
-	TEA5767_read();
-	return (write_bytes[3] & TEA5767_STDBY) != 0;
-}
-
-uint8_t TEA5767N_isMuted() {
-	return muted;
 }
 
 uint8_t TEA5767N_searchNext(uint8_t up, uint8_t stop_level) {
@@ -408,7 +408,7 @@ uint8_t FM_select_next_channel(uint8_t up){
 			cur_channel--;
 		}
 		
-		if (cur_channel > FM_get_num_channels()){
+		if (cur_channel >= FM_get_num_channels()){
 			cur_channel = 0;
 		} else if (cur_channel < 0){
 			cur_channel = FM_get_num_channels() - 1;
@@ -420,9 +420,54 @@ uint8_t FM_select_next_channel(uint8_t up){
 }
 
 void FM_select_frequency(uint16_t frequency){
+	cur_channel = -1;
 	TEA5767N_selectFrequency(frequency);
 }
 
-void FM_power(uint8_t on){
-	TEA5767N_standby(on);
+uint8_t FM_control(uint8_t control, uint8_t on){
+	switch (control){
+		case FM_CONTROL_STANDBY:
+			TEA5767N_standby(on);
+			break;
+		case FM_CONTROL_MUTE:
+			TEA5767N_mute(on);
+			break;
+		case FM_CONTROL_MONO:
+			TEA5767N_mono(on);
+			break;
+		case FM_CONTROL_HCC:
+			TEA5767N_highCutControl(on);
+			break;
+		case FM_CONTROL_SNC:
+			TEA5767N_stereoNoiseCancelling(on);
+			break;
+		default:
+			return 0;
+	}
+	return 1;
+}
+
+
+fm_channel_info channel_info;
+fm_channel_info* FM_channel_info(){
+	channel_info.type = 0;
+	channel_info.channel = cur_channel;
+	channel_info.frequency = frequency;
+	channel_info.level = TEA5767N_getSignalLevel();
+	channel_info.stereo = TEA5767N_isStereo();
+	
+	return &channel_info;
+}
+
+
+fm_state_info state_info;
+fm_state_info* FM_state_info(){
+	state_info.type = 1;
+	state_info.standby = TEA5767N_getStandby();
+	state_info.mono = TEA5767N_getMono();
+	state_info.mute = TEA5767N_getMute();
+	state_info.hcc = TEA5767N_getHighCutControl();
+	state_info.snc = TEA5767N_getStereoNoiseCancelling();
+	
+	return &state_info;
 }

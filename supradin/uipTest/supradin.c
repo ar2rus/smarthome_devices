@@ -109,7 +109,7 @@ int main(void){
 	ENABLE_ETH_POLL_TIMER_OVF;
 
 	clunet_init();
-	clunet_set_on_data_received_sniff(clunet_data_received);
+	clunet_set_on_data_received(clunet_data_received);
 
 
     wdt_enable(WDTO_2S);
@@ -117,7 +117,6 @@ int main(void){
     while(1){
 		check_ethernet();
 		poll_ethernet();
-		//clunet_data_flush();
 		
 		periodic_ethernet();
 		 
