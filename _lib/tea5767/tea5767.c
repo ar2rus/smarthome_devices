@@ -39,8 +39,10 @@ static unsigned char write_bytes[5] = {
 static unsigned char read_bytes[5] =  { 0x00, 0x00, 0x00, 0x00, 0x00 };
 	
 
-static uint8_t hiInjection;
-static uint8_t muted = 0;
+uint8_t hiInjection;
+uint8_t muted = 0;
+
+uint16_t frequency = 0;
 
 int TEA5767_write(void){
 	uint8_t ret = 0;
@@ -144,18 +146,20 @@ void TEA5767N_setSideLOInjection(uint8_t high) {
 
 /*example 99.9 -> 9990 */
 void TEA5767N_setFrequency(uint16_t _frequency) {
-	unsigned int frequencyW;
+	frequency = _frequency;
+	
+	uint16_t f;
 	
 	if (hiInjection) {
 		TEA5767N_setSideLOInjection(1);
-		frequencyW = 4 * ((_frequency * 10000UL) + 225000UL) / 32768UL;
+		f = 4 * ((_frequency * 10000UL) + 225000UL) / 32768UL;
 	} else {
 		TEA5767N_setSideLOInjection(0);
-		frequencyW = 4 * ((_frequency * 10000UL) - 225000UL) / 32768UL;
+		f = 4 * ((_frequency * 10000UL) - 225000UL) / 32768UL;
 	}
 	
-	write_bytes[0] = ((write_bytes[0] & 0xC0) | ((frequencyW >> 8) & TEA5767_PLL_MASK));
-	write_bytes[1] = frequencyW & 0XFF;
+	write_bytes[0] = ((write_bytes[0] & 0xC0) | ((f >> 8) & TEA5767_PLL_MASK));
+	write_bytes[1] = f & 0XFF;
 }
 
 void TEA5767N_calculateOptimalHiLoInjection(uint16_t frequency) {

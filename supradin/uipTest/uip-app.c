@@ -180,7 +180,9 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 // 		udp_data_to_clunet_size = 0;
 // 		struct supradin_header *sh = dataToSend;
 // 		
-// 		clunet_send_fairy(sh->dst_address, sh->prio, sh->command, dataToSend + sizeof(supradin_header_t), sh->size);
+//		while(clunet_ready_to_send());
+// 		clunet_send(sh->dst_address, sh->prio, sh->command, dataToSend + sizeof(supradin_header_t), sh->size);
+//		while(clunet_ready_to_send());
 // 	}
 // }
  
