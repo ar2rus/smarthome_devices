@@ -18,8 +18,6 @@ struct uip_udp_conn* find_uip_udp_conn(uip_ipaddr_t *ripaddr, u16_t lport, u16_t
 	return 0;
 }
 
-//uint8_t udp_data_to_clunet_size = 0;
-
 uint8_t supradin_frame_size;
 char supradin_buffer[sizeof(supradin_header_t) + CLUNET_READ_BUFFER_SIZE];
 
@@ -116,18 +114,11 @@ void uip_udp_appcall(void){
 				s->timer = UDP_DATA_MAXAGE;
 			
 				if (uip_datalen() == sizeof(supradin_header_t) + sh->size){
-					
-					//здесь нужно отправить данные в сеть clunet, но так как они сразу же будут получены в методе clunet_data_received
-					//(используется метод sniff), то есть вероятность затереть сохраненные сообщения полученные в этом методе ранее.
-					//Поэтому нужно сохранить полученный пакет во временный массив (128+5 байт), а затем отсылать их в самом конце метода poll
-					
-					//Единственным массивом, в который это все можно положить является clunet dataToSend.
-					//И для гарантии целостности надо срубить автоответ для ping и discovery, которые все равно у supradin не используются, но могут изменить dataToSend
-					
-					//memcpy(dataToSend, uip_appdata, uip_datalen());
-					//udp_data_to_clunet_size = uip_datalen();
-					
 					clunet_send_fairy(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
+					//while(clunet_ready_to_send());
+					
+					//queue to send by udp
+					clunet_data_received(CLUNET_DEVICE_ID, sh->dst_address, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
 				}
 			}
 			break;
@@ -154,6 +145,7 @@ void uip_udp_appcall(void){
 	}
 }
 
+//here we get clunet messages and queue them to udp sending
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
 		supradin_header_t *sh = ((supradin_header_t *)&supradin_buffer);
 		
@@ -174,16 +166,5 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 			}
 		}
 }
-
-// void clunet_data_flush(){
-// 	if (udp_data_to_clunet_size){
-// 		udp_data_to_clunet_size = 0;
-// 		struct supradin_header *sh = dataToSend;
-// 		
-//		while(clunet_ready_to_send());
-// 		clunet_send(sh->dst_address, sh->prio, sh->command, dataToSend + sizeof(supradin_header_t), sh->size);
-//		while(clunet_ready_to_send());
-// 	}
-// }
  
 /*---------------------------------------------------------------------------*/
