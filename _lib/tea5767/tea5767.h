@@ -84,6 +84,9 @@
 #define TWNACK (TWCR=(1<<TWINT)|(1<<TWEN))
 
 
+#define TEA5767N_MIN_FREQUENCY 8700
+#define TEA5767N_MAX_FREQUENCY 10800
+
 
 #define FM_MAX_NUM_CHANNELS	30
 #define FM_PROGRAMS_EEPROM_OFFSET 0x40
@@ -97,7 +100,7 @@ uint16_t FM_get_channel_frequency(uint8_t num_channel);
 uint8_t FM_select_channel(uint8_t num_channel);
 uint8_t FM_select_next_channel(uint8_t up);
 
-void FM_select_frequency(uint16_t frequency);
+uint8_t FM_select_frequency(uint16_t frequency);
 
 
 

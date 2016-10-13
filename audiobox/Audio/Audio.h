@@ -18,6 +18,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <stddef.h>
 
 /*led port description*/
 #define LED_PORT C
@@ -89,6 +90,23 @@
 
 /* i2c controls */
 #define TWI_INIT {set_bit(OUTPORT(C), 4); set_bit(OUTPORT(C), 5);}
+
+
+#define EEPROM_CONFIG_ADDRESS 0x00
+
+typedef struct{
+	int8_t power;
+	uint8_t input;
+	int8_t volume;
+	
+	uint8_t eq_gain;
+	int8_t eq_treble;
+	uint8_t eq_bass;
+	
+	int8_t fm_channel;
+	uint16_t fm_freq;
+	uint8_t fm_controls;
+} config;
 
 
 #endif /* AUDIO_H_ */

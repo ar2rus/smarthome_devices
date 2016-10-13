@@ -2,6 +2,29 @@
 #include "Audio.h"
 
 
+void saveInput(uint8_t channel){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, input), channel);
+}
+
+void saveVolume(int8_t volume_db){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, volume), volume_db);
+}
+
+void saveEqualizer(uint8_t gain_db, int8_t treble_db, uint8_t bass_db){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_gain), gain_db);
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_treble), treble_db);
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_treble), bass_db);
+}
+
+void saveFMChannel(fm_channel_info* channel_info){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_channel), channel_info->channel);
+	eeprom_update_word((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_freq), channel_info->frequency);
+}
+
+void saveFMControls(fm_state_info* state_info){
+	char state = 
+}
+
 ISR(TIMER1_COMPB_vect){
 	if (necReadSignal()){
 		OCR1B += NEC_TIMER_CMP_TICKS;
@@ -433,8 +456,9 @@ void cmd(clunet_msg* m){
 				case 0x00:	//freq
 					if (m->size == 3){
 						uint16_t* f = (uint16_t*)&m->data[1];
-						FM_select_frequency(*f);
-						response = 10;
+						if (FM_select_frequency(*f)){	//check band limit
+							response = 10;
+						}
 					}
 					break;
 				case 0x01:	//saved channel
@@ -447,7 +471,7 @@ void cmd(clunet_msg* m){
 				case 0x02:	//next saved
 				case 0x03:	//prev saved
 				if (m->size == 1){
-					if (FM_select_next_channel(m->data[1] == 0x04)){
+					if (FM_select_next_channel(m->data[0] == 0x02)){
 						response = 10;
 					}
 				}
@@ -481,9 +505,11 @@ void cmd(clunet_msg* m){
 					break;
 				case 0xEC:	//add channel
 					switch(m->size){
-						case 1:	//current freq
-							//data[1] = FM_add_channel(cur_freq);
+						case 1:	{	//current freq
+							fm_channel_info* info = FM_channel_info();
+							m->data[1] = FM_add_channel(info->frequency);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
+							}
 							break;
 						case 3: {	//specified freq
 							uint16_t* f = (uint16_t*)&m->data[1];
@@ -495,11 +521,13 @@ void cmd(clunet_msg* m){
 					break;
 				case 0xED:	//save channel
 					switch(m->size){
-						case 2:	//current freq
-							//data[1] = FM_add_channel(m->data[1], cur_freq);
+						case 2:	{	//current freq
+							fm_channel_info* info = FM_channel_info();
+							m->data[1] = FM_save_channel(m->data[1], info->frequency);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
+							}
 							break;
-						case 4:	{//specified freq
+						case 4:	{	//specified freq
 							uint16_t* f = (uint16_t*)&m->data[2];
 							m->data[1] = FM_save_channel(m->data[1], *f);
 							clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, m->data, 2);
@@ -586,6 +614,30 @@ int main(void){
 	
 	lc75341_init();
 	lc75341_volume_percent(3);
+	
+	config c;
+	eeprom_read_block((void*)EEPROM_CONFIG_ADDRESS, &c, sizeof(c));
+	if (c.power == 0 || c.power == 1){	//check valid config
+		lc75341_input(c.input);
+		lc75341_volume_dB(c.volume);
+		
+		lc75341_gain_dB(c.eq_gain);
+		lc75341_treble_dB(c.eq_treble);
+		lc75341_bass_dB(c.eq_bass);
+		
+		if (c.fm_channel >= 0){
+			FM_select_channel(c.fm_channel);
+		}else if (c.fm_freq > 0){
+			FM_select_frequency(c.fm_freq);
+		}
+		
+		for (int i=0; i<4; i++){
+			FM_control(i, bit(c.fm_controls, i));
+		}
+		
+	}else{
+		//fill empty eeprom with default values
+	}
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms

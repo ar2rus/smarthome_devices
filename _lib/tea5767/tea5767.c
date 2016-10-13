@@ -229,24 +229,31 @@ uint8_t TEA5767N_getStereoNoiseCancelling() {
 	return (write_bytes[3] & TEA5767_SNC) != 0;
 }
 
-void TEA5767N_selectFrequency(uint16_t frequency) {
+uint8_t TEA5767N_selectFrequency(uint16_t frequency) {
 	//calculate optimal HiLoInjection
 	
-	uint8_t signalHigh;
-	uint8_t signalLow;
-		
-	TEA5767N_setSideLOInjection(1);
-	TEA5767N_setFrequency(frequency + 45);	//+0.45 MHz
-	signalHigh = TEA5767N_getSignalLevel();
-		
-	TEA5767N_setSideLOInjection(0);
-	TEA5767N_setFrequency(frequency - 45);	//-0.45 MHz
-	signalLow = TEA5767N_getSignalLevel();
-
-	hiInjection = (signalHigh < signalLow) ? 1 : 0;
+	if (frequency >= TEA5767N_MIN_FREQUENCY && 
+		frequency <= TEA5767N_MAX_FREQUENCY){
 	
-	TEA5767N_setFrequency(frequency);
-	TEA5767_write();
+		uint8_t signalHigh;
+		uint8_t signalLow;
+		
+		TEA5767N_setSideLOInjection(1);
+		TEA5767N_setFrequency(frequency + 45);	//+0.45 MHz
+		signalHigh = TEA5767N_getSignalLevel();
+		
+		TEA5767N_setSideLOInjection(0);
+		TEA5767N_setFrequency(frequency - 45);	//-0.45 MHz
+		signalLow = TEA5767N_getSignalLevel();
+
+		hiInjection = (signalHigh < signalLow) ? 1 : 0;
+	
+		TEA5767N_setFrequency(frequency);
+		TEA5767_write();
+		
+		return 1;
+	}
+	return 0;
 }
 
 
@@ -291,54 +298,58 @@ uint8_t TEA5767N_searchNext(uint8_t up, uint8_t stop_level) {
 	
 	if (up) {
 		write_bytes[2] |= TEA5767_SUD;
-		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() + 10);	//+0.1 MHz
+		bandLimitReached = !TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() + 10);	//+0.1 MHz
 	} else {
 		write_bytes[2] &= ~TEA5767_SUD;
-		TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() - 10);	//-0.1 MHz
+		bandLimitReached = !TEA5767N_selectFrequency(TEA5767N_readFrequencyInMHz() - 10);	//-0.1 MHz
 	}
 	
-	//stop levels
-	write_bytes[2] &= 0b10011111;
-	switch(stop_level){
-		case 0:
-			write_bytes[2] |= TEA5767_SRCH_LOW_LVL;
-			break;
-		case 1:
-			write_bytes[2] |= TEA5767_SRCH_MID_LVL;
-			break;
-		case 2:
-			write_bytes[2] |= TEA5767_SRCH_HIGH_LVL;
-			break;
-	}
+	if (!bandLimitReached){
+		//stop levels
+		write_bytes[2] &= 0b10011111;
+		switch(stop_level){
+			case 0:
+				write_bytes[2] |= TEA5767_SRCH_LOW_LVL;
+				break;
+			case 1:
+				write_bytes[2] |= TEA5767_SRCH_MID_LVL;
+				break;
+			case 2:
+				write_bytes[2] |= TEA5767_SRCH_HIGH_LVL;
+				break;
+		}
 	
-	//Turns the search on
-	write_bytes[0] |= TEA5767_SEARCH;
-	TEA5767_write();
+		//Turns the search on
+		write_bytes[0] |= TEA5767_SEARCH;
+		TEA5767_write();
 		
-	while(!TEA5767N_isReady()) { }
-	//Read Band Limit flag
-	bandLimitReached = TEA5767N_isBandLimitReached();
-	//Loads the new selected frequency
-	TEA5767N_loadFrequency();
+		while(!TEA5767N_isReady()) { }
+		//Read Band Limit flag
+		bandLimitReached = TEA5767N_isBandLimitReached();
+		//Loads the new selected frequency
+		TEA5767N_loadFrequency();
 	
-	//Turns the search off
-	write_bytes[0] &= ~TEA5767_SEARCH;
-	TEA5767_write();
+		//Turns the search off
+		write_bytes[0] &= ~TEA5767_SEARCH;
+		TEA5767_write();
+	}
 	
 	return bandLimitReached;
 }
 
 uint8_t TEA5767N_startSearchFrom(uint16_t frequency, uint8_t up, uint8_t stop_level) {
-	TEA5767N_selectFrequency(frequency);
-	return TEA5767N_searchNext(up, stop_level);
+	if (TEA5767N_selectFrequency(frequency)){
+		return TEA5767N_searchNext(up, stop_level);
+	}
+	return 1;	//band limit reached
 }
 
 uint8_t TEA5767N_startSearchFromBegin(uint8_t stop_level) {
-	return TEA5767N_startSearchFrom(8700, 1, stop_level);				//87.0
+	return TEA5767N_startSearchFrom(TEA5767N_MIN_FREQUENCY, 1, stop_level);				//87.0
 }
 
 uint8_t TEA5767N_startSearchFromEnd(uint8_t stop_level) {
-	return TEA5767N_startSearchFrom(10800, 0, stop_level);				//108.0
+	return TEA5767N_startSearchFrom(TEA5767N_MAX_FREQUENCY, 0, stop_level);				//108.0
 }
 
 
@@ -350,6 +361,9 @@ int8_t cur_channel = -1;
 uint8_t FM_set_num_channels(uint8_t num){
 	if (num <= FM_MAX_NUM_CHANNELS){
 		num_channels = num;	
+		if (cur_channel >= num_channels){
+			cur_channel = -1;
+		}
 		eeprom_write_byte((void*)FM_PROGRAMS_EEPROM_OFFSET, num_channels);
 		return 1;
 	}
@@ -419,9 +433,12 @@ uint8_t FM_select_next_channel(uint8_t up){
 	return 0;
 }
 
-void FM_select_frequency(uint16_t frequency){
-	cur_channel = -1;
-	TEA5767N_selectFrequency(frequency);
+uint8_t FM_select_frequency(uint16_t frequency){
+	if (TEA5767N_selectFrequency(frequency)){
+		cur_channel = -1;
+		return 1;
+	}
+	return 0;
 }
 
 uint8_t FM_control(uint8_t control, uint8_t on){
