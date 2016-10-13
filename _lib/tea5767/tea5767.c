@@ -235,6 +235,11 @@ uint8_t TEA5767N_selectFrequency(uint16_t frequency) {
 	if (frequency >= TEA5767N_MIN_FREQUENCY && 
 		frequency <= TEA5767N_MAX_FREQUENCY){
 	
+		uint8_t mute = TEA5767N_getMute();
+		if (!mute){
+			TEA5767N_mute(1);
+		}
+		
 		uint8_t signalHigh;
 		uint8_t signalLow;
 		
@@ -249,7 +254,8 @@ uint8_t TEA5767N_selectFrequency(uint16_t frequency) {
 		hiInjection = (signalHigh < signalLow) ? 1 : 0;
 	
 		TEA5767N_setFrequency(frequency);
-		TEA5767_write();
+		//TEA5767_write();
+		TEA5767N_mute(0);
 		
 		return 1;
 	}

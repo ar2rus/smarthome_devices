@@ -12,11 +12,6 @@
 #include "lc75341_config.h"
 #include "utils/bits.h"
 
-#ifdef LC75341_EEPROM_ADDRESS
-#include <avr/eeprom.h>
-#endif
-
-
 // Base delay (us).  Also used to time the CL (clock) line.
 // 100us should be enough even for slow CCB devices.
 #define CCB_DELAY 100
@@ -82,11 +77,5 @@ char lc75341_bass_down();
 unsigned char lc75341_bass_dB_value();
 
 void lc75341_equalizer_reset();
-
-#ifdef LC75341_EEPROM_ADDRESS
-	void lc75341_eeprom_load();
-	void lc75341_eeprom_flush();
-	void lc75341_eeprom_enable(unsigned char enable);
-#endif
 
 #endif /* LC75341_H_ */

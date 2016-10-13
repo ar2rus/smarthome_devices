@@ -81,34 +81,7 @@ char muted_volume = LC75341_VOLUME_MIN;
 
 void lc75341_write(){
 	ccb_write(LC75341_ADDRESS, registry, sizeof(registry));
-	#ifdef LC75341_EEPROM_ADDRESS
-		lc75341_eeprom_flush();
-	#endif
 }
-
-
-#ifdef LC75341_EEPROM_ADDRESS
-
-unsigned char eeprom_enabled = 1;	//определяет - писать в EEPROM при каждой записи в lc75341
-
-void lc75341_eeprom_enable(unsigned char enable){
-	eeprom_enabled = enable;
-}
-
-void lc75341_eeprom_flush(){
-	if (eeprom_enabled){
-		eeprom_update_block((void*)&registry,(void*)LC75341_EEPROM_ADDRESS, 3);
-		if (muted_volume < LC75341_VOLUME_MIN){	//если мы в mute - то сохраняем значение до выключения звука
-			eeprom_update_byte(((void*)LC75341_EEPROM_ADDRESS)+1, muted_volume);
-		}
-	}
-}
-
-void lc75341_eeprom_load(){
-	eeprom_read_block((void*)&registry,(void*)LC75341_EEPROM_ADDRESS, 3);
-	lc75341_write();
-}
-#endif
 
 void lc75341_init(){	
 	ccb_init();
@@ -185,8 +158,11 @@ char lc75341_volume_dB(signed char volume){
 *	Устанавливает уровень громкости по значению в процентах от максимальной(0-100 %)
 */
 char lc75341_volume_percent(unsigned char volume){
-	volume = LC75341_VOLUME_MIN - LC75341_VOLUME_MIN * volume / 100;
-	return lc75341_volume(volume);
+	if (volume <= 100){
+		volume = LC75341_VOLUME_MIN - LC75341_VOLUME_MIN * volume / 100;
+		return lc75341_volume(volume);
+	}
+	return 0;
 }
 
 /*

@@ -1,19 +1,22 @@
 
 #include "Audio.h"
 
+void savePower(uint8_t on){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, power), on);
+}
 
 void saveInput(uint8_t channel){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, input), channel);
 }
 
-void saveVolume(int8_t volume_db){
-	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, volume), volume_db);
+void saveVolume(uint8_t volume_dB){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, volume), -volume_dB);
 }
 
 void saveEqualizer(uint8_t gain_db, int8_t treble_db, uint8_t bass_db){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_gain), gain_db);
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_treble), treble_db);
-	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_treble), bass_db);
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_bass), bass_db);
 }
 
 void saveFMChannel(fm_channel_info* channel_info){
@@ -22,8 +25,25 @@ void saveFMChannel(fm_channel_info* channel_info){
 }
 
 void saveFMControls(fm_state_info* state_info){
-	char state = 
+	uint8_t state = 0;
+	if (state_info->standby){
+		state |= _BV(0);
+	}
+	if (state_info->mono){
+		state |= _BV(1);
+	}
+	if (state_info->mute){
+		state |= _BV(2);
+	}
+	if (state_info->hcc){
+		state |= _BV(3);
+	}
+	if (state_info->snc){
+		state |= _BV(4);
+	}
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_controls), state);
 }
+
 
 ISR(TIMER1_COMPB_vect){
 	if (necReadSignal()){
@@ -199,6 +219,7 @@ ISR(TIMER1_COMPA_vect){
 					delayedResponseCounterValue = TCNT1;
 					data[0] = 2;
 					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+					
 					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_UP, 2);
 					break;
 				case 0x78:
@@ -206,6 +227,7 @@ ISR(TIMER1_COMPA_vect){
 					delayedResponseCounterValue = TCNT1;
 					data[0] = 3;
 					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+					
 					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_DOWN, 2);
 					break;
 				case 0xA0:
@@ -246,6 +268,16 @@ ISR(TIMER1_COMPA_vect){
 					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_EQUALIZER_RESET);
 					necResetValue();
 					break;
+				case 0x4A:
+					data[0] = 0x03;
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
+					necResetValue();
+					break;
+				case 0x28:
+					data[0] = 0x02;
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
+					necResetValue();
+					break;
 			}
 		}
 // 		else{
@@ -278,6 +310,12 @@ void cmd(clunet_msg* m){
 	char silent = (m->src_address == CLUNET_DEVICE_ID);
 	
 	switch(m->command){
+// 		case CLUNET_COMMAND_DEBUG:{
+// 		config c;
+// 		eeprom_read_block(&c, (void*)EEPROM_CONFIG_ADDRESS, sizeof(c));
+// 		clunet_send_fairy(m->src_address,CLUNET_PRIORITY_COMMAND,CLUNET_COMMAND_DEBUG,&c,sizeof(c));
+// 		}
+// 		break;
 		case CLUNET_COMMAND_CHANNEL:
 		switch (m->size){
 			case 1:
@@ -555,6 +593,7 @@ void cmd(clunet_msg* m){
 			case 1:{
 				char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
+				saveInput(channel-1);
 			}
 			break;
 			case 2:{
@@ -562,6 +601,7 @@ void cmd(clunet_msg* m){
 				data[0] = lc75341_volume_percent_value();
 				data[1] = lc75341_volume_dB_value();
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
+				saveVolume(data[1]);
 			}
 			break;
 			case 3:{
@@ -570,16 +610,19 @@ void cmd(clunet_msg* m){
 				data[1] = lc75341_treble_dB_value();
 				data[2] = lc75341_bass_dB_value();
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
+				saveEqualizer(data[0] ,data[1] ,data[2]);
 			}
 			break;
 			case 10:{
 				fm_channel_info* info = FM_channel_info();
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
+				saveFMChannel(info);
 			}
 			break;
 			case 11:{
 				fm_state_info* info = FM_state_info();
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
+				saveFMControls(info);
 			}
 			break;
 		}
@@ -595,48 +638,59 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_EQUALIZER:
 		case CLUNET_COMMAND_FM:
 		case CLUNET_COMMAND_POWER:
+		//case CLUNET_COMMAND_DEBUG:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
+			break;
 	}
 }
 
 int main(void){
 	cli();
+	
+	lc75341_init();
+	lc75341_volume_percent(0);
+	
 	LED_INIT;
 	BUTTONS_INIT;
 	
 	TWI_INIT;
 	
-	FM_select_frequency(9290);
-	
 	clunet_set_on_data_received(clunet_data_received);
 	clunet_buffered_init();
 	clunet_init();
 	
-	lc75341_init();
-	lc75341_volume_percent(3);
-	
 	config c;
-	eeprom_read_block((void*)EEPROM_CONFIG_ADDRESS, &c, sizeof(c));
-	if (c.power == 0 || c.power == 1){	//check valid config
-		lc75341_input(c.input);
-		lc75341_volume_dB(c.volume);
+	eeprom_read_block(&c, (void*)EEPROM_CONFIG_ADDRESS, sizeof(c));
+	
+	if (c.power < 0){
+		savePower(1);
+	}
 		
-		lc75341_gain_dB(c.eq_gain);
-		lc75341_treble_dB(c.eq_treble);
-		lc75341_bass_dB(c.eq_bass);
+	if (!lc75341_input(c.input)){
+		button_channel(1);
+	}
 		
-		if (c.fm_channel >= 0){
-			FM_select_channel(c.fm_channel);
-		}else if (c.fm_freq > 0){
-			FM_select_frequency(c.fm_freq);
-		}
+	lc75341_gain_dB(c.eq_gain);
+	lc75341_treble_dB(c.eq_treble);
+	lc75341_bass_dB(c.eq_bass);
+	
+	if (c.fm_channel >= 0){
+		FM_select_channel(c.fm_channel);
+	}else if (c.fm_freq > 0){
+		FM_select_frequency(c.fm_freq);
+	}
+	
+	for (int i=0; i<4; i++){
+		FM_control(i, bit(c.fm_controls, i));
+	}
+
+	if (!lc75341_volume_dB(-c.volume)){
+		//char data[2];
+		//data[0] = 0x00;
+		//data[1] = 30;		//30%
+		//clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 2);
 		
-		for (int i=0; i<4; i++){
-			FM_control(i, bit(c.fm_controls, i));
-		}
-		
-	}else{
-		//fill empty eeprom with default values
+		//muted by default
 	}
 	
 	TIMER_INIT;
