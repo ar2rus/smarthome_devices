@@ -44,6 +44,14 @@ void saveFMControls(fm_state_info* state_info){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_controls), state);
 }
 
+char power_state;
+void power(char on){
+	power_state = on;
+	
+	lc75341_mute(!on);
+	FM_control(FM_CONTROL_STANDBY, !on);
+}
+
 
 ISR(TIMER1_COMPB_vect){
 	if (necReadSignal()){
@@ -304,30 +312,64 @@ ISR(TIMER1_COMPA_vect){
 }
 
 void cmd(clunet_msg* m){
+	
+	//в выключенном состоянии разрешаем только 
+	//CLUNET_COMMAND_POWER и CLUNET_COMMAND_CHANNEL
+	if (!power_state){
+		switch (m->command){
+			case CLUNET_COMMAND_POWER:
+			case CLUNET_COMMAND_CHANNEL:
+				break;
+			default:
+				return;
+		}
+	}
+	
 	LED_ON;
 	
 	char response = 0;
 	char silent = (m->src_address == CLUNET_DEVICE_ID);
 	
 	switch(m->command){
-// 		case CLUNET_COMMAND_DEBUG:{
-// 		config c;
-// 		eeprom_read_block(&c, (void*)EEPROM_CONFIG_ADDRESS, sizeof(c));
-// 		clunet_send_fairy(m->src_address,CLUNET_PRIORITY_COMMAND,CLUNET_COMMAND_DEBUG,&c,sizeof(c));
-// 		}
-// 		break;
+		case CLUNET_COMMAND_POWER:
+		if (m->size == 1){
+			switch (m->data[0]){
+				case 0:
+				case 1:
+					power(m->data[0]);
+					response = 5;
+					break;
+				case 2:
+					power(!power_state);
+					response = 5;
+					break;
+				case 0xFF:
+					response = 5;
+					break;
+				}
+			}
+			break;
+		
 		case CLUNET_COMMAND_CHANNEL:
 		switch (m->size){
 			case 1:
 			switch (m->data[0]){
 				case 0xFF:
-					response = 1;
+					if (power_state){
+						response = 1;
+					}
 					break;
 				case 0x01:
+					if (!power_state){
+						power(1);
+					}
 					lc75341_input_next();
 					response = 1;
 					break;
 				case 0x02:
+					if (!power_state){
+						power(1);
+					}
 					lc75341_input_prev();
 					response = 1;
 					break;
@@ -336,6 +378,9 @@ void cmd(clunet_msg* m){
 			case 2:
 			switch(m->data[0]){
 				case 0x00:
+					if (!power_state){
+						power(1);
+					}
 					lc75341_input(m->data[1] - 1);
 					response = 1;
 					break;
@@ -613,6 +658,12 @@ void cmd(clunet_msg* m){
 				saveEqualizer(data[0] ,data[1] ,data[2]);
 			}
 			break;
+			
+			case 5:
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_POWER_INFO, (char*)&power_state, sizeof(power_state));
+				savePower(power_state);
+				break;
+			
 			case 10:{
 				fm_channel_info* info = FM_channel_info();
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
@@ -644,6 +695,10 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 	}
 }
 
+//TODO: кнопка пульта вкл/выкл
+//exp громкость -> глюки
+
+
 int main(void){
 	cli();
 	
@@ -662,9 +717,6 @@ int main(void){
 	config c;
 	eeprom_read_block(&c, (void*)EEPROM_CONFIG_ADDRESS, sizeof(c));
 	
-	if (c.power < 0){
-		savePower(1);
-	}
 		
 	if (!lc75341_input(c.input)){
 		button_channel(1);
@@ -691,6 +743,14 @@ int main(void){
 		//clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 2);
 		
 		//muted by default
+	}
+	
+	if (c.power < 0){
+		//power on, send response and write to eeprom, by default
+		char data = 1;
+		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, &data, sizeof(data));
+	}else{
+		power(c.power);
 	}
 	
 	TIMER_INIT;
