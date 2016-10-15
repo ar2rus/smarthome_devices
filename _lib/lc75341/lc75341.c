@@ -211,7 +211,7 @@ char lc75341_volume_down(char step){
 
 
 
-const char exp_koeff[]= {1, 1, 1, 2, 2, 4, 8, 8, 16};
+const char exp_koeff[]= {1, 1, 1, 1, 2, 2, 4, 4, 8};
 
 
 /*

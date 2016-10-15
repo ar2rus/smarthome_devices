@@ -14,21 +14,21 @@
 
 #include <avr/io.h>
 
-#define NEC_TIMER_T 50	//check fronts every 50 mks
+#define NEC_TIMER_T 250	//check fronts every 50 mks
 
 #define NEC_TIMER_CMP_TICKS (unsigned int) (F_CPU / NEC_TIMER_PRESCALER * NEC_TIMER_T * 1e-6)
 
-#define NEC_NUM_TICKS_START_COND_1 (unsigned int) (13500 / NEC_TIMER_T - 20)		
-#define NEC_NUM_TICKS_START_COND_2 (unsigned int) (13500 / NEC_TIMER_T + 20)
+#define NEC_NUM_TICKS_START_COND_1 (unsigned int) (13500 / NEC_TIMER_T - 8)		
+#define NEC_NUM_TICKS_START_COND_2 (unsigned int) (13500 / NEC_TIMER_T + 8)
 
-#define NEC_NUM_TICKS_REPEAT_COND_1 (unsigned int) (11250 / NEC_TIMER_T - 20)
-#define NEC_NUM_TICKS_REPEAT_COND_2 (unsigned int) (11250 / NEC_TIMER_T + 20)
+#define NEC_NUM_TICKS_REPEAT_COND_1 (unsigned int) (11250 / NEC_TIMER_T - 8)
+#define NEC_NUM_TICKS_REPEAT_COND_2 (unsigned int) (11250 / NEC_TIMER_T + 8)
 
-#define NEC_NUM_TICKS_LOG0_1 (unsigned int) (1120 / NEC_TIMER_T - 10)
-#define NEC_NUM_TICKS_LOG0_2 (unsigned int) (1120 / NEC_TIMER_T + 10)
+#define NEC_NUM_TICKS_LOG0_1 (unsigned int) (1120 / NEC_TIMER_T - 3)
+#define NEC_NUM_TICKS_LOG0_2 (unsigned int) (1120 / NEC_TIMER_T + 2)
 
-#define NEC_NUM_TICKS_LOG1_1 (unsigned int) (2250 / NEC_TIMER_T - 10)
-#define NEC_NUM_TICKS_LOG1_2 (unsigned int) (2250 / NEC_TIMER_T + 10)
+#define NEC_NUM_TICKS_LOG1_1 (unsigned int) (2250 / NEC_TIMER_T - 2)
+#define NEC_NUM_TICKS_LOG1_2 (unsigned int) (2250 / NEC_TIMER_T + 3)
 
 #define NEC_NUM_TICKS_TIMEOUT (unsigned int) (125000 / NEC_TIMER_T)
 

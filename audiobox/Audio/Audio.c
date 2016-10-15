@@ -29,10 +29,10 @@ void saveFMControls(fm_state_info* state_info){
 	if (state_info->standby){
 		state |= _BV(0);
 	}
-	if (state_info->mono){
+	if (state_info->mute){
 		state |= _BV(1);
 	}
-	if (state_info->mute){
+	if (state_info->mono){
 		state |= _BV(2);
 	}
 	if (state_info->hcc){
@@ -48,7 +48,11 @@ char power_state;
 void power(char on){
 	power_state = on;
 	
-	lc75341_mute(!on);
+	if (on){
+		lc75341_unmute();
+	}else{
+		lc75341_mute();	
+	}
 	FM_control(FM_CONTROL_STANDBY, !on);
 }
 
@@ -98,8 +102,7 @@ signed char readEncoder(){
 }
 
 
-char shouldSendDelayedResponse = 0;
-unsigned int delayedResponseCounterValue = 0;
+int16_t delayedResponseCounterValue = -1;
 
 //только дл€ предотвращени€ многократного вызова при удерживании кнопки нажатой
 char buttonStates = 0;
@@ -157,18 +160,16 @@ ISR(TIMER1_COMPA_vect){
 		buttonStates = 0;
 	}
 	
-  	char data[2];
+  	char data[3];
  	signed char a = readEncoder();
  	if (a > 0){
- 		shouldSendDelayedResponse = 1;
- 		delayedResponseCounterValue = TCNT1;
+ 		delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
  		
  		data[0] = 2;
  		//src_address == CLUNET_DEVICE_ID -> silent
  		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
  	}else if (a < 0){
- 		shouldSendDelayedResponse = 1;
- 		delayedResponseCounterValue = TCNT1;
+ 		delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
 		
  		data[0] = 3;
  		//src_address == CLUNET_DEVICE_ID -> silent
@@ -188,7 +189,8 @@ ISR(TIMER1_COMPA_vect){
 		if (nec_address == 0x02){
 			switch (nec_command){
 				case 0x48:
-					power(!power_state);
+					data[0] = 2;
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, data, 1);
 					necResetValue();
 					break;
 				case 0x80:
@@ -227,16 +229,14 @@ ISR(TIMER1_COMPA_vect){
 					necResetValue();
 					break;
 				case 0x58:
-					shouldSendDelayedResponse = 1;
-					delayedResponseCounterValue = TCNT1;
+					delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
 					data[0] = 2;
 					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
 					
 					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_UP, 2);
 					break;
 				case 0x78:
-					shouldSendDelayedResponse = 1;
-					delayedResponseCounterValue = TCNT1;
+					delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
 					data[0] = 3;
 					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
 					
@@ -290,6 +290,33 @@ ISR(TIMER1_COMPA_vect){
 					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
 					necResetValue();
 					break;
+				
+				case 0x12://наше радио (92.9) -> красна€ кнопка
+				case 0x92://мегаполис (103.6) -> зелена€ кнопка
+				case 0x52://эхо москвы (99.1) -> желта€ кнопка
+				case 0xD2://вести fm (93.5) -> син€€ кнопка
+					switch (nec_command){
+						case 0x12:
+							data[1] = 0x4A;
+							data[2] = 0x24;
+							break;
+						case 0x92:
+							data[1] = 0x78;
+							data[2] = 0x28;
+							break;
+						case 0x52:
+							data[1] = 0xB6;
+							data[2] = 0x26;
+							break;
+						case 0xD2:
+							data[1] = 0x86;
+							data[2] = 0x24;
+							break;
+					}
+					data[0] = 0x00;
+					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 3);
+					necResetValue();
+					break;
 			}
 		}
 // 		else{
@@ -304,15 +331,30 @@ ISR(TIMER1_COMPA_vect){
 	//send delayed response
 	//отправл€ем не раньше чем через 150 мс, но все равно рветс€ прерыванием 
 	//и отправл€етс€ только по окончании любой длительной операции
-	if (shouldSendDelayedResponse && (TCNT1 - delayedResponseCounterValue >= TIMER_SKIP_EVENTS_DELAY)){
-		shouldSendDelayedResponse = 0;
-		
-		char d = 0xFF;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &d, 1);
+	if (delayedResponseCounterValue >= 0){
+		if (--delayedResponseCounterValue < 0){
+			char d = 0xFF;
+			clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &d, 1);
+			necResetValue();
+		}
 	}
 	
 	
 	OCR1A = TCNT1 + TIMER_NUM_TICKS;
+}
+
+uint8_t check_power(){
+	if (!power_state){
+		power(1);
+		return 5;
+	}
+	return 0;
+}
+
+void check_fm_channel(){
+	if (power_state){
+		FM_control(FM_CONTROL_MUTE, lc75341_input_value() != LC75341_INPUT_4);
+	}
 }
 
 void cmd(clunet_msg* m){
@@ -335,6 +377,14 @@ void cmd(clunet_msg* m){
 	char silent = (m->src_address == CLUNET_DEVICE_ID);
 	
 	switch(m->command){
+		
+// 		case CLUNET_COMMAND_DEBUG:{
+// 			config c;
+// 			eeprom_read_block(&c, (void*)EEPROM_CONFIG_ADDRESS, sizeof(c));
+// 			clunet_send_fairy(m->src_address,CLUNET_PRIORITY_COMMAND,CLUNET_COMMAND_DEBUG,&c,sizeof(c));
+// 		}
+// 		break;
+		
 		case CLUNET_COMMAND_POWER:
 		if (m->size == 1){
 			switch (m->data[0]){
@@ -364,29 +414,35 @@ void cmd(clunet_msg* m){
 					}
 					break;
 				case 0x01:
-					if (!power_state){
-						power(1);
+					response = check_power();
+					if (!response){
+						lc75341_input_next();
+						
+						check_fm_channel();
+						response = 1;
 					}
-					lc75341_input_next();
-					response = 1;
 					break;
 				case 0x02:
-					if (!power_state){
-						power(1);
+					response = check_power();
+					if (!response){
+						lc75341_input_prev();
+						
+						check_fm_channel();
+						response = 1;
 					}
-					lc75341_input_prev();
-					response = 1;
 					break;
 			}
 			break;
 			case 2:
 			switch(m->data[0]){
 				case 0x00:
-					if (!power_state){
-						power(1);
+					response = check_power();
+					if (!response){
+						lc75341_input(m->data[1] - 1);
+						
+						check_fm_channel();
+						response = 1;
 					}
-					lc75341_input(m->data[1] - 1);
-					response = 1;
 					break;
 			}
 			break;
@@ -699,10 +755,6 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 	}
 }
 
-//TODO: кнопка пульта вкл/выкл
-//exp громкость -> глюки
-
-
 int main(void){
 	cli();
 	
@@ -756,6 +808,8 @@ int main(void){
 	}else{
 		power(c.power);
 	}
+	
+	encoderValue = readEncoder();
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms

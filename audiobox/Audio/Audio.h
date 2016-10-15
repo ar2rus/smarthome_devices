@@ -75,9 +75,10 @@
 
 
 /* main timer controls*/
-#define TIMER_PRESCALER 64
-#define TIMER_NUM_TICKS (unsigned int)(1e-3 * F_CPU / TIMER_PRESCALER)	/*1ms main loop*/
-#define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS11, CS10); unset_bit(TCCR1B, CS12); /*64x prescaler*/}
+#define TIMER_PRESCALER 8
+#define TIMER_DELAY 1e-3	/*1ms main loop*/
+#define TIMER_NUM_TICKS (unsigned int)(TIMER_DELAY * F_CPU / TIMER_PRESCALER)	
+#define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit(TCCR1B, CS11); unset_bit2(TCCR1B, CS10, CS12); /*8x prescaler*/}
 
 #define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)
 #define DISABLE_TIMER_CMP_A unset_bit(TIMSK, OCIE1A)
@@ -86,7 +87,7 @@
 #define DISABLE_TIMER_CMP_B unset_bit(TIMSK, OCIE1B)
 
 /* skip events delay */
-#define TIMER_SKIP_EVENTS_DELAY (unsigned int)(150e-3 * F_CPU / TIMER_PRESCALER)	/*150ms - не уменьшать, начинает глючит clunet*/
+#define TIMER_SKIP_EVENTS_DELAY (unsigned int)(150e-3/TIMER_DELAY)	/*150ms - не уменьшать, начинает глючит clunet*/
 
 /* i2c controls */
 #define TWI_INIT {set_bit(OUTPORT(C), 4); set_bit(OUTPORT(C), 5);}

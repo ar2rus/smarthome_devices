@@ -125,9 +125,9 @@ fm_channel_info* FM_channel_info();
 
 typedef struct{
 	uint8_t type;			//Тип ответа (всегда 1)
-	uint8_t standby;		
-	uint8_t mono;
+	uint8_t standby;
 	uint8_t mute;
+	uint8_t mono;
 	uint8_t hcc;
 	uint8_t snc;
 } fm_state_info;

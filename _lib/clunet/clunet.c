@@ -62,7 +62,7 @@ ISR(CLUNET_TIMER_COMP_VECTOR){
 			CLUNET_DISABLE_TIMER_COMP; // Выключаем таймер-сравнение
 			clunetSendingState = CLUNET_SENDING_STATE_IDLE; // Ставим флаг, что передатчик свободен
 			return;		
-	}	
+	}
 
 	if (/*!((clunetReadingState == CLUNET_READING_STATE_DATA) && // Если мы сейчас не [получаем данные
 		(clunetCurrentPrio > clunetReceivingPrio) 				// И приоритет получаемых данных не ниже
