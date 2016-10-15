@@ -187,6 +187,10 @@ ISR(TIMER1_COMPA_vect){
 		
 		if (nec_address == 0x02){
 			switch (nec_command){
+				case 0x48:
+					power(!power_state);
+					necResetValue();
+					break;
 				case 0x80:
 					channel(1);
 					necResetValue();
