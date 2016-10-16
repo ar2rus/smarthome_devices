@@ -5,7 +5,6 @@ char doorSensorValue;
 char shouldSendLightnessValue;
 char lightnessSensorValue;
 
-
 volatile unsigned int systime = 0;
 volatile unsigned int sensor_check_time = 0;
 
@@ -53,6 +52,18 @@ void humidityResponse(unsigned char address){
 	}
 		
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
+}
+
+void rcResponse(unsigned char address, uint8_t nec_address, uint8_t nec_command, uint8_t nec_repeated){
+	char data[3];
+	data[0] = 0x00;
+	data[1] = nec_address;
+	if (nec_repeated){
+		data[1] |= _BV(7);
+	}
+	data[2] = nec_command;
+			
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
 }
 
 //lightness
@@ -123,12 +134,12 @@ void cmd(clunet_msg* m){
 			}
 			break;	
 		
-		//for debugging only
-		case CLUNET_COMMAND_DEBUG:
-			if (m->src_address == 0){	//supradin
-					clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, m->data, 4);
-			}
-			break;
+// 		//for debugging only
+// 		case CLUNET_COMMAND_DEBUG:
+// 			if (m->src_address == 0){	//supradin
+// 					clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, m->data, 4);
+// 			}
+// 			break;
 	}
 }
 
@@ -138,10 +149,8 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_TEMPERATURE:
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_LIGHT_LEVEL:
-		
-		//case CLUNET_COMMAND_PING_REPLY:
-		
 			clunet_buffered_push(src_address, dst_address, command, data, size);
+			break;
 	}
 }
 
@@ -169,6 +178,7 @@ int main(void){
 			
 		//check sensors every 100 ms
 		if (systime - sensor_check_time >= 100){
+			sensor_check_time = systime;
 			
 			//check door
 			char value = DOOR_SENSOR_READ;
@@ -179,165 +189,25 @@ int main(void){
 			
 			//check lightness
 			set_bit(ADCSRA, ADSC);
-			
-			sensor_check_time = systime;
 		}
 		
 		if (shouldSendLightnessValue){
-			lightnessResponse(CLUNET_BROADCAST_ADDRESS);
 			shouldSendLightnessValue = 0;
+			lightnessResponse(CLUNET_BROADCAST_ADDRESS);
 		}
 			
 		if (necCheckSignal()){
-			OCR1B  = TIMER_REG + NEC_TIMER_CMP_TICKS;
+			OCR1B  = TCNT1 + NEC_TIMER_CMP_TICKS;
 			ENABLE_TIMER_CMP_B;
 		}
 			
 		uint8_t nec_address;
 		uint8_t nec_command;
+		uint8_t nec_repeated;
 			
-		if (necValue(&nec_address, &nec_command)){
-			if (nec_address == 0x00){
-					
-				char data[2];
-					
-				switch (nec_command){
-					case 0xA2:{		//switch on/off
-						data[0] = 2;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_POWER, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0xE2:{		//toggle mute
-						data[0] = 1;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_MUTE, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0x22:{		//input_1
-						data[0] = 0;
-						data[1] = 1;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0xC2:{		//input_4 (fm)
-						data[0] = 0;
-						data[1] = 4;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 2);
-						necResetValue();
-					}
-					break;
-						
-					case 0xE0:{		//volume down
-						data[0] = 3;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_VOLUME, data, 1);
-						//necResetValue();
-					}
-					break;
-						
-					case 0x90:{		//volume up
-						data[0] = 2;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_VOLUME, data, 1);
-						//necResetValue();
-					}
-					break;
-						
-					case 0x02:{		//next
-						//data[0] = 0x06;	android
-						data[0] = 0x01;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0x98:{		//prev
-						//data[0] = 0x05; android
-						data[0] = 0x02;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_CHANNEL, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0xA8:{		//ok
-						data[0] = 0x07;
-						clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0x30:{		//treble up
-						data[0]=2;
-						data[1]=2;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0x10:{		//treble down
-						data[0]=2;
-						data[1]=3;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0x18:{		//bass up
-						data[0]=3;
-						data[1]=2;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0x38:{		//bass down
-						data[0]=3;
-						data[1]=3;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0x7A:{		//gain up
-						data[0]=1;
-						data[1]=2;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0x5A:{		//gain down
-						data[0]=1;
-						data[1]=3;
-						clunet_send_fairy(AUDIOBATH_DEVICE_ID, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER, data, 2);
-						necResetValue();
-					}
-					break;
-					case 0x42:{		//lock/unlock android pad
-						data[0] = 0x02;
-						clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0x52:{		//activate smarthome app on android pad
-						data[0] = 0x0A;
-						clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
-						necResetValue();
-					}
-					break;
-					case 0x4A:{		//bath fan control button
-						data[0] = 2;
-						clunet_send_fairy(FAN_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_FAN, data, 1);
-						necResetValue();
-					}
-					break;
-					
-					
-					//debugging supradin freezes
-					case 0x68:{
-						clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DEBUG, 0, 0);
-						necResetValue();
-					}
-					break;
-					
-					case 0xb0:{
-						clunet_send_fairy(0, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_REBOOT, 0, 0);
-						necResetValue();
-					}
-					break;
-				}
+		if (necValue(&nec_address, &nec_command, &nec_repeated)){
+			if (nec_command){
+				rcResponse(CLUNET_BROADCAST_ADDRESS, nec_address, nec_command, nec_repeated);
 			}
 		}
 	}

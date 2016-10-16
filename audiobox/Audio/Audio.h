@@ -13,8 +13,8 @@
 #include "clunet/clunet.h"
 #include "clunet/clunet_buffered.h"
 #include "lc75341/lc75341.h"
-#include "nec/rx.h"
 #include "tea5767/TEA5767.h"
+#include "nec/rx.h"
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -85,6 +85,9 @@
 
 #define ENABLE_TIMER_CMP_B set_bit(TIMSK, OCIE1B)
 #define DISABLE_TIMER_CMP_B unset_bit(TIMSK, OCIE1B)
+
+#define TIMER_COMP_A_VECTOR TIMER1_COMPA_vect
+#define TIMER_COMP_B_VECTOR TIMER1_COMPB_vect
 
 /* skip events delay */
 #define TIMER_SKIP_EVENTS_DELAY (unsigned int)(150e-3/TIMER_DELAY)	/*150ms - не уменьшать, начинает глючит clunet*/

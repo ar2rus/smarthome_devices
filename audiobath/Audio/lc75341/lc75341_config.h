@@ -20,7 +20,4 @@
 #define LC75341_CL_PIN  5
 
 
-//just comment this address - not to use saving/restoring params from eeprom
-#define LC75341_EEPROM_ADDRESS 0x01
-
 #endif /* LC75341_CONFIG_H_ */

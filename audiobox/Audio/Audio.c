@@ -1,47 +1,31 @@
 
 #include "Audio.h"
 
-void savePower(uint8_t on){
+static void savePower(uint8_t on){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, power), on);
 }
 
-void saveInput(uint8_t channel){
+static void saveInput(uint8_t channel){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, input), channel);
 }
 
-void saveVolume(uint8_t volume_dB){
+static void saveVolume(uint8_t volume_dB){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, volume), -volume_dB);
 }
 
-void saveEqualizer(uint8_t gain_db, int8_t treble_db, uint8_t bass_db){
+static void saveEqualizer(uint8_t gain_db, int8_t treble_db, uint8_t bass_db){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_gain), gain_db);
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_treble), treble_db);
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, eq_bass), bass_db);
 }
 
-void saveFMChannel(fm_channel_info* channel_info){
+static void saveFMChannel(fm_channel_info* channel_info){
 	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_channel), channel_info->channel);
 	eeprom_update_word((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_freq), channel_info->frequency);
 }
 
-void saveFMControls(fm_state_info* state_info){
-	uint8_t state = 0;
-	if (state_info->standby){
-		state |= _BV(0);
-	}
-	if (state_info->mute){
-		state |= _BV(1);
-	}
-	if (state_info->mono){
-		state |= _BV(2);
-	}
-	if (state_info->hcc){
-		state |= _BV(3);
-	}
-	if (state_info->snc){
-		state |= _BV(4);
-	}
-	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_controls), state);
+static void saveFMControls(fm_state_info* state_info){
+	eeprom_update_byte((void*)EEPROM_CONFIG_ADDRESS + offsetof(config, fm_controls), state_info->state);
 }
 
 char power_state;
@@ -57,7 +41,7 @@ void power(char on){
 }
 
 
-ISR(TIMER1_COMPB_vect){
+ISR(TIMER_COMP_B_VECTOR){
 	if (necReadSignal()){
 		OCR1B += NEC_TIMER_CMP_TICKS;
 	}else{
@@ -124,7 +108,7 @@ void button_channel(uint8_t button){
 	}
 }
 
-ISR(TIMER1_COMPA_vect){
+ISR(TIMER_COMP_A_VECTOR){
 	sei();
 	
 	if (BUTTON1_READ){
@@ -183,148 +167,16 @@ ISR(TIMER1_COMPA_vect){
 	
 	uint8_t nec_address;
 	uint8_t nec_command;
+	uint8_t nec_repeated;
 	
-	if (necValue(&nec_address, &nec_command)){
-		
-		if (nec_address == 0x02){
-			switch (nec_command){
-				case 0x48:
-					data[0] = 2;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, data, 1);
-					necResetValue();
-					break;
-				case 0x80:
-					channel(1);
-					necResetValue();
-					break;
-				case 0x40:
-					channel(2);
-					necResetValue();
-					break;
-				case 0xC0:
-					channel(3);
-					necResetValue();
-					break;
-				case 0x20:
-					channel(4);
-					necResetValue();
-					break;
-				//case 0xC1:
-				case 0xF8:
-					data[0] = 2;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 1);
-					necResetValue();
-					break;
-				//case 0x41:
-				case 0xD8:
-					data[0] = 1;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 1);
-					necResetValue();
-					break;
-					
-				case 0x08:
-					data[0] = 1;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_MUTE, data, 1);
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_MUTE_TOGGLE);
-					necResetValue();
-					break;
-				case 0x58:
-					delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
-					data[0] = 2;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
-					
-					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_UP, 2);
-					break;
-				case 0x78:
-					delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
-					data[0] = 3;
-					clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
-					
-					//cmd(0, CLUNET_BROADCAST_ADDRESS, COMMAND_VOLUME_DOWN, 2);
-					break;
-				case 0xA0:
-					data[0] = 2;
-					data[1] = 2;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-					
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_TREBLE_UP);
-					necResetValue();
-					break;
-				case 0x10:
-					data[0] = 2;
-					data[1] = 3;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-				
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_TREBLE_DOWN);
-					necResetValue();
-					break;
-				case 0x60:
-					data[0] = 3;
-					data[1] = 2;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-					
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_UP);
-					necResetValue();
-					break;
-				case 0x90:
-					data[0] = 3;
-					data[1] = 3;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-					
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_BASS_DOWN);
-					necResetValue();
-					break;
-				case 0x00:
-					data[0] = 0;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 1);
-					//cmd(1, CLUNET_BROADCAST_ADDRESS, COMMAND_EQUALIZER_RESET);
-					necResetValue();
-					break;
-				case 0x4A:
-					data[0] = 0x03;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
-					necResetValue();
-					break;
-				case 0x28:
-					data[0] = 0x02;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
-					necResetValue();
-					break;
-				
-				case 0x12://наше радио (92.9) -> красна€ кнопка
-				case 0x92://мегаполис (103.6) -> зелена€ кнопка
-				case 0x52://эхо москвы (99.1) -> желта€ кнопка
-				case 0xD2://вести fm (93.5) -> син€€ кнопка
-					switch (nec_command){
-						case 0x12:
-							data[1] = 0x4A;
-							data[2] = 0x24;
-							break;
-						case 0x92:
-							data[1] = 0x78;
-							data[2] = 0x28;
-							break;
-						case 0x52:
-							data[1] = 0xB6;
-							data[2] = 0x26;
-							break;
-						case 0xD2:
-							data[1] = 0x86;
-							data[2] = 0x24;
-							break;
-					}
-					data[0] = 0x00;
-					clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 3);
-					necResetValue();
-					break;
-			}
+	if (necValue(&nec_address, &nec_command, &nec_repeated)){
+		data[0] = 0x00;
+		data[1] = nec_address;
+		if (nec_repeated){
+			data[1] |= _BV(7);
 		}
-// 		else{
-// 			char t[2];
-// 			t[0] = nec_address;
-// 			t[1] = nec_command;
-// 			clunet_send_fairy(255,1,0x99,&t[0],2);
-// 		}
+		data[2] = nec_command;
+		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, 3);
 	}
 
 	
@@ -357,7 +209,7 @@ void check_fm_channel(){
 	}
 }
 
-void cmd(clunet_msg* m){
+static void cmd(clunet_msg* m){
 	
 	//в выключенном состо€нии разрешаем только 
 	//CLUNET_COMMAND_POWER и CLUNET_COMMAND_CHANNEL
@@ -365,6 +217,7 @@ void cmd(clunet_msg* m){
 		switch (m->command){
 			case CLUNET_COMMAND_POWER:
 			case CLUNET_COMMAND_CHANNEL:
+			case CLUNET_COMMAND_RC_BUTTON_PRESSED:
 				break;
 			default:
 				return;
@@ -691,34 +544,161 @@ void cmd(clunet_msg* m){
 			}
 		}
 		break;
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:{
+			if (power_state){
+				response = 20;
+			}
+			
+			if (m->data[0] == 0x00){	//nec
+				char data[3];
+				if (m->data[1] == 0x02){
+					switch (m->data[2]){
+						case 0x48:{
+							data[0] = 2;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, data, 1);
+							}
+							break;
+						case 0x80:
+							channel(1);
+							break;
+						case 0x40:
+							channel(2);
+							break;
+						case 0xC0:
+							channel(3);
+							break;
+						case 0x20:
+							channel(4);
+							break;
+						case 0xF8:{
+							data[0] = 2;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 1);
+							}
+							break;
+						case 0xD8:{
+							data[0] = 1;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 1);
+							}
+							break;
+							
+						case 0x08:{
+							data[0] = 1;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_MUTE, data, 1);
+							}
+							break;
+						case 0xA0:{
+							data[0] = 2;
+							data[1] = 2;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+							}
+							break;
+						case 0x10:{
+							data[0] = 2;
+							data[1] = 3;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+							}
+							break;
+						case 0x60:{
+							data[0] = 3;
+							data[1] = 2;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+							}
+							break;
+						case 0x90:{
+							data[0] = 3;
+							data[1] = 3;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+							}
+							break;
+						case 0x00:{
+							data[0] = 0;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 1);
+							}
+							break;
+						case 0x4A:{
+							data[0] = 0x03;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
+							}
+							break;
+						case 0x28:{
+							data[0] = 0x02;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
+							}
+							break;
+						
+						case 0x12://наше радио (92.9) -> красна€ кнопка
+						case 0x92://мегаполис (103.6) -> зелена€ кнопка
+						case 0x52://эхо москвы (99.1) -> желта€ кнопка
+						case 0xD2://вести fm (93.5) -> син€€ кнопка
+							switch (m->data[2]){
+								case 0x12:
+								 	data[1] = 0x4A;
+								 	data[2] = 0x24;
+								 	break;
+								case 0x92:
+								 	data[1] = 0x78;
+								 	data[2] = 0x28;
+								 	break;
+								case 0x52:
+								 	data[1] = 0xB6;
+								 	data[2] = 0x26;
+								 	break;
+								case 0xD2:
+								 	data[1] = 0x86;
+								 	data[2] = 0x24;
+								 	break;
+							}
+							data[0] = 0x00;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 3);
+							break;
+					}
+				}
+					
+				if ((m->data[1] & (~_BV(7))) == 0x02){		//addresss == 0x02, repeat allowed
+					switch (m->data[2]){
+						case 0x58:{
+							delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
+							char data = 2;
+							clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &data, 1);
+							}
+							break;
+						case 0x78:{
+							delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
+							char data = 3;
+							clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &data, 1);
+							}
+							break;
+					}
+				}
+			}
+		}
+		break;
 	}
 	
 	if (!silent){
+		char data[3];
 		switch(response){
 			case 1:{
-				char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, &channel, sizeof(channel));
-				saveInput(channel-1);
+				data[0] = lc75341_input_value() + 1;	//0 channel -> to 1 channel
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_CHANNEL_INFO, data, 1);
+				saveInput(data[0]-1);
 			}
 			break;
 			case 2:{
-				char data[2];
 				data[0] = lc75341_volume_percent_value();
 				data[1] = lc75341_volume_dB_value();
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, (char*)&data, sizeof(data));
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_VOLUME_INFO, data, 2);
 				saveVolume(data[1]);
 			}
 			break;
 			case 3:{
-				char data[3];
 				data[0] = lc75341_gain_dB_value();
 				data[1] = lc75341_treble_dB_value();
 				data[2] = lc75341_bass_dB_value();
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, (char*)&data, sizeof(data));
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_EQUALIZER_INFO, data, 3);
 				saveEqualizer(data[0] ,data[1] ,data[2]);
 			}
 			break;
-			
 			case 5:
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_POWER_INFO, (char*)&power_state, sizeof(power_state));
 				savePower(power_state);
@@ -736,6 +716,10 @@ void cmd(clunet_msg* m){
 				saveFMControls(info);
 			}
 			break;
+			case 20:{
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+			}
+			break;
 		}
 	}
 	LED_OFF;
@@ -749,6 +733,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_EQUALIZER:
 		case CLUNET_COMMAND_FM:
 		case CLUNET_COMMAND_POWER:
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
 		//case CLUNET_COMMAND_DEBUG:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 			break;
@@ -763,10 +748,9 @@ int main(void){
 	
 	LED_INIT;
 	BUTTONS_INIT;
-	
 	TWI_INIT;
 	
-	clunet_set_on_data_received(clunet_data_received);
+	clunet_set_on_data_received(clunet_data_received);	//sniff -> чтобы получать свои сообщени€ об RC PRESSED
 	clunet_buffered_init();
 	clunet_init();
 	

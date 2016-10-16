@@ -43,7 +43,7 @@
 
 uint8_t necCheckSignal();
 uint8_t necReadSignal(); 
-uint8_t necValue(uint8_t *address, uint8_t *command);
+uint8_t necValue(uint8_t *address, uint8_t *command, uint8_t *repeated);
 void necResetValue();
  
 #endif /* NEC_RX_H_ */

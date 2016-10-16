@@ -9,7 +9,7 @@
 #ifndef NEC_CONFIG_H_
 #define NEC_CONFIG_H_
 
-#define NEC_TIMER_PRESCALER 64
+#define NEC_TIMER_PRESCALER 8
 
 /* IR port description*/
 #define NEC_PORT B

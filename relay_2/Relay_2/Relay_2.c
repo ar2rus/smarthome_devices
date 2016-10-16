@@ -154,6 +154,15 @@ void cmd(clunet_msg* m){
 				}
 			}
 			break;
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
+			if (m->size == 3){
+				if (m->data[0] == 0x00 && m->data[1] == 0x00){
+					if (m->data[2] == 0x4A){
+						fan_button();
+					}
+				}
+			}
+			break;
 	}
 }
 
@@ -164,6 +173,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_LIGHT_LEVEL_INFO:
 		case CLUNET_COMMAND_DOOR_INFO:
 		case CLUNET_COMMAND_FAN:
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }

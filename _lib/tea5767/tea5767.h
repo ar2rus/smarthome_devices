@@ -92,7 +92,7 @@
 #define FM_PROGRAMS_EEPROM_OFFSET 0x40
 
 uint8_t FM_clear_channels();
-uint8_t FM_get_num_channels();
+int8_t FM_get_num_channels();
 int8_t FM_save_channel(uint8_t num_channel, uint16_t frequency);
 int8_t FM_add_channel(uint16_t frequency);
 uint16_t FM_get_channel_frequency(uint8_t num_channel);
@@ -125,11 +125,7 @@ fm_channel_info* FM_channel_info();
 
 typedef struct{
 	uint8_t type;			//Тип ответа (всегда 1)
-	uint8_t standby;
-	uint8_t mute;
-	uint8_t mono;
-	uint8_t hcc;
-	uint8_t snc;
+	uint8_t state;			//0 bit - standby, 1 bit - mute, 2 bit - mono, 3 bit - hcc, 4 bit - snc
 } fm_state_info;
 
 fm_state_info* FM_state_info();

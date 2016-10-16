@@ -10,7 +10,7 @@
 uint8_t status;
 uint16_t tick;
 
-uint8_t ready;
+int8_t ready = -1;
 uint32_t value;
 
 
@@ -40,10 +40,12 @@ uint8_t necReadSignal(){
 			if (tick >= NEC_NUM_TICKS_START_COND_1 && tick < NEC_NUM_TICKS_START_COND_2){	//фиксируем стартовое условие
 					set_bit(status, NEC_STATUS_START_COND);
 					value = 0;
-					ready = 0;
+					ready = -1;
 			}else if (tick >= NEC_NUM_TICKS_REPEAT_COND_1 && tick < NEC_NUM_TICKS_REPEAT_COND_2){
-					ready = 1;
-					r = 0;
+					if (ready >= 0){
+						ready = 2;	//repeated
+						r = 0;
+					}
 			}else if (test_bit(status, NEC_STATUS_START_COND)){
 				if (tick >= NEC_NUM_TICKS_LOG1_1 && tick < NEC_NUM_TICKS_LOG1_2){			//приняли 1
 					++status;																//++b_cnt;
@@ -75,11 +77,12 @@ uint8_t necReadSignal(){
 	return r;
 }
 
-uint8_t necValue(uint8_t *address, uint8_t *command){
-	if (ready){
+uint8_t necValue(uint8_t *address, uint8_t *command, uint8_t *repeated){
+	if (ready > 0){
 		
 		*address = value >> 24;
 		*command = value >> 8;
+		*repeated = ready == 2;
 	
 		ready = 0;
 		return 1;
@@ -88,5 +91,6 @@ uint8_t necValue(uint8_t *address, uint8_t *command){
 }
 
 void necResetValue(){
-	value = 0;
+	//value = 0;
+	ready = -1;
 }

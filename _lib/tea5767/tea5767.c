@@ -380,7 +380,7 @@ uint8_t FM_clear_channels(){
 	return FM_set_num_channels(0);
 }
 
-uint8_t FM_get_num_channels(){
+int8_t FM_get_num_channels(){
 	if (num_channels < 0){
 		num_channels = eeprom_read_byte((void*)FM_PROGRAMS_EEPROM_OFFSET);
 	}
@@ -389,7 +389,7 @@ uint8_t FM_get_num_channels(){
 }
 
 int8_t FM_save_channel(uint8_t num_channel, uint16_t frequency){
-	if (num_channel < FM_MAX_NUM_CHANNELS && num_channels <= FM_get_num_channels()){
+	if (num_channel < FM_MAX_NUM_CHANNELS && num_channel <= FM_get_num_channels() && num_channel>=0){
 		eeprom_write_word((void*)FM_PROGRAMS_EEPROM_OFFSET + num_channel*2 + 1, frequency);
 		if (FM_get_num_channels() == num_channel){
 			FM_set_num_channels(num_channel + 1);
@@ -404,7 +404,7 @@ int8_t FM_add_channel(uint16_t frequency){
 }
 
 uint16_t FM_get_channel_frequency(uint8_t num_channel){
-	if (num_channel < FM_get_num_channels()){
+	if (num_channel < FM_get_num_channels() && num_channel >= 0){
 		return eeprom_read_word((void*)FM_PROGRAMS_EEPROM_OFFSET + num_channel*2 + 1);
 	}
 	return 0;
@@ -486,11 +486,12 @@ fm_channel_info* FM_channel_info(){
 fm_state_info state_info;
 fm_state_info* FM_state_info(){
 	state_info.type = 1;
-	state_info.standby = TEA5767N_getStandby();
-	state_info.mono = TEA5767N_getMono();
-	state_info.mute = TEA5767N_getMute();
-	state_info.hcc = TEA5767N_getHighCutControl();
-	state_info.snc = TEA5767N_getStereoNoiseCancelling();
+	state_info.state = 
+	(TEA5767N_getStereoNoiseCancelling() << 4)
+	 | (TEA5767N_getHighCutControl() << 3)
+	 | (TEA5767N_getMono() << 2) 
+	 | (TEA5767N_getMute() << 1) 
+	 | (TEA5767N_getStandby()<<0);
 	
 	return &state_info;
 }

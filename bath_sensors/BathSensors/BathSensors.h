@@ -34,11 +34,10 @@
 				  set_bit3(ADCSRA, ADEN, ADIE, ADPS2); /*enable, interruptions, div 16*/}
 
 /* main timer controls*/
-#define TIMER_PRESCALER 64
-#define TIMER_NUM_TICKS (unsigned int)(1e-3 * F_CPU / TIMER_PRESCALER)	/*1ms main loop*/
-#define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS11, CS10); unset_bit(TCCR1B, CS12); /*64x prescaler*/}
-
-#define TIMER_REG TCNT1
+#define TIMER_PRESCALER 8
+#define TIMER_DELAY 1e-3	/*1ms main loop*/
+#define TIMER_NUM_TICKS (unsigned int)(TIMER_DELAY * F_CPU / TIMER_PRESCALER)
+#define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit(TCCR1B, CS11); unset_bit2(TCCR1B, CS10, CS12); /*8x prescaler*/}
 
 #define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)
 #define DISABLE_TIMER_CMP_A unset_bit(TIMSK, OCIE1A)
@@ -49,13 +48,9 @@
 #define TIMER_COMP_A_VECTOR TIMER1_COMPA_vect
 #define TIMER_COMP_B_VECTOR TIMER1_COMPB_vect
 
-/* skip events delay */
-#define TIMER_SKIP_EVENTS_DELAY (unsigned int)(150e-3 * F_CPU / TIMER_PRESCALER)	/*150ms - не уменьшать, начинает глючит clunet*/
-
-
 #define LIGHTNESS_BARRIER 10	/*percent*/
 
-#define AUDIOBATH_DEVICE_ID 0x0B
-#define FAN_DEVICE_ID 0x15
+//#define AUDIOBATH_DEVICE_ID 0x0B
+//#define FAN_DEVICE_ID 0x15
 
 #endif /* BATH_SENSORS_H_ */

@@ -85,7 +85,7 @@ void lc75341_write(){
 
 void lc75341_init(){	
 	ccb_init();
-	 _delay_ms(50);  //???
+	 //_delay_ms(50);  //???
 }
 
 unsigned char lc75341_input_value(){
