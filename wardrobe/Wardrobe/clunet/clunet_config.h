@@ -68,6 +68,6 @@
 /* Размер буфера входящих сообщений 
 	устанавливать, исходя из свободной ОЗУ (2-20 шт) 
 */
-#define CLUNET_BUFFERED_BUFFER_SIZE 20
+#define CLUNET_BUFFERED_BUFFER_SIZE 16
 
 #endif
