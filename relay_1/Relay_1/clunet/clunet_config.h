@@ -22,7 +22,7 @@
 
 /* Pin to send data */
 #define CLUNET_WRITE_PORT D
-#define CLUNET_WRITE_PIN 4
+#define CLUNET_WRITE_PIN 2
 
 /* Using transistor? */
 #define CLUNET_WRITE_TRANSISTOR

@@ -10,7 +10,6 @@
 #define OWI_CONFIG_H_
 
 #include "onewire/OWIPolled.h"
-#include <avr/io.h>
 
 
 //количество устройств на шине 1Wire
@@ -18,10 +17,10 @@
 
 // Port configuration registers for 1-Wire buses.
 // Make sure that all three registers belong to the same port.
-#define     OWI_PORT        PORTC		//!< 1-Wire PORT Data register.
-#define     OWI_PIN         PINC		//!< 1-Wire Input pin register.
-#define     OWI_DDR         DDRC		//!< 1-Wire Data direction register.
-#define		OWI_BUS			OWI_PIN_0
+#define     OWI_PORT        PORTD		//!< 1-Wire PORT Data register.
+#define     OWI_PIN         PIND		//!< 1-Wire Input pin register.
+#define     OWI_DDR         DDRD		//!< 1-Wire Data direction register.
+#define		OWI_BUS			OWI_PIN_1
 
 
 #endif /* OWI_CONFIG_H_ */

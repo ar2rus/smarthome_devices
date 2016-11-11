@@ -41,8 +41,8 @@
 
 /*relay_0 description*/
 #define RELAY_0_ID 1
-#define RELAY_0_PORT D
-#define RELAY_0_PIN  5
+#define RELAY_0_PORT B
+#define RELAY_0_PIN  6
 
 /*relay_1 description*/
 #define RELAY_1_ID 2
@@ -51,8 +51,8 @@
 
 /*relay_2 description*/
 #define RELAY_2_ID 3
-#define RELAY_2_PORT B
-#define RELAY_2_PIN  6
+#define RELAY_2_PORT D
+#define RELAY_2_PIN  5
 
 
 /*relay_0 controls*/
