@@ -545,9 +545,9 @@ static void cmd(clunet_msg* m){
 		}
 		break;
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:{
-			if (power_state){
+			//if (power_state){
 				response = 20;
-			}
+			///}
 			
 			if (m->data[0] == 0x00){	//nec
 				char data[3];

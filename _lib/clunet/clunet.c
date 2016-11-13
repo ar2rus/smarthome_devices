@@ -146,11 +146,11 @@ void clunet_send(unsigned char address, unsigned char prio, unsigned char comman
 }
 
 inline void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
+	if (src_address == CLUNET_DEVICE_ID) return; // Игнорируем сообщения от самого себя!
+
 	if (on_data_received_sniff){
 		(*on_data_received_sniff)(src_address, dst_address, command, data, size);
 	}
-
-	if (src_address == CLUNET_DEVICE_ID) return; // Игнорируем сообщения от самого себя!
 
 	if ((dst_address != CLUNET_DEVICE_ID) &&
 		(dst_address != CLUNET_BROADCAST_ADDRESS)) return; // Игнорируем сообщения не для нас					
