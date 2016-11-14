@@ -228,6 +228,7 @@ static void cmd(clunet_msg* m){
 	
 	char response = 0;
 	char silent = (m->src_address == CLUNET_DEVICE_ID);
+	char my_command = (m->src_address == CLUNET_BROADCAST_ADDRESS);
 	
 	switch(m->command){
 		
@@ -545,9 +546,9 @@ static void cmd(clunet_msg* m){
 		}
 		break;
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:{
-			//if (power_state){
+			if (my_command){
 				response = 20;
-			///}
+			}
 			
 			if (m->data[0] == 0x00){	//nec
 				char data[3];
