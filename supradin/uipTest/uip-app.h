@@ -58,6 +58,7 @@ typedef struct supradin_control_response{
 } supradin_control_response_t;
 
 typedef struct supradin_header{
+	uint16_t ip4[2];
 	union {
 		uint8_t src_address;
 		uint8_t prio;

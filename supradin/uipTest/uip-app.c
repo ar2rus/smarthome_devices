@@ -107,18 +107,22 @@ void uip_udp_appcall(void){
 			}
 			break;
 		 case HTONS(SUPRADIN_UDP_DATA_PORT):{
-				struct supradin_header *sh = uip_appdata;
+				struct supradin_header *ua = uip_appdata;
 			
 				//reset timer at first
 				uip_udp_appstate_t *s = &uip_udp_conn->appstate;
 				s->timer = UDP_DATA_MAXAGE;
 			
-				if (uip_datalen() == sizeof(supradin_header_t) + sh->size){
-					clunet_send_fairy(sh->dst_address, sh->prio, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
+				if (uip_datalen() == sizeof(supradin_header_t) + ua->size){
+					clunet_send_fairy(ua->dst_address, ua->prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
 					//while(clunet_ready_to_send());
 					
+					//copy src address directly to buffer (in client -> check src_id == CLUNET_DEVICE_ID and get ip then)
+					supradin_header_t *sb = ((supradin_header_t *)&supradin_buffer);
+					uip_ipaddr_copy(&sb->ip4, &uip_udp_conn->ripaddr);
+					
 					//queue to send by udp
-					clunet_data_received(CLUNET_DEVICE_ID, sh->dst_address, sh->command, uip_appdata + sizeof(supradin_header_t), sh->size);
+					clunet_data_received(CLUNET_DEVICE_ID, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
 				}
 			}
 			break;
