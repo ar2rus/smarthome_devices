@@ -188,9 +188,12 @@ void fan_humidity(signed char humidityValue){
 			//сначала уточним есть ли резкий прирост значения влажности
 			signed char delta = humidityValue - fan_avg_hisory_humidity;
 			if (delta >= HUMIDITY_DELTA_PLUS){
-				fan_refresh(FAN_ACTION_SENSOR_RISED);
+				//если текущее значение больше минимального
+				if (humidityValue > HUMIDITY_MIN_ABS){
+					fan_refresh(FAN_ACTION_SENSOR_RISED);
+				}
 				return;
-				}else if (fan_normal_humidity  >= humidityValue){
+			}else if (fan_normal_humidity  >= humidityValue){
 				//влажность уменьшена до нормального значения -> вырубаем вентилятор
 				fan_refresh(FAN_ACTION_SENSOR_NORMALIZED);
 				return;
