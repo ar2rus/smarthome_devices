@@ -1,7 +1,18 @@
 
 #include "Relay_2.h"
 
-volatile unsigned int systime = 0;
+volatile unsigned char systime = 0;
+
+
+void (*timer_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
+
+void timer_systime_request( void (*f)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) ){
+	//пришел запрос на получение нового значения текущего времени
+	//в параметре - функция ответа (асинхронно)
+	timer_systime_async_response = f;
+	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin clients only!!!
+}
+
 
 void switchExecute(char id, char command){
 	switch(command){
@@ -163,6 +174,21 @@ void cmd(clunet_msg* m){
 				}
 			}
 			break;
+		case CLUNET_COMMAND_TIME: {
+				datetime* dt = timer_systime();
+				
+				char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME_INFO, &hd[0], sizeof(hd));
+			}
+			break;
+		case CLUNET_COMMAND_TIME_INFO:
+			if (timer_systime_async_response != NULL){
+				if (m->size == 7){
+					timer_systime_async_response(m->data[5], m->data[4], m->data[3], m->data[6]);
+					timer_systime_async_response = NULL;
+				}
+			}
+			break;
 	}
 }
 
@@ -174,6 +200,8 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_DOOR_INFO:
 		case CLUNET_COMMAND_FAN:
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
+		case CLUNET_COMMAND_TIME:
+		case CLUNET_COMMAND_TIME_INFO:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }
@@ -185,7 +213,7 @@ ISR(TIMER_COMP_VECTOR){
 }
 
 
-volatile unsigned int fan_time = 0;
+unsigned char prev_systime = 0;
 
 int main(void){
 	cli();
@@ -202,6 +230,9 @@ int main(void){
 	fan_set_on_state_changed(fan_state_changed);		//for debugging and logging
 	fan_init(fan_humidity_request, fan_control_changed);
 	
+	
+	timer_init(timer_systime_request);
+	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;
 	
@@ -210,9 +241,10 @@ int main(void){
 			cmd(clunet_buffered_pop());
 		}
 		
-		if (fan_time != systime){
-			fan_time = systime;
+		if (prev_systime != systime){
+			prev_systime = systime;
 			fan_tick_second();
+			timer_tick_second();
 		}
 	}
 	

@@ -17,6 +17,8 @@
 
 #include "fan/fan.h"
 
+#include "timer/timer.h"
+
 #include <avr/interrupt.h>
 #include <util/delay.h>
 

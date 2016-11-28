@@ -34,7 +34,7 @@
   <documentation help="" />
   <offline-documentation help="" />
   <dependencies>
-    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.20.1" />
+    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.6.0" />
   </dependencies>
 </framework-data>
     </AsfFrameworkConfig>
@@ -148,10 +148,17 @@
     <Compile Include="Relay_2.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="timer\timer.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="timer\timer.h">
+      <SubType>compile</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="clunet" />
     <Folder Include="fan" />
+    <Folder Include="timer" />
   </ItemGroup>
   <Import Project="$(AVRSTUDIO_EXE_PATH)\\Vs\\Compiler.targets" />
 </Project>
