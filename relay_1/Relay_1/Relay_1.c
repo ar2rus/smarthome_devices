@@ -364,7 +364,7 @@ ISR(TIMER_COMP_VECTOR){
 
 
 
-unsigned char hf_time = 0;
+unsigned int hf_time = 0;
 
 int main(void){
 	

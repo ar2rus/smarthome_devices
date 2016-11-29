@@ -138,8 +138,6 @@ void loadDefaultMode(unsigned char channel){
 	}
 }
 
-unsigned int correction_ticks = 0;
-
 void heatfloor_dispatcher_tick_second(){
 	
 	if (is_time_valid()){
@@ -160,7 +158,7 @@ void heatfloor_dispatcher_tick_second(){
 						}
 					}
 				}
-				//requestSystime();	//корректируем время каждый час
+				requestSystime();	//корректируем время каждый час
 			}
 		}
 		
@@ -171,12 +169,6 @@ void heatfloor_dispatcher_tick_second(){
 					loadDefaultMode(i);
 				}
 			}
-		}
-		
-		if (++correction_ticks >= NUM_SECONDS_TO_CORRECTION){
-			correction_ticks = 0;
-			
-			requestSystime();	//корректируем время каждые NUM_SECONDS_TO_CORRECTION секунд
 		}
 		
 	}else{

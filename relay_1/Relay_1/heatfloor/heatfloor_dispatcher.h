@@ -11,8 +11,6 @@
 
 #include "heatfloor_config.h"
 
-#define NUM_SECONDS_TO_CORRECTION 3600
-
 #define HEATFLOOR_MODE_OFF 0
 #define HEATFLOOR_MODE_MANUAL 1
 #define HEATFLOOR_MODE_DAY 2
