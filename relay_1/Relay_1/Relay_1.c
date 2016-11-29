@@ -276,7 +276,7 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_TIME_INFO:
 			if (heatfloor_systime_async_response != NULL){
-				if (m->size == 7){
+				if (m->size == 7 && m->src_address == CLUNET_SUPRADIN_ADDRESS){
 					heatfloor_systime_async_response(m->data[5], m->data[4], m->data[3], m->data[6]);
 					heatfloor_systime_async_response = NULL;
 				}
