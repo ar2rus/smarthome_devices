@@ -11,6 +11,8 @@
 
 #define NUM_SECONDS_TO_CORRECTION 3600
 
+#define MAX_NUM_TASKS 2
+
 typedef struct
 {
 	unsigned char day_of_week;
@@ -29,23 +31,15 @@ typedef struct
 {
 	unsigned char type;
 	void (*f_task_callback)();
+	union{
+		unsigned int seconds;
+		struct{
+				signed char day_of_week;
+				signed char hours;
+				signed char minutes;
+			};
+		};
 } task;
-
-typedef struct
-{
-	task t;
-	unsigned int seconds;
-} countdown_task;
-
-typedef struct
-{
-	task t;
-	signed char day_of_week;
-	signed char hours;
-	signed char minutes;
-	
-	signed char loop;
-} scheduled_task;
 
 void timer_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week)));
 
@@ -60,8 +54,6 @@ signed char timer_add_scheduled_task(unsigned char day_of_week, unsigned char ho
 void timer_remove_task(unsigned char index);
 
 task* timer_get_task(unsigned char index);
-
-#define MAX_NUM_TASKS 5
 
 
 #endif /* TIMER_H_ */

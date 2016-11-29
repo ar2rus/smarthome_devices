@@ -76,7 +76,6 @@
 
 /* main timer controls*/
 #define TIMER_PRESCALER 1024
-#define TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / TIMER_PRESCALER) + 100	/*1 second main loop*/
 #define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS12, CS10); unset_bit(TCCR1B, CS11); /*1024x prescaler*/}
 
 #define TIMER_REG TCNT1
@@ -87,7 +86,17 @@
 #define TIMER_COMP_VECTOR TIMER1_COMPA_vect
 
 
+#define CHARGE_DAY_OF_WEEK 1
+#define CHARGE_HOUR 10
+#define CHARGE_MINUTE 0
+
+//6 hours, in seconds
+#define CHARGE_DURATION 21600
+
+
 void start_charge(unsigned int num_seconds, unsigned char schedule);
+
+void stop_charge();
 
 
 

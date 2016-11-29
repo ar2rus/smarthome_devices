@@ -11,7 +11,7 @@ void (*on_timer_request_systime)(void (*timer_systime_async_response)(unsigned c
 
 datetime time;
 
-task* tasks[MAX_NUM_TASKS];
+task tasks[MAX_NUM_TASKS];
 
 unsigned char num_tasks = 0;
 
@@ -40,6 +40,10 @@ void requestSystime(){
 void timer_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))){
 	time.day_of_week = 0;	//undefined time
 	on_timer_request_systime = f_request_systime;
+	
+	for (int i=0; i<MAX_NUM_TASKS; i++){
+		tasks[i].type = TASK_TYPE_NONE;
+	}
 }
 
 unsigned int correction_ticks = 0;
@@ -64,23 +68,26 @@ void timer_tick_second(){
 		
 		unsigned char delete_cnt = 0;
 		for (int i=0; i<MAX_NUM_TASKS; i++){
-			switch (tasks[i]->type){
+			switch (tasks[i].type){
 				case TASK_TYPE_COUNTDOWN:{
-					countdown_task* t = (countdown_task*)tasks[i];
-					if (!(--t->seconds)){
+					if (!(--tasks[i].seconds)){
 						
-						tasks[i]->type = TASK_TYPE_NONE;
-						tasks[i]->f_task_callback();
+						tasks[i].type = TASK_TYPE_NONE;
+						if (tasks[i].f_task_callback){
+							(*tasks[i].f_task_callback)();
+						}
 						delete_cnt++;
 					}
 				}
 				break;
 				case TASK_TYPE_SCHEDULED:{
-					scheduled_task* t = (scheduled_task*)tasks[i];
-					if (t->day_of_week == time.day_of_week && t->hours == time.hours && t->minutes == time.minutes){
+					if (tasks[i].day_of_week == time.day_of_week && tasks[i].hours == time.hours && tasks[i].minutes == time.minutes){
 						
-						tasks[i]->type = TASK_TYPE_NONE;
-						tasks[i]->f_task_callback();
+						tasks[i].type = TASK_TYPE_NONE;
+						if (tasks[i].f_task_callback){
+							(*tasks[i].f_task_callback)();
+						}
+						
 						delete_cnt++;
 					}
 				}
@@ -107,15 +114,15 @@ signed char timer_add_countdown_task(unsigned int seconds, void (*f_task_callbac
 		
 		num_tasks++;
 		
-		countdown_task t;
-		t.t.type = TASK_TYPE_COUNTDOWN;
-		t.t.f_task_callback = f_task_callback;
-		
-		t.seconds = seconds;
 		
 		for (int i=0; i<MAX_NUM_TASKS; i++){
-			if (tasks[i]->type == TASK_TYPE_NONE){
-				tasks[i] = (task*)&t;
+			if (tasks[i].type == TASK_TYPE_NONE){
+				
+				tasks[i].type = TASK_TYPE_COUNTDOWN;
+				tasks[i].f_task_callback = f_task_callback;
+		
+				tasks[i].seconds = seconds;
+				
 				return i;
 			}
 		}
@@ -128,17 +135,16 @@ signed char timer_add_scheduled_task(unsigned char day_of_week, unsigned char ho
 		
 		num_tasks++;
 		
-		scheduled_task t;
-		t.t.type = TASK_TYPE_SCHEDULED;
-		t.t.f_task_callback = f_task_callback;
-		
-		t.day_of_week = day_of_week;
-		t.hours = hours;
-		t.minutes = minutes;
-		
 		for (int i=0; i<MAX_NUM_TASKS; i++){
-			if (tasks[i]->type == TASK_TYPE_NONE){
-				tasks[i] = (task*)&t;
+			if (tasks[i].type == TASK_TYPE_NONE){
+				
+				tasks[i].type = TASK_TYPE_SCHEDULED;
+				tasks[i].f_task_callback = f_task_callback;
+				
+				tasks[i].day_of_week = day_of_week;
+				tasks[i].hours = hours;
+				tasks[i].minutes = minutes;
+				
 				return i;
 			}
 		}
@@ -148,13 +154,14 @@ signed char timer_add_scheduled_task(unsigned char day_of_week, unsigned char ho
 
 void timer_remove_task(unsigned char index){
 	if (index < MAX_NUM_TASKS){
-		tasks[index]->type = TASK_TYPE_NONE;
+		tasks[index].type = TASK_TYPE_NONE;
+		num_tasks--;
 	}
 }
 
 task* timer_get_task(unsigned char index){
 	if (index < MAX_NUM_TASKS){
-		return tasks[index];
+		return &tasks[index];
 	}
 	return 0;
 }

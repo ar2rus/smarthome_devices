@@ -70,7 +70,7 @@ void chargeResponse(unsigned char address){
 	info[0] = TOOTHBRUSH_RELAY_STATE;
 	if (info[0]){
 		if (charger_task >= 0){
-			countdown_task* t = (countdown_task*)timer_get_task(charger_task);
+			task* t = timer_get_task(charger_task);
 			if (t){
 				info[1] = t->seconds;
 				info[2] = (t->seconds >> 8);
@@ -211,6 +211,7 @@ void cmd(clunet_msg* m){
 				case 1:
 				switch (m->data[0]){
 					case 0x00:
+						stop_charge();
 						break;
 					case 0xFF:
 						chargeResponse(m->src_address);
@@ -220,7 +221,7 @@ void cmd(clunet_msg* m){
 				case 3:
 				if (m->data[0] == 0x01){	//on
 					start_charge(*(unsigned int*)&(m->data[1]), 0);
-					chargeResponse(m->src_address);
+					//chargeResponse(m->src_address);
 				}
 				break;
 			}
@@ -249,18 +250,18 @@ void stop_charge(){
 		charger_task = -1;
 	}
 	
-	char data[2];
-	data[0] = TOOTHBRUSH_RELAY_ID;
-	data[1] = 0x01;
-	clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_SWITCH, data, sizeof(data));
+	switchExecute(TOOTHBRUSH_RELAY_ID, 0x00);
+	switchResponse(CLUNET_BROADCAST_ADDRESS);
+	
+	chargeResponse(CLUNET_BROADCAST_ADDRESS);
 }
 
 void start_charge_and_schedule_next(){
-	start_charge(21600, 1);
+	start_charge(CHARGE_DURATION, 1);
 }
 
 void schedule_next_charge(){
-	timer_add_scheduled_task(7, 1, 0, start_charge_and_schedule_next);	//вс, 1:00 ночи
+	timer_add_scheduled_task(CHARGE_DAY_OF_WEEK, CHARGE_HOUR, CHARGE_MINUTE, start_charge_and_schedule_next);	//пн, 10:00
 }
 
 void stop_charge_and_schedule_next(){
@@ -269,25 +270,25 @@ void stop_charge_and_schedule_next(){
 }
 
 void start_charge(unsigned int num_seconds, unsigned char schedule){
-	
-	if (schedule){	//пришло время длинной запланированной зарядки -> срубаем все текущие
-		if (charger_task >= 0){
-			stop_charge();
+	if (num_seconds > 0){
+		if (schedule){	//пришло время длинной запланированной зарядки -> срубаем все текущие
+			if (charger_task >= 0){
+				stop_charge();
+			}
 		}
-	}
 	
-	//короткие зарядки не срубают длинную запланированную
-	if (charger_task < 0){
-		char data[2];
-		data[0] = TOOTHBRUSH_RELAY_ID;
-		data[1] = 0x01;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_SWITCH, data, sizeof(data));
-	
-		if (schedule){
-			charger_task = timer_add_countdown_task(num_seconds, stop_charge_and_schedule_next);
-		}else{
-			charger_task = timer_add_countdown_task(num_seconds, stop_charge);
+		//короткие зарядки не срубают длинную запланированную
+		if (charger_task < 0){
+			if (schedule){
+				charger_task = timer_add_countdown_task(num_seconds, stop_charge_and_schedule_next);
+			}else{
+				charger_task = timer_add_countdown_task(num_seconds, stop_charge);
+			}
+		
+			switchExecute(TOOTHBRUSH_RELAY_ID, 0x01);
+			switchResponse(CLUNET_BROADCAST_ADDRESS);
 		}
+		chargeResponse(CLUNET_BROADCAST_ADDRESS);
 	}
 }
 
