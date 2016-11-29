@@ -3,6 +3,8 @@
 
 volatile unsigned char systime = 0;
 
+signed char charger_task = -1;
+
 
 void (*timer_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
 
@@ -61,6 +63,21 @@ void switchExecute(char id, char command){
 void switchResponse(unsigned char address){
 	char info = (RELAY_2_STATE << (RELAY_2_ID-1)) | (RELAY_1_STATE << (RELAY_1_ID-1)) | (RELAY_0_STATE << (RELAY_0_ID-1));
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
+}
+
+void chargeResponse(unsigned char address){
+	char info[3];
+	info[0] = TOOTHBRUSH_RELAY_STATE;
+	if (info[0]){
+		if (charger_task >= 0){
+			countdown_task* t = (countdown_task*)timer_get_task(charger_task);
+			if (t){
+				info[1] = t->seconds;
+				info[2] = (t->seconds >> 8);
+			}
+		}
+	}
+	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_CHARGE_INFO, info, info[0] ? 3 : 1);
 }
 
 
@@ -183,10 +200,29 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_TIME_INFO:
 			if (timer_systime_async_response != NULL){
-				if (m->size == 7){
+				if (m->size == 7 && m->src_address == CLUNET_SUPRADIN_ADDRESS){
 					timer_systime_async_response(m->data[5], m->data[4], m->data[3], m->data[6]);
 					timer_systime_async_response = NULL;
 				}
+			}
+			break;
+		case CLUNET_COMMAND_CHARGE:
+			switch(m->size){
+				case 1:
+				switch (m->data[0]){
+					case 0x00:
+						break;
+					case 0xFF:
+						chargeResponse(m->src_address);
+						break;
+				}
+				break;
+				case 3:
+				if (m->data[0] == 0x01){	//on
+					start_charge(*(unsigned int*)&(m->data[1]), 0);
+					chargeResponse(m->src_address);
+				}
+				break;
 			}
 			break;
 	}
@@ -202,9 +238,60 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
 		case CLUNET_COMMAND_TIME:
 		case CLUNET_COMMAND_TIME_INFO:
+		case CLUNET_COMMAND_CHARGE:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }
+
+void stop_charge(){
+	if (charger_task >= 0){
+		timer_remove_task(charger_task);
+		charger_task = -1;
+	}
+	
+	char data[2];
+	data[0] = TOOTHBRUSH_RELAY_ID;
+	data[1] = 0x01;
+	clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_SWITCH, data, sizeof(data));
+}
+
+void start_charge_and_schedule_next(){
+	start_charge(21600, 1);
+}
+
+void schedule_next_charge(){
+	timer_add_scheduled_task(7, 1, 0, start_charge_and_schedule_next);	//вс, 1:00 ночи
+}
+
+void stop_charge_and_schedule_next(){
+	stop_charge();
+	schedule_next_charge();
+}
+
+void start_charge(unsigned int num_seconds, unsigned char schedule){
+	
+	if (schedule){	//пришло время длинной запланированной зарядки -> срубаем все текущие
+		if (charger_task >= 0){
+			stop_charge();
+		}
+	}
+	
+	//короткие зарядки не срубают длинную запланированную
+	if (charger_task < 0){
+		char data[2];
+		data[0] = TOOTHBRUSH_RELAY_ID;
+		data[1] = 0x01;
+		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_SWITCH, data, sizeof(data));
+	
+		if (schedule){
+			charger_task = timer_add_countdown_task(num_seconds, stop_charge_and_schedule_next);
+		}else{
+			charger_task = timer_add_countdown_task(num_seconds, stop_charge);
+		}
+	}
+}
+
+
 
 ISR(TIMER_COMP_VECTOR){
 	++systime;
@@ -232,6 +319,7 @@ int main(void){
 	
 	
 	timer_init(timer_systime_request);
+	schedule_next_charge();				//по воскресеньям в 1 ночи
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;

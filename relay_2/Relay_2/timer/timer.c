@@ -11,12 +11,16 @@ void (*on_timer_request_systime)(void (*timer_systime_async_response)(unsigned c
 
 datetime time;
 
+task* tasks[MAX_NUM_TASKS];
+
+unsigned char num_tasks = 0;
+
 
 unsigned char is_time_valid(){
 	return time.day_of_week;
 }
 
-void timer_dispatcher_set_systime(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week){
+void timer_set_systime(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week){
 	time.seconds = seconds;
 	time.minutes = minutes;
 	time.hours = hours;
@@ -29,17 +33,16 @@ datetime* timer_systime(){
 
 void requestSystime(){
 	if (on_timer_request_systime){
-		(*on_timer_request_systime)( timer_dispatcher_set_systime );
+		(*on_timer_request_systime)( timer_set_systime );
 	}
 }
-
 
 void timer_init(void(*f_request_systime)(void (*f_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week))){
 	time.day_of_week = 0;	//undefined time
 	on_timer_request_systime = f_request_systime;
-	
-	//requestSystime();
 }
+
+unsigned int correction_ticks = 0;
 
 void timer_tick_second(){
 	
@@ -54,14 +57,104 @@ void timer_tick_second(){
 						time.day_of_week = 1;
 					}
 				}
-				requestSystime();	//корректируем время каждый час
 			}
 		}
 
-
 		//do each seconds actions here		
+		
+		unsigned char delete_cnt = 0;
+		for (int i=0; i<MAX_NUM_TASKS; i++){
+			switch (tasks[i]->type){
+				case TASK_TYPE_COUNTDOWN:{
+					countdown_task* t = (countdown_task*)tasks[i];
+					if (!(--t->seconds)){
+						
+						tasks[i]->type = TASK_TYPE_NONE;
+						tasks[i]->f_task_callback();
+						delete_cnt++;
+					}
+				}
+				break;
+				case TASK_TYPE_SCHEDULED:{
+					scheduled_task* t = (scheduled_task*)tasks[i];
+					if (t->day_of_week == time.day_of_week && t->hours == time.hours && t->minutes == time.minutes){
+						
+						tasks[i]->type = TASK_TYPE_NONE;
+						tasks[i]->f_task_callback();
+						delete_cnt++;
+					}
+				}
+				break;
+			}
+		}
+		
+		num_tasks -= delete_cnt;
+		
+		
+		if (++correction_ticks >= NUM_SECONDS_TO_CORRECTION){
+			correction_ticks = 0;
+			
+			requestSystime();	//корректируем время каждые NUM_SECONDS_TO_CORRECTION секунд
+		}
 		
 	}else{
 		requestSystime();
 	}
+}
+
+signed char timer_add_countdown_task(unsigned int seconds, void (*f_task_callback)()){
+	if (num_tasks < MAX_NUM_TASKS){
+		
+		num_tasks++;
+		
+		countdown_task t;
+		t.t.type = TASK_TYPE_COUNTDOWN;
+		t.t.f_task_callback = f_task_callback;
+		
+		t.seconds = seconds;
+		
+		for (int i=0; i<MAX_NUM_TASKS; i++){
+			if (tasks[i]->type == TASK_TYPE_NONE){
+				tasks[i] = (task*)&t;
+				return i;
+			}
+		}
+	}
+	return -1;
+}
+
+signed char timer_add_scheduled_task(unsigned char day_of_week, unsigned char hours, unsigned char minutes, void (*f_task_callback)()){
+	if (num_tasks < MAX_NUM_TASKS){
+		
+		num_tasks++;
+		
+		scheduled_task t;
+		t.t.type = TASK_TYPE_SCHEDULED;
+		t.t.f_task_callback = f_task_callback;
+		
+		t.day_of_week = day_of_week;
+		t.hours = hours;
+		t.minutes = minutes;
+		
+		for (int i=0; i<MAX_NUM_TASKS; i++){
+			if (tasks[i]->type == TASK_TYPE_NONE){
+				tasks[i] = (task*)&t;
+				return i;
+			}
+		}
+	}
+	return -1;
+}
+
+void timer_remove_task(unsigned char index){
+	if (index < MAX_NUM_TASKS){
+		tasks[index]->type = TASK_TYPE_NONE;
+	}
+}
+
+task* timer_get_task(unsigned char index){
+	if (index < MAX_NUM_TASKS){
+		return tasks[index];
+	}
+	return 0;
 }
