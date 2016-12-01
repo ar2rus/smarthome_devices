@@ -1,6 +1,7 @@
 #include "BathSensors.h"
 
 char doorSensorValue;
+char buttonSensorValue;
 
 char shouldSendLightnessValue;
 char lightnessSensorValue;
@@ -11,6 +12,11 @@ volatile unsigned int sensor_check_time = 0;
 void doorResponse(unsigned char address){
 	char data = doorSensorValue;
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DOOR_INFO, &data, sizeof(data));
+}
+
+void buttonResponse(unsigned char address){
+	char data[] = {BUTTON_ID, buttonSensorValue ? 2 : 3};	//see CLUNET_COMMAND_BUTTON_INFO in clunet.h
+	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
 }
 
 void lightnessResponse(unsigned char address){
@@ -132,7 +138,12 @@ void cmd(clunet_msg* m){
 			if (m->size == 0){
 				lightnessResponse(m->src_address);
 			}
-			break;	
+			break;
+		case CLUNET_COMMAND_BUTTON:
+			if (m->size == 0){
+				buttonResponse(m->src_address);
+			}
+		break;
 		
 // 		//for debugging only
 // 		case CLUNET_COMMAND_DEBUG:
@@ -149,6 +160,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_TEMPERATURE:
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_LIGHT_LEVEL:
+		case CLUNET_COMMAND_BUTTON:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 			break;
 	}
@@ -159,6 +171,9 @@ int main(void){
 	
 	DOOR_SENSOR_INIT;
 	doorSensorValue = DOOR_SENSOR_READ;
+	
+	BUTTON_SENSOR_INIT;
+	buttonSensorValue = BUTTON_SENSOR_READ;
 	
 	shouldSendLightnessValue = 0;
 	lightnessSensorValue = -1;
@@ -185,6 +200,13 @@ int main(void){
 			if (doorSensorValue != value){
 				doorSensorValue = value;
 				doorResponse(CLUNET_BROADCAST_ADDRESS);
+			}
+			
+			//check button
+			value = BUTTON_SENSOR_READ;
+			if (buttonSensorValue != value){
+				buttonSensorValue = value;
+				buttonResponse(CLUNET_BROADCAST_ADDRESS);
 			}
 			
 			//check lightness

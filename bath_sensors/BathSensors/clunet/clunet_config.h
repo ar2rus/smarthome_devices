@@ -22,14 +22,14 @@
 
 /* Pin to send data */
 #define CLUNET_WRITE_PORT D
-#define CLUNET_WRITE_PIN 1
+#define CLUNET_WRITE_PIN 4
 
 /* Using transistor? */
 #define CLUNET_WRITE_TRANSISTOR
 
 /* Pin to receive data, external interrupt required! */
 #define CLUNET_READ_PORT D
-#define CLUNET_READ_PIN 2
+#define CLUNET_READ_PIN 3
 
 /* Timer initialization */
 #define CLUNET_TIMER_INIT {unset_bit4(TCCR2, WGM21, WGM20, COM21, COM20); /* Timer2, normal mode */ \
@@ -49,12 +49,12 @@
 #define CLUNET_DISABLE_TIMER_OVF unset_bit(TIMSK, TOIE2)
 
 /* How to init and enable external interrupt (read pin) */
-#define CLUNET_INIT_INT {set_bit(MCUCR,ISC00);unset_bit(MCUCR,ISC01); set_bit(GICR, INT0);}
+#define CLUNET_INIT_INT {set_bit(MCUCR,ISC10);unset_bit(MCUCR,ISC11); set_bit(GICR, INT1);}
 
 /* Interrupt vectors */
 #define CLUNET_TIMER_COMP_VECTOR TIMER2_COMP_vect
 #define CLUNET_TIMER_OVF_VECTOR TIMER2_OVF_vect
-#define CLUNET_INT_VECTOR INT0_vect
+#define CLUNET_INT_VECTOR INT1_vect
 
 
 /************************************************************************/

@@ -12,7 +12,7 @@
 #define NEC_TIMER_PRESCALER 8
 
 /* IR port description*/
-#define NEC_PORT B
-#define NEC_PIN  7
+#define NEC_PORT C
+#define NEC_PIN  1
 
 #endif /* NEC_CONFIG_H_ */

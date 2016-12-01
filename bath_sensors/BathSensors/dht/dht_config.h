@@ -15,8 +15,8 @@ References:
 #define DHT_CONFIG_H_
 
 //setup port
-#define DHT_PORT D
-#define DHT_PIN 0
+#define DHT_PORT B
+#define DHT_PIN 5
 
 //sensor type
 #define DHT_TYPE DHT_DHT22

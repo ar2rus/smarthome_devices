@@ -21,16 +21,24 @@
 
 
 #define DOOR_SENSOR_PORT D
-#define DOOR_SENSOR_PIN 5
+#define DOOR_SENSOR_PIN 2
 
 #define DOOR_SENSOR_INIT unset_bit(DDRPORT(DOOR_SENSOR_PORT), DOOR_SENSOR_PIN)
 #define DOOR_SENSOR_READ (!bit(INPORT(DOOR_SENSOR_PORT), DOOR_SENSOR_PIN))
 
+#define BUTTON_ID 2
+
+#define BUTTON_SENSOR_PORT D
+#define BUTTON_SENSOR_PIN 1
+
+#define BUTTON_SENSOR_INIT unset_bit(DDRPORT(BUTTON_SENSOR_PORT), BUTTON_SENSOR_PIN)
+#define BUTTON_SENSOR_READ (!bit(INPORT(BUTTON_SENSOR_PORT), BUTTON_SENSOR_PIN))
+
 #define DHT_SENSOR_ID 1
 
 /*ADC0*/
-#define ADC_CHANNEL ADC0
-#define ADC_INIT {set_bit2(ADMUX, REFS0, ADLAR); /*ref = vcc, 8 bit precision, ADC0*/	\
+#define ADC_CHANNEL ADC2
+#define ADC_INIT {set_bit3(ADMUX, REFS0, ADLAR, MUX1); /*ref = vcc, 8 bit precision, ADC2*/	\
 				  set_bit3(ADCSRA, ADEN, ADIE, ADPS2); /*enable, interruptions, div 16*/}
 
 /* main timer controls*/
