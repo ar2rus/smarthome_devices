@@ -76,7 +76,7 @@
 
 /* main timer controls*/
 #define TIMER_PRESCALER 1024
-#define TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / TIMER_PRESCALER) + 40	/*1 second main loop*/
+#define TIMER_NUM_TICKS (unsigned int)(1 * F_CPU / TIMER_PRESCALER) + 30	/*1 second main loop*/
 #define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS12, CS10); unset_bit(TCCR1B, CS11); /*1024x prescaler*/}
 
 #define TIMER_REG TCNT1
