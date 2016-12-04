@@ -60,18 +60,6 @@ void humidityResponse(unsigned char address){
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
 }
 
-void rcResponse(unsigned char address, uint8_t nec_address, uint8_t nec_command, uint8_t nec_repeated){
-	char data[3];
-	data[0] = 0x00;
-	data[1] = nec_address;
-	if (nec_repeated){
-		data[1] |= _BV(7);
-	}
-	data[2] = nec_command;
-			
-	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
-}
-
 //lightness
 ISR(ADC_vect){
 	if (!shouldSendLightnessValue){
@@ -84,9 +72,57 @@ ISR(ADC_vect){
 }
 
 ISR(TIMER_COMP_A_VECTOR){
-	++systime;
+	sei();
+			
+	//check sensors every 100 ms
+	if (++systime - sensor_check_time >= 100){
+		sensor_check_time = systime;
+			
+		//check door
+		char value = DOOR_SENSOR_READ;
+		if (doorSensorValue != value){
+			doorSensorValue = value;
+			doorResponse(CLUNET_BROADCAST_ADDRESS);
+		}
+			
+		//check button
+		value = BUTTON_SENSOR_READ;
+		if (buttonSensorValue != value){
+			buttonSensorValue = value;
+			buttonResponse(CLUNET_BROADCAST_ADDRESS);
+		}
+			
+		//check lightness
+		set_bit(ADCSRA, ADSC);
+	}
+			
+	if (shouldSendLightnessValue){
+		shouldSendLightnessValue = 0;
+		lightnessResponse(CLUNET_BROADCAST_ADDRESS);
+	}
+			
+	if (necCheckSignal()){
+		OCR1B  = TCNT1 + NEC_TIMER_CMP_TICKS;
+		ENABLE_TIMER_CMP_B;
+	}
+			
+	uint8_t nec_address;
+	uint8_t nec_command;
+	uint8_t nec_repeated;
+			
+	if (necValue(&nec_address, &nec_command, &nec_repeated)){
+		char data[3];
+		data[0] = 0x00;
+		data[1] = nec_address;
+		if (nec_repeated){
+			data[1] |= _BV(7);
+		}
+		data[2] = nec_command;
+		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
+	}
+		
 	
-	OCR1A += TIMER_NUM_TICKS;
+	OCR1A = TCNT1 + TIMER_NUM_TICKS;
 }
 
 ISR(TIMER_COMP_B_VECTOR){
@@ -144,6 +180,11 @@ void cmd(clunet_msg* m){
 				buttonResponse(m->src_address);
 			}
 		break;
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
+			if (m->src_address == CLUNET_BROADCAST_ADDRESS){
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+			}
+		break;
 		
 // 		//for debugging only
 // 		case CLUNET_COMMAND_DEBUG:
@@ -161,6 +202,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_LIGHT_LEVEL:
 		case CLUNET_COMMAND_BUTTON:
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 			break;
 	}
@@ -189,48 +231,6 @@ int main(void){
 	while(1){
 		if (!clunet_buffered_is_empty()){
 			cmd(clunet_buffered_pop());
-		}
-			
-		//check sensors every 100 ms
-		if (systime - sensor_check_time >= 100){
-			sensor_check_time = systime;
-			
-			//check door
-			char value = DOOR_SENSOR_READ;
-			if (doorSensorValue != value){
-				doorSensorValue = value;
-				doorResponse(CLUNET_BROADCAST_ADDRESS);
-			}
-			
-			//check button
-			value = BUTTON_SENSOR_READ;
-			if (buttonSensorValue != value){
-				buttonSensorValue = value;
-				buttonResponse(CLUNET_BROADCAST_ADDRESS);
-			}
-			
-			//check lightness
-			set_bit(ADCSRA, ADSC);
-		}
-		
-		if (shouldSendLightnessValue){
-			shouldSendLightnessValue = 0;
-			lightnessResponse(CLUNET_BROADCAST_ADDRESS);
-		}
-			
-		if (necCheckSignal()){
-			OCR1B  = TCNT1 + NEC_TIMER_CMP_TICKS;
-			ENABLE_TIMER_CMP_B;
-		}
-			
-		uint8_t nec_address;
-		uint8_t nec_command;
-		uint8_t nec_repeated;
-			
-		if (necValue(&nec_address, &nec_command, &nec_repeated)){
-			if (nec_command){
-				rcResponse(CLUNET_BROADCAST_ADDRESS, nec_address, nec_command, nec_repeated);
-			}
 		}
 	}
 	

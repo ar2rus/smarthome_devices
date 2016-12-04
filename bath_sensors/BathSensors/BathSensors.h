@@ -56,7 +56,7 @@
 #define TIMER_COMP_A_VECTOR TIMER1_COMPA_vect
 #define TIMER_COMP_B_VECTOR TIMER1_COMPB_vect
 
-#define LIGHTNESS_BARRIER 10	/*percent*/
+#define LIGHTNESS_BARRIER 2	/*percent*/
 
 //#define AUDIOBATH_DEVICE_ID 0x0B
 //#define FAN_DEVICE_ID 0x15

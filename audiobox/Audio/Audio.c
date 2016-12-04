@@ -751,7 +751,7 @@ int main(void){
 	BUTTONS_INIT;
 	TWI_INIT;
 	
-	clunet_set_on_data_received(clunet_data_received);	//sniff -> чтобы получать свои сообщения об RC PRESSED
+	clunet_set_on_data_received(clunet_data_received);
 	clunet_buffered_init();
 	clunet_init();
 	

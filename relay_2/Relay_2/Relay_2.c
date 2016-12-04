@@ -5,6 +5,13 @@ volatile unsigned char systime = 0;
 
 signed char charger_task = -1;
 
+//храним состояние дверей шкафчика, для 
+//того чтобы правильно реагировать на кнопку
+signed char door_state = -1;
+
+// храним состояние кнопки (-1 - не инициализирована)
+signed char button_state = -1;
+
 
 void (*timer_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
 
@@ -161,8 +168,11 @@ void cmd(clunet_msg* m){
 			
 		case CLUNET_COMMAND_DOOR_INFO:
 			if (m->src_address == DOORS_MIRRORED_BOX_DEVICE_ID && m->size==1){
-				switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, m->data[0]>0);
-				switchResponse(CLUNET_BROADCAST_ADDRESS);
+				if (door_state >= 0){
+					switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, m->data[0] > 0);
+					switchResponse(CLUNET_BROADCAST_ADDRESS);
+				}
+				door_state = m->data[0];
 			}
 			break;
 			
@@ -226,6 +236,27 @@ void cmd(clunet_msg* m){
 				break;
 			}
 			break;
+		case CLUNET_COMMAND_BUTTON_INFO:
+			if (m->src_address == BUTTON_DEVICE_ID && m->size==2){
+				if (button_state >= 0){
+					if (button_state != m->data[1]){
+						if (door_state){	//открыта -> зарядка (430 секунд)
+							char data[3];
+							data[0] = 0x01;
+							data[1] = 0xAE;
+							data[2] = 0x01;	
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHARGE, data, sizeof(data));
+						}else{	// переключаем свет
+							char data[2];
+							data[0] = 0x02;	//toggle
+							data[1] = MIRRORED_BOX_LIGHT_RELAY_ID;
+							clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_SWITCH, data, sizeof(data));
+						}
+					}
+				}
+				button_state = m->data[1];
+			}
+			break;
 	}
 }
 
@@ -240,6 +271,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_TIME:
 		case CLUNET_COMMAND_TIME_INFO:
 		case CLUNET_COMMAND_CHARGE:
+		case CLUNET_COMMAND_BUTTON_INFO:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }
@@ -324,6 +356,11 @@ int main(void){
 	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;
+	
+	//ask for door state
+	clunet_send_fairy(DOORS_MIRRORED_BOX_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DOOR, 0, 0);
+	//ask for button state
+	clunet_send_fairy(BUTTON_DEVICE_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_BUTTON, 0, 0);
 	
 	while (1){
 		if (!clunet_buffered_is_empty()){
