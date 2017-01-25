@@ -257,6 +257,12 @@ void cmd(clunet_msg* m){
 				button_state = m->data[1];
 			}
 			break;
+			case CLUNET_COMMAND_DEBUG:{
+				char data[2];
+				data[0] = door_state;
+				data[1] = button_state;
+				clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_DEBUG, data, 2);
+			}
 	}
 }
 
@@ -272,6 +278,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_TIME_INFO:
 		case CLUNET_COMMAND_CHARGE:
 		case CLUNET_COMMAND_BUTTON_INFO:
+		case CLUNET_COMMAND_DEBUG:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }

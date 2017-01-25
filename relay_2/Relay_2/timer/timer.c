@@ -11,9 +11,8 @@ void (*on_timer_request_systime)(void (*timer_systime_async_response)(unsigned c
 
 datetime time;
 
-task tasks[MAX_NUM_TASKS];
-
 unsigned char num_tasks = 0;
+task tasks[MAX_NUM_TASKS];
 
 
 unsigned char is_time_valid(){
@@ -101,7 +100,7 @@ void timer_tick_second(){
 		if (++correction_ticks >= NUM_SECONDS_TO_CORRECTION){
 			correction_ticks = 0;
 			
-			requestSystime();	//корректируем время каждые NUM_SECONDS_TO_CORRECTION секунд
+			requestSystime();	//корректируем текущее время каждые NUM_SECONDS_TO_CORRECTION секунд
 		}
 		
 	}else{
@@ -154,8 +153,10 @@ signed char timer_add_scheduled_task(unsigned char day_of_week, unsigned char ho
 
 void timer_remove_task(unsigned char index){
 	if (index < MAX_NUM_TASKS){
-		tasks[index].type = TASK_TYPE_NONE;
-		num_tasks--;
+		if (tasks[index].type != TASK_TYPE_NONE){
+			tasks[index].type = TASK_TYPE_NONE;
+			num_tasks--;
+		}
 	}
 }
 
