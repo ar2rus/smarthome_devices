@@ -168,11 +168,9 @@ void cmd(clunet_msg* m){
 			
 		case CLUNET_COMMAND_DOOR_INFO:
 			if (m->src_address == DOORS_MIRRORED_BOX_DEVICE_ID && m->size==1){
-				if (door_state >= 0){
-					switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, m->data[0] > 0);
-					switchResponse(CLUNET_BROADCAST_ADDRESS);
-				}
 				door_state = m->data[0];
+				switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, door_state > 0);
+				switchResponse(CLUNET_BROADCAST_ADDRESS);
 			}
 			break;
 			
