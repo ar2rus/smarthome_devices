@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Atmel Studio Solution File, Format Version 11.00
+Project("{54F91283-7BC4-4236-8FF9-10F437C3AD48}") = "MeteoOutdoor", "MeteoOutdoor\MeteoOutdoor.cproj", "{C14FF87F-3C92-4385-A491-21A9F3B71D0D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|AVR = Debug|AVR
+		Release|AVR = Release|AVR
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C14FF87F-3C92-4385-A491-21A9F3B71D0D}.Debug|AVR.ActiveCfg = Debug|AVR
+		{C14FF87F-3C92-4385-A491-21A9F3B71D0D}.Debug|AVR.Build.0 = Debug|AVR
+		{C14FF87F-3C92-4385-A491-21A9F3B71D0D}.Release|AVR.ActiveCfg = Release|AVR
+		{C14FF87F-3C92-4385-A491-21A9F3B71D0D}.Release|AVR.Build.0 = Release|AVR
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
