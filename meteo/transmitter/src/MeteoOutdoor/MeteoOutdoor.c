@@ -30,16 +30,14 @@ int main(void){
 	
 	USI_TWI_Master_Initialise();
 	vw_setup(2000);
-	
-	//REFS1..0 = 1 AREF вход как источник опорного напряжения
-	//MUX5..0 = 100001 измеряем внутренние 1.1V
-	ADMUX = (1<<REFS0)|(1<<MUX5)|(1<<MUX0);
+
+	//ADMUX = (1<<REFS0)|(1<<MUX5)|(1<<MUX0);
 	//wait 1 ms at least
 	
 	
 	while(1){
 		 bme280_start_force(1, 1, 1);
-		 bht1750_start(BH1750_ONE_TIME_HIGH_RES_MODE);
+		 bht1750_start_mtreg(BH1750_ONE_TIME_HIGH_RES_MODE, 90); //увеличиваем экспозицию на 30% из-за влияния окна (норм 69, 69+30% = 90)
 		 
 		 //по факту 2,42 - 2,38  сек
 		 wdt_enable(WDTO_2S);
@@ -51,16 +49,27 @@ int main(void){
 		 
 		 //АЦП для измерения напряжения батареи
 		 
+		 //включаем АЦП
+		 ADCSRA = (1<<ADEN);
+		 
+		 //REFS1..0 = 1 AREF вход как источник опорного напряжения
+		 //MUX5..0 = 100001 измеряем внутренние 1.1V
+		 ADMUX = (1<<REFS0)|(1<<MUX5)|(1<<MUX0);
+		 //ждем 1 мс, как написано в даташите
+		 //и без этого на самом деле работает не точно
+		 _delay_ms(1);
+		 
 		 //ADEN = 1 - разрешаем АЦП
 		 //ADSC = 1 Запускаем преобразование
 		 //ADPS2..0 = 6 Делитель частоты на 128
-		 ADCSRA = (1<<ADEN)|(1<<ADSC)|(7<<ADPS0);
+		 ADCSRA = (1<<ADEN)|(1<<ADSC)|(7<<ADPS0);	
 		 
 		 uint8_t size_0 = bme280_readValues((char*)(&data[0]));
 		 if (size_0){
-			 uint8_t size_1 = bht1750_readValues((char*)(&data[size_0]));
-			 if (size_1){
+		 	 uint8_t size_1 = bht1750_readValues((char*)(&data[size_0]));
+		 	 if (size_1){
 				size_0 += size_1;
+			
 				
 				//Ждем завершение преобразования АЦП
 				while (!(ADCSRA & (1<<ADIF)));
@@ -71,17 +80,16 @@ int main(void){
 				
 				//обратное вычисление:
 				//меряем внутренние 1,1В относительно AREF напряжения с батареи
-				//По факту имеем примерно 1,16В
 				//AREF -> 1023
 				//1,16 -> x
-				//AREF = 1.16 * 1023 / x
+				//AREF = 1.1 * 1023 / x
 				
 				//умножим на 100 и разделим на 2
 				//потеряем разряд точности, но зато уместим в 2 байта
-				//AREF = 59334 / (x/2)
+				//AREF = 56265 / (x/2)
 				
 				uint16_t t2 = ((hi<<8) | lo) >> 1;
-				t2 = 59334 / t2;
+				t2 = 56265 / t2;
 				
 				data[size_0++] = (t2 >> 8 ) & 0xFF;
 				data[size_0++] = t2 & 0xFF;

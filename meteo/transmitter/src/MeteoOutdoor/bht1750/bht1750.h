@@ -43,6 +43,8 @@
 #define BH1750_ONE_TIME_LOW_RES_MODE  0x23
 
 uint8_t bht1750_start(uint8_t mode);
+//с измененным временем экспозиции
+uint8_t bht1750_start_mtreg(uint8_t mode, uint8_t mtreg);
 uint8_t bht1750_readValues(char* values);
 
 
