@@ -11,7 +11,7 @@
 #include <avr/io.h>
 
 //периодичность опроса датчика влажности (в секундах)
-#define FAN_HUMIDITY_CHECK_TIME 20
+#define FAN_HUMIDITY_CHECK_TIME 15
 
 #if FAN_HUMIDITY_CHECK_TIME < 5
 #  error Humidity check time too frequent, decrease it
