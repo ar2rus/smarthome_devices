@@ -268,6 +268,8 @@ extern "C"
     /// \param[in] speed Desired speed in bits per second
     extern void vw_setup(uint16_t speed);
 
+    extern void vw_dispose();
+
     /// Start the Phase Locked Loop listening to the receiver
     /// Must do this before you can receive any messages
     /// When a message is available (good checksum or not), vw_have_message();

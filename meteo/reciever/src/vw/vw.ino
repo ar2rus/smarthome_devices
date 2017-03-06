@@ -95,9 +95,9 @@ IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
 void setup() {
-  //Serial.begin(115200);
+  Serial.begin(115200);
   
-  //Serial.println("Booting");
+  Serial.println("Booting");
   WiFi.mode(WIFI_STA);
   
   WiFi.begin(ssid, pass);
@@ -111,31 +111,53 @@ void setup() {
   }
 
   ArduinoOTA.setHostname("meteo");
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA started");
+    //vw_dispose(); //should stop timers!!!
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nOTA finished");
+  });
+  
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("OTA progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("OTA auth failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("OTA begin failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("OTA connect failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("OTA receive failed");
+    else if (error == OTA_END_ERROR) Serial.println("OTA end failed");
+  });
+  
   ArduinoOTA.begin();
+
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 
   clunetMulticastBegin();
   
-  //pinMode(2, OUTPUT);
-  //digitalWrite(2, HIGH);
+  pinMode(2, OUTPUT);
+  digitalWrite(2, HIGH);
   
   vw_set_rx_pin(14);
   vw_set_rx_inverted(1);
   
-  //vw_set_tx_pin(16);
+  vw_set_tx_pin(16);    //not neccesary
   
-  //vw_set_ptt_pin(0);
+  vw_set_ptt_pin(0);    //not neccesary
   
   vw_setup(2000);  // Bits per sec
   vw_rx_start();   // Start the receiver PLL running
-
-
-  //int _maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-  //Serial.println(_maxSketchSpace);
 }
 
 
 int16_t T = 0xFFFF;
-BME280_U32_t P; //uint32_t
+uint32_t P= 0xFFFFFFFF;
 uint16_t H = 0xFFFF;
 uint16_t L = 0xFFFF;
 uint16_t VCC;
@@ -145,29 +167,32 @@ void loop() {
     uint8_t buflen = VW_MAX_MESSAGE_LEN;
 
    if (vw_get_message(buf, &buflen)) { // Non-blocking
-      //digitalWrite(2, LOW); // Flash a light to show received good message
+      digitalWrite(2, LOW); // Flash a light to show received good message
+
+
+      //Serial.println("recieved rf");
       
       BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
       BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
       BME280_S32_t uh = ((uint32_t)buf[6]<<8) | (uint32_t)buf[7];
-      uint16_t L = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];         //*1
+      L = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];         //*1
       if (L == 0xFFFF){ //reserved value for error
           L--;  //max valid value -> 65534
       }
-      uint16_t VCC = ((uint16_t)buf[10]<<8) | (uint16_t)buf[11];     //*100
+      VCC = ((uint16_t)buf[10]<<8) | (uint16_t)buf[11];     //*100
       
       T = BME280_compensate_T_int32(ut);                             //*100
       P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
       H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
       
-      //digitalWrite(2, HIGH);
+      digitalWrite(2, HIGH);
     }
 
     clunet_msg msg;
     if (clunetMulticastHandleMessages(&msg)){
       switch (msg.command){
         case CLUNET_COMMAND_TEMPERATURE:{
-            if (msg.size == 2){
+            if (msg.size==1 || msg.size == 2){
               if (msg.data[0] == 0 || (msg.data[0]==1 && msg.data[1]==2)){ //all devices or bmp/bme devices
                 char buf[4];
                 buf[0] = 1; buf[1] = 2; //bmp/bme

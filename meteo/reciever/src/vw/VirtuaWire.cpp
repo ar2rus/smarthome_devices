@@ -97,7 +97,7 @@ extern "C" {
 #define lo8(x) ((x)&0xff) 
 #define hi8(x) ((x)>>8)
 
-    uint16_t crc16_update(uint16_t crc, uint8_t a)
+    uint16_t ICACHE_RAM_ATTR crc16_update(uint16_t crc, uint8_t a)
     {
   int i;
 
@@ -113,7 +113,7 @@ extern "C" {
   return crc;
     }
 
-    uint16_t crc_xmodem_update (uint16_t crc, uint8_t data)
+    uint16_t ICACHE_RAM_ATTR crc_xmodem_update (uint16_t crc, uint8_t data)
     {
         int i;
 
@@ -128,7 +128,7 @@ extern "C" {
 
         return crc;
     }
-    uint16_t _crc_ccitt_update (uint16_t crc, uint8_t data)
+    uint16_t ICACHE_RAM_ATTR _crc_ccitt_update (uint16_t crc, uint8_t data)
     {
         data ^= lo8 (crc);
         data ^= data << 4;
@@ -157,7 +157,7 @@ extern "C" {
 
   // Compute CRC over count bytes.
   // This should only be ever called at user level, not interrupt level
-  uint16_t vw_crc(uint8_t *ptr, uint8_t count)
+  uint16_t ICACHE_RAM_ATTR vw_crc(uint8_t *ptr, uint8_t count)
   {
       uint16_t crc = 0xffff;
   
@@ -167,7 +167,7 @@ extern "C" {
   }
 
   // Convert a 6 bit encoded symbol into its 4 bit decoded equivalent
-  uint8_t vw_symbol_6to4(uint8_t symbol)
+  uint8_t ICACHE_RAM_ATTR vw_symbol_6to4(uint8_t symbol)
   {
       uint8_t i;
       
@@ -211,7 +211,7 @@ extern "C" {
   // Phase locked loop tries to synchronise with the transmitter so that bit 
   // transitions occur at about the time vw_rx_pll_ramp is 0;
   // Then the average is computed over each bit period to deduce the bit value
-  void vw_pll()
+  void ICACHE_RAM_ATTR vw_pll()
   {
       // Integrate each sample
       if (vw_rx_sample)
@@ -310,7 +310,7 @@ extern "C" {
       vw_tx_enabled = false;
   }
 
-  void vw_Int_Handler()
+  void ICACHE_RAM_ATTR vw_Int_Handler()
   {
       if (vw_rx_enabled && !vw_tx_enabled)
         vw_rx_sample = digitalRead(vw_rx_pin) ^ vw_rx_inverted;
@@ -359,7 +359,12 @@ extern "C" {
     pinMode(vw_ptt_pin, OUTPUT);
     digitalWrite(vw_ptt_pin, vw_ptt_inverted);
   } 
-  
+
+  void vw_dispose()
+  {
+    timer1_disable();
+    timer1_detachInterrupt();
+  }
   
   // Start the transmitter, call when the tx buffer is ready to go and vw_tx_len is
   // set to the total number of symbols to send
@@ -404,7 +409,7 @@ extern "C" {
   
   // Wait for the transmitter to become available
   // Busy-wait loop until the ISR says the message has been sent
-  void vw_wait_tx()
+  void ICACHE_RAM_ATTR vw_wait_tx()
   {
       while (vw_tx_enabled)
     ;
@@ -421,7 +426,7 @@ extern "C" {
   
   // Wait at most max milliseconds for the receiver to receive a message
   // Return the truth of whether there is a message
-  uint8_t vw_wait_rx_max(unsigned long milliseconds)
+  uint8_t ICACHE_RAM_ATTR vw_wait_rx_max(unsigned long milliseconds)
   {
       unsigned long start = millis();
   
@@ -434,7 +439,7 @@ extern "C" {
   // into vw_tx_buf
   // The message is raw bytes, with no packet structure imposed
   // It is transmitted preceded a byte count and followed by 2 FCS bytes
-  uint8_t vw_send(uint8_t* buf, uint8_t len)
+  uint8_t ICACHE_RAM_ATTR vw_send(uint8_t* buf, uint8_t len)
   {
       uint8_t i;
       uint8_t index = 0;
@@ -482,7 +487,7 @@ extern "C" {
   }
   
   // Return true if there is a message available
-  uint8_t vw_have_message()
+  uint8_t ICACHE_RAM_ATTR vw_have_message()
   {
       return vw_rx_done;
   }
@@ -490,7 +495,7 @@ extern "C" {
   // Get the last message received (without byte count or FCS)
   // Copy at most *len bytes, set *len to the actual number copied
   // Return true if there is a message and the FCS is OK
-  uint8_t vw_get_message(uint8_t* buf, uint8_t* len)
+  uint8_t ICACHE_RAM_ATTR vw_get_message(uint8_t* buf, uint8_t* len)
   {
       uint8_t rxlen;
       
@@ -513,12 +518,12 @@ extern "C" {
       return (vw_crc(vw_rx_buf, vw_rx_len) == 0xf0b8); // FCS OK?
   }
   
-  uint8_t vw_get_rx_good()
+  uint8_t ICACHE_RAM_ATTR vw_get_rx_good()
   {
       return vw_rx_good;
   }
   
-  uint8_t vw_get_rx_bad()
+  uint8_t ICACHE_RAM_ATTR vw_get_rx_bad()
   {
       return vw_rx_bad;
   }

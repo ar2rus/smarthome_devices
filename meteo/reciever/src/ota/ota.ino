@@ -22,6 +22,10 @@ void setup() {
   }
   ArduinoOTA.setHostname("meteo");
   ArduinoOTA.begin();
+
+  Serial.begin(115200);
+  int _maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+  Serial.println(_maxSketchSpace);
 }
 
 void loop() {

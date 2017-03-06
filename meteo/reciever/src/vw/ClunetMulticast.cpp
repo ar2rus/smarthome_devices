@@ -19,56 +19,36 @@ void clunetMulticastBegin(){
   clunetUDP.beginMulticast(WiFi.localIP(), clunetMulticastIP, CLUNET_PORT);
 }
 
-char check_crc(char* data, unsigned char size){
-      uint8_t crc=0;
-      uint8_t i,j;
-      for (i=0; i<size;i++){
-            uint8_t inbyte = data[i];
-            for (j=0;j<8;j++){
-                  uint8_t mix = (crc ^ inbyte) & 0x01;
-                  crc >>= 1;
-                  if (mix){
-                        crc ^= 0x8C;
-          }
-                  inbyte >>= 1;
-            }
-      }
-      return crc;
-}
-
 char clunetMulticastHandleMessages(clunet_msg* msg){
   int packetSize = clunetUDP.parsePacket();
   if (packetSize) {
     int len = clunetUDP.read(udp_buffer, CLUNET_BUFFER_SIZE);
-    if (len > CLUNET_OFFSET_DATA) { //header + crc at least
-        //check crc
-        if (check_crc(udp_buffer, len) == 0){
-          
-          clunet_msg* m = (clunet_msg*)&udp_buffer;
-          switch(m->dst_address){
-              case CLUNET_DEVICE_ID:
-              case CLUNET_BROADCAST_ADDRESS:
-                
-                switch(m->command){
-                  case CLUNET_COMMAND_DISCOVERY:{
-                      char buf[] = CLUNET_DEVICE_NAME;
-                      int len = 0; while(buf[len]) len++;
-                      clunetMulticastSend(m->src_address, CLUNET_COMMAND_DISCOVERY_RESPONSE, buf, len);
-                    }
-                    break;
-                  case CLUNET_COMMAND_PING:
-                    clunetMulticastSend(m->src_address, CLUNET_COMMAND_PING_REPLY, m->data, m->size);
-                    break;
-                  case CLUNET_COMMAND_REBOOT:
-                    ESP.restart();
-                    break;
-                  default:
-                    //отдаем сообщение
-                    memcpy(msg, udp_buffer, len);
-                    return 1;
-                }
-              break;
-          }
+    if (len >= CLUNET_OFFSET_DATA) {
+        clunet_msg* m = (clunet_msg*)&udp_buffer;
+        
+        switch(m->dst_address){
+            case CLUNET_DEVICE_ID:
+            case CLUNET_BROADCAST_ADDRESS:
+              
+              switch(m->command){
+                case CLUNET_COMMAND_DISCOVERY:{
+                    char buf[] = CLUNET_DEVICE_NAME;
+                    int len = 0; while(buf[len]) len++;
+                    clunetMulticastSend(m->src_address, CLUNET_COMMAND_DISCOVERY_RESPONSE, buf, len);
+                  }
+                  break;
+                case CLUNET_COMMAND_PING:
+                  clunetMulticastSend(m->src_address, CLUNET_COMMAND_PING_REPLY, m->data, m->size);
+                  break;
+                case CLUNET_COMMAND_REBOOT:
+                  ESP.restart();
+                  break;
+                default:
+                  //отдаем сообщение
+                  memcpy(msg, udp_buffer, len);
+                  return 1;
+              }
+            break;
         }
     }
   }
@@ -76,16 +56,15 @@ char clunetMulticastHandleMessages(clunet_msg* msg){
 }
 
 void clunetMulticastSend(unsigned char address, unsigned char command, char* data, unsigned char size){
-  clunetUDP.beginPacketMulticast(WiFi.localIP(), clunetMulticastIP, CLUNET_PORT);
-  
+  clunetUDP.beginPacketMulticast(clunetMulticastIP, CLUNET_PORT, WiFi.localIP());
+
+  *(uint32_t*)&udp_buffer[CLUNET_OFFSET_IP] = WiFi.localIP();
   udp_buffer[CLUNET_OFFSET_SRC_ADDRESS] = CLUNET_DEVICE_ID;
   udp_buffer[CLUNET_OFFSET_DST_ADDRESS] = address;
   udp_buffer[CLUNET_OFFSET_COMMAND] = command;
   udp_buffer[CLUNET_OFFSET_SIZE] = size;
   memcpy(&udp_buffer[CLUNET_OFFSET_DATA], data, size);
-  
-  udp_buffer[CLUNET_OFFSET_SIZE] =  check_crc((char*)udp_buffer, CLUNET_OFFSET_DATA+size);
-  
-  clunetUDP.write(udp_buffer, CLUNET_OFFSET_DATA + size + 1);
+    
+  clunetUDP.write(udp_buffer, CLUNET_OFFSET_DATA + size);
   clunetUDP.endPacket();
 }
