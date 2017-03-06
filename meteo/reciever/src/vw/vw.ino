@@ -4,10 +4,10 @@
 #include <ArduinoOTA.h>
 
 #include "VirtualWire.h"
+#include "ClunetMulticast.h"
 
 extern "C" {
   #include "user_interface.h"
-
 
   //BME280 calibration consts
   static uint16_t dig_T1 = 28209;
@@ -95,9 +95,11 @@ IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("Booting");
+  //Serial.begin(115200);
+  
+  //Serial.println("Booting");
   WiFi.mode(WIFI_STA);
+  
   WiFi.begin(ssid, pass);
   WiFi.config(ip, gateway, subnet);
 
@@ -108,85 +110,101 @@ void setup() {
     ESP.restart();
   }
 
-  // Port defaults to 8266
-  //ArduinoOTA.setPort(8266);
-  // Hostname defaults to esp8266-[ChipID]
   ArduinoOTA.setHostname("meteo");
-  // No authentication by default
-  //ArduinoOTA.setPassword((const char *)"11881144");
-
   ArduinoOTA.begin();
+
+  clunetMulticastBegin();
   
-  //Serial.println("Ready");
-  //Serial.print("IP address: ");
-  //Serial.println(WiFi.localIP());
-  
-  pinMode(2, OUTPUT);
-  digitalWrite(2, HIGH);
+  //pinMode(2, OUTPUT);
+  //digitalWrite(2, HIGH);
   
   vw_set_rx_pin(14);
   vw_set_rx_inverted(1);
   
-  vw_set_tx_pin(16);
+  //vw_set_tx_pin(16);
   
-  vw_set_ptt_pin(0);
+  //vw_set_ptt_pin(0);
   
   vw_setup(2000);  // Bits per sec
   vw_rx_start();   // Start the receiver PLL running
 
 
-int _maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-Serial.println(_maxSketchSpace);
+  //int _maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+  //Serial.println(_maxSketchSpace);
 }
+
+
+int16_t T = 0xFFFF;
+BME280_U32_t P; //uint32_t
+uint16_t H = 0xFFFF;
+uint16_t L = 0xFFFF;
+uint16_t VCC;
 
 void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];
     uint8_t buflen = VW_MAX_MESSAGE_LEN;
 
-   if (vw_get_message(buf, &buflen)) // Non-blocking
-    {
-      int i;
-
-      digitalWrite(2, LOW); // Flash a light to show received good message
-      
-      // Message with a good checksum received, dump it.
-      Serial.print(millis()/1000.0);
-      Serial.println(": ");
-      for (i = 0; i < buflen; i++)
-      {
-        Serial.print(buf[i], HEX);
-        Serial.print(" ");
-      }
-      Serial.println("");
+   if (vw_get_message(buf, &buflen)) { // Non-blocking
+      //digitalWrite(2, LOW); // Flash a light to show received good message
       
       BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
       BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
       BME280_S32_t uh = ((uint32_t)buf[6]<<8) | (uint32_t)buf[7];
-      uint16_t ul = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];
-      uint16_t vcc = ((uint16_t)buf[10]<<8) | (uint16_t)buf[11];
+      uint16_t L = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];         //*1
+      if (L == 0xFFFF){ //reserved value for error
+          L--;  //max valid value -> 65534
+      }
+      uint16_t VCC = ((uint16_t)buf[10]<<8) | (uint16_t)buf[11];     //*100
       
-      float t = BME280_compensate_T_int32(ut) / 100.0;
-      Serial.print("T=");
-      Serial.println(t);
+      T = BME280_compensate_T_int32(ut);                             //*100
+      P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
+      H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
       
-      float p = BME280_compensate_P_int64(up) / 256 / 133.322;
-      Serial.print("P=");
-      Serial.println(p);
-      
-      float h = bme280_compensate_H_int32(uh) / 1024.0;
-      Serial.print("H=");
-      Serial.println(h);
-      
-      Serial.print("L=");
-      Serial.println(ul);
-      
-      float v = vcc / 100.0;
-      Serial.print("VBat=");
-      Serial.println(v);
-      
-      digitalWrite(2, HIGH);
+      //digitalWrite(2, HIGH);
     }
-    
-     ArduinoOTA.handle();
+
+    clunet_msg msg;
+    if (clunetMulticastHandleMessages(&msg)){
+      switch (msg.command){
+        case CLUNET_COMMAND_TEMPERATURE:{
+            if (msg.size == 2){
+              if (msg.data[0] == 0 || (msg.data[0]==1 && msg.data[1]==2)){ //all devices or bmp/bme devices
+                char buf[4];
+                buf[0] = 1; buf[1] = 2; //bmp/bme
+                memcpy(&buf[2], &T, 2);
+                clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
+              }
+            }
+          }
+          break;
+        case CLUNET_COMMAND_HUMIDITY:
+          if (msg.size == 0){
+              clunetMulticastSend(msg.src_address, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
+          }
+          break;
+        case CLUNET_COMMAND_PRESSURE:
+          if (msg.size == 0){
+            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
+          }
+        break;
+        case CLUNET_COMMAND_LIGHT_LEVEL:{
+          if (msg.size == 0){
+            char buf[3];
+            buf[0] = 2; //значение люксометра
+            memcpy(&buf[1], &L, 2);
+            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_LIGHT_LEVEL_INFO, buf, sizeof(buf));
+          }
+        }
+        break;
+        case CLUNET_COMMAND_VOLTAGE:{
+          if (msg.size == 0){
+            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
+          }
+        }
+        break;
+      }
+    }
+
+    ArduinoOTA.handle();
 }
 
