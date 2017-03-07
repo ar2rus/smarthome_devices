@@ -58,7 +58,6 @@ char clunetMulticastHandleMessages(clunet_msg* msg){
 void clunetMulticastSend(unsigned char address, unsigned char command, char* data, unsigned char size){
   clunetUDP.beginPacketMulticast(clunetMulticastIP, CLUNET_PORT, WiFi.localIP());
 
-  *(uint32_t*)&udp_buffer[CLUNET_OFFSET_IP] = WiFi.localIP();
   udp_buffer[CLUNET_OFFSET_SRC_ADDRESS] = CLUNET_DEVICE_ID;
   udp_buffer[CLUNET_OFFSET_DST_ADDRESS] = address;
   udp_buffer[CLUNET_OFFSET_COMMAND] = command;

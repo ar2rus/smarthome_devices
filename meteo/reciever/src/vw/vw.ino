@@ -114,7 +114,6 @@ void setup() {
 
   ArduinoOTA.onStart([]() {
     Serial.println("OTA started");
-    //vw_dispose(); //should stop timers!!!
   });
 
   ArduinoOTA.onEnd([]() {
@@ -126,7 +125,7 @@ void setup() {
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
+    Serial.printf("\nError[%u]: ", error);
     if (error == OTA_AUTH_ERROR) Serial.println("OTA auth failed");
     else if (error == OTA_BEGIN_ERROR) Serial.println("OTA begin failed");
     else if (error == OTA_CONNECT_ERROR) Serial.println("OTA connect failed");
@@ -138,8 +137,6 @@ void setup() {
 
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
-
-  clunetMulticastBegin();
   
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
@@ -153,10 +150,12 @@ void setup() {
   
   vw_setup(2000);  // Bits per sec
   vw_rx_start();   // Start the receiver PLL running
+
+  clunetMulticastBegin();
 }
 
 
-int16_t T = 0xFFFF;
+int16_t  T = 0xFFFF;
 uint32_t P= 0xFFFFFFFF;
 uint16_t H = 0xFFFF;
 uint16_t L = 0xFFFF;
@@ -169,16 +168,17 @@ void loop() {
    if (vw_get_message(buf, &buflen)) { // Non-blocking
       digitalWrite(2, LOW); // Flash a light to show received good message
 
-
       //Serial.println("recieved rf");
       
       BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
       BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
       BME280_S32_t uh = ((uint32_t)buf[6]<<8) | (uint32_t)buf[7];
+
       L = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];         //*1
       if (L == 0xFFFF){ //reserved value for error
           L--;  //max valid value -> 65534
       }
+      
       VCC = ((uint16_t)buf[10]<<8) | (uint16_t)buf[11];     //*100
       
       T = BME280_compensate_T_int32(ut);                             //*100
@@ -192,13 +192,12 @@ void loop() {
     if (clunetMulticastHandleMessages(&msg)){
       switch (msg.command){
         case CLUNET_COMMAND_TEMPERATURE:{
-            if (msg.size==1 || msg.size == 2){
-              if (msg.data[0] == 0 || (msg.data[0]==1 && msg.data[1]==2)){ //all devices or bmp/bme devices
+            if ((msg.size==1 && msg.data[0] == 0) 
+                  || (msg.size == 2 && msg.data[0]==1 && msg.data[1]==2)){  //all devices or bmp/bme devices
                 char buf[4];
                 buf[0] = 1; buf[1] = 2; //bmp/bme
                 memcpy(&buf[2], &T, 2);
                 clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
-              }
             }
           }
           break;

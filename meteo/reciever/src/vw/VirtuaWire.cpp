@@ -359,12 +359,6 @@ extern "C" {
     pinMode(vw_ptt_pin, OUTPUT);
     digitalWrite(vw_ptt_pin, vw_ptt_inverted);
   } 
-
-  void vw_dispose()
-  {
-    timer1_disable();
-    timer1_detachInterrupt();
-  }
   
   // Start the transmitter, call when the tx buffer is ready to go and vw_tx_len is
   // set to the total number of symbols to send

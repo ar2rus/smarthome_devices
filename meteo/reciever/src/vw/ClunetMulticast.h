@@ -3,12 +3,20 @@
 
 #define CLUNET_BUFFER_SIZE 255
 
-#define CLUNET_OFFSET_IP 0
-#define CLUNET_OFFSET_SRC_ADDRESS 4
-#define CLUNET_OFFSET_DST_ADDRESS 5
-#define CLUNET_OFFSET_COMMAND 6
-#define CLUNET_OFFSET_SIZE 7
-#define CLUNET_OFFSET_DATA 8
+#define CLUNET_OFFSET_SRC_ADDRESS 0
+#define CLUNET_OFFSET_DST_ADDRESS 1
+#define CLUNET_OFFSET_COMMAND 2
+#define CLUNET_OFFSET_SIZE 3
+#define CLUNET_OFFSET_DATA 4
+
+typedef struct {
+  unsigned char src_address;
+  unsigned char dst_address;
+  unsigned char command;
+  unsigned char size;
+  char data[CLUNET_BUFFER_SIZE];
+} clunet_msg;
+
 
 #define CLUNET_SUPRADIN_ADDRESS 0x00
 #define CLUNET_BROADCAST_ADDRESS 0xFF
@@ -400,29 +408,6 @@
 
 #define CLUNET_COMMAND_WINDOW_INFO 0x22
 /* Сообщает об открытии или закрытии окна. 1 - открыто, 2 - закрыто */
-
-
-#define CLUNET_PRIORITY_NOTICE 1
-/* Приоритет пакета 1 - неважное уведомление, которое вообще может быть потеряно без последствий */
-
-#define CLUNET_PRIORITY_INFO 2
-/* Приоритет пакета 2 - какая-то информация, не очень важная */
-
-#define CLUNET_PRIORITY_MESSAGE 3
-/* Приоритет пакета 3 - сообщение с какой-то важной информацией */
-
-#define CLUNET_PRIORITY_COMMAND 4
-/* Приоритет пакета 4 - команда, на которую нужно сразу отреагировать */
-
-
-typedef struct {
-  unsigned long ip_address; 
-  unsigned char src_address;
-  unsigned char dst_address;
-  unsigned char command;
-  unsigned char size;
-  char data[CLUNET_BUFFER_SIZE];
-} clunet_msg;
 
 
 //external functions
