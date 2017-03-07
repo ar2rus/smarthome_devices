@@ -122,27 +122,32 @@ void clunet_start_send(){
 	CLUNET_ENABLE_TIMER_COMP;			// Включаем прерывание таймера-сравнения
 }
 
-void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
-	if (CLUNET_OFFSET_DATA+size+1 > CLUNET_SEND_BUFFER_SIZE) return; // Не хватает буфера
-	CLUNET_DISABLE_TIMER_COMP;CLUNET_SEND_0; // Прерываем текущую передачу, если есть такая
-	// Заполняем переменные
-	if (clunetSendingState != CLUNET_SENDING_STATE_PREINIT)
+//отправляет соообщение в сеть от любого имени
+void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size){
+		if (CLUNET_OFFSET_DATA+size+1 > CLUNET_SEND_BUFFER_SIZE) return; // Не хватает буфера
+		CLUNET_DISABLE_TIMER_COMP;CLUNET_SEND_0; // Прерываем текущую передачу, если есть такая
+		// Заполняем переменные
+		if (clunetSendingState != CLUNET_SENDING_STATE_PREINIT)
 		clunetSendingState = CLUNET_SENDING_STATE_IDLE;
-	clunetCurrentPrio = prio;
-	dataToSend[CLUNET_OFFSET_SRC_ADDRESS] = CLUNET_DEVICE_ID;
-	dataToSend[CLUNET_OFFSET_DST_ADDRESS] = address;
-	dataToSend[CLUNET_OFFSET_COMMAND] = command;
-	dataToSend[CLUNET_OFFSET_SIZE] = size;
-	unsigned char i;
-	for (i = 0; i < size; i++)	
+		clunetCurrentPrio = prio;
+		dataToSend[CLUNET_OFFSET_SRC_ADDRESS] = src_address;
+		dataToSend[CLUNET_OFFSET_DST_ADDRESS] = dst_address;
+		dataToSend[CLUNET_OFFSET_COMMAND] = command;
+		dataToSend[CLUNET_OFFSET_SIZE] = size;
+		unsigned char i;
+		for (i = 0; i < size; i++)
 		dataToSend[CLUNET_OFFSET_DATA+i] = data[i];
-	dataToSend[CLUNET_OFFSET_DATA+size] = check_crc((char*)dataToSend, CLUNET_OFFSET_DATA+size);
-	clunetSendingDataLength = CLUNET_OFFSET_DATA + size + 1;
-	if ((clunetReadingState == CLUNET_READING_STATE_IDLE) // Если мы ничего не получаем в данный момент, то посылаем сразу		
-//		|| ((clunetReadingState == CLUNET_READING_STATE_DATA) && (prio > clunetReceivingPrio)) // Либо если получаем, но с более низким приоритетом
+		dataToSend[CLUNET_OFFSET_DATA+size] = check_crc((char*)dataToSend, CLUNET_OFFSET_DATA+size);
+		clunetSendingDataLength = CLUNET_OFFSET_DATA + size + 1;
+		if ((clunetReadingState == CLUNET_READING_STATE_IDLE) // Если мы ничего не получаем в данный момент, то посылаем сразу
+		//		|| ((clunetReadingState == CLUNET_READING_STATE_DATA) && (prio > clunetReceivingPrio)) // Либо если получаем, но с более низким приоритетом
 		)
 		clunet_start_send(); // Запускаем передачу сразу
-	else clunetSendingState = CLUNET_SENDING_STATE_WAITING_LINE; // Иначе ждём линию
+		else clunetSendingState = CLUNET_SENDING_STATE_WAITING_LINE; // Иначе ждём линию
+}
+
+void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
+	clunet_send_fake(CLUNET_DEVICE_ID, address, prio, command, data, size);
 }
 
 inline void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
@@ -301,9 +306,12 @@ void clunet_set_on_data_received_sniff(void (*f)(unsigned char src_address, unsi
 	on_data_received_sniff = f;
 }
 
-void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
-	
+void clunet_send_fake_fairy(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size){
 	while(clunet_ready_to_send());
-	clunet_send(address, prio, command, data, size);
+	clunet_send_fake(src_address, dst_address, prio, command, data, size);
+}
+
+void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
+	clunet_send_fake_fairy(CLUNET_DEVICE_ID, address, prio, command, data, size);
 }
 

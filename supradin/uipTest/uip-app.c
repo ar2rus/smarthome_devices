@@ -114,15 +114,36 @@ void uip_udp_appcall(void){
 				s->timer = UDP_DATA_MAXAGE;
 			
 				if (uip_datalen() == sizeof(supradin_header_t) + ua->size){
-					clunet_send_fairy(ua->dst_address, ua->prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
-					//while(clunet_ready_to_send());
 					
+					//здесь реализованы 2 подхода:
+					//1) сообщения отправляемые модулем супрадин (ip = 0, в поле src_prio -> приоритет команды)
+					//2) сообщения отправляемые мостом между сетями ethernet <-> supradin (ip реальный, в поле src_prio -> адрес отправителя)
+					//Для использования моста необходимо передавать ненулевой IP адрес в пакете, а также следует не забывать указывать src_address устройства,
+					//при этом приоритет сообщения используется дефолтный
+					
+					unsigned char src_address;
+					unsigned char prio;
+					void* ip_;
+					if (ua->ip4[0] == 0 && ua->ip4[1] == 0){	//supradin
+						src_address = CLUNET_DEVICE_ID;	//отправляем от имени Supradin
+						prio = ua->prio;				//используем переданный приоритет
+						ip_ = &uip_udp_conn->ripaddr;	//добавляем IP-адрес клиента, подключенного к supradin
+					}else{										//bridge
+						src_address = ua->src_address;	//отправляем от имени отправителя
+						prio = CLUNET_PRIORITY_MESSAGE; //используем приоритет по умолчанию
+						ip_ = &ua->ip4;					//используем переданный IP-адрес устройства
+					}
+					
+					clunet_send_fake_fairy(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					//while(clunet_ready_to_send());
+	
 					//copy src address directly to buffer (in client -> check src_id == CLUNET_DEVICE_ID and get ip then)
 					supradin_header_t *sb = ((supradin_header_t *)&supradin_buffer);
-					uip_ipaddr_copy(&sb->ip4, &uip_udp_conn->ripaddr);
-					
+					uip_ipaddr_copy(&sb->ip4, ip_);
+	
 					//queue to send by udp
-					clunet_data_received(CLUNET_DEVICE_ID, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					clunet_data_received(src_address, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+
 				}
 			}
 			break;

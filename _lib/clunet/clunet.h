@@ -484,10 +484,16 @@ volatile char dataToRead[CLUNET_READ_BUFFER_SIZE];
 // Инициализация
 void clunet_init();
 
-// Отправка пакета
+// Отправка пакета от любого имени
+//void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size);
+
+// Отправка пакета от своего имени
 void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size);
 
-// Отправка пакета предварительно дождавшись отправки предыдущего сообщения
+// Отправка пакета от любого имени предварительно дождавшись отправки предыдущего сообщения
+//void clunet_send_fake_fairy(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size);
+
+// Отправка пакета от своего имени предварительно дождавшись отправки предыдущего сообщения
 void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size);
 
 // Возвращает 0, если готов к передаче, иначе приоритет текущей задачи
