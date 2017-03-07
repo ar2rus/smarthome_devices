@@ -159,7 +159,7 @@ int16_t  T = 0xFFFF;
 uint32_t P= 0xFFFFFFFF;
 uint16_t H = 0xFFFF;
 uint16_t L = 0xFFFF;
-uint16_t VCC;
+uint16_t VCC = 0xFFFF;
 
 void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];

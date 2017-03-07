@@ -17,6 +17,8 @@ char udp_buffer[CLUNET_BUFFER_SIZE];
 
 void clunetMulticastBegin(){
   clunetUDP.beginMulticast(WiFi.localIP(), clunetMulticastIP, CLUNET_PORT);
+
+  clunetMulticastSend(CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_BOOT_COMPLETED, 0, 0);
 }
 
 char clunetMulticastHandleMessages(clunet_msg* msg){
