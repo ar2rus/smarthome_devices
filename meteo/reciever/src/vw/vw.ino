@@ -155,11 +155,13 @@ void setup() {
 }
 
 
-int16_t  T = 0xFFFF;
-uint32_t P= 0xFFFFFFFF;
+int16_t  T = 0xFFFFFFFF;
+uint32_t P = 0xFFFFFFFF;
 uint16_t H = 0xFFFF;
 uint16_t L = 0xFFFF;
 uint16_t VCC = 0xFFFF;
+
+uint32_t m = 0xFFFFFFFF;
 
 void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];
@@ -168,7 +170,9 @@ void loop() {
    if (vw_get_message(buf, &buflen)) { // Non-blocking
       digitalWrite(2, LOW); // Flash a light to show received good message
 
+      m = millis();
       //Serial.println("recieved rf");
+      clunetMulticastSend(CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
       
       BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
       BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
@@ -184,7 +188,8 @@ void loop() {
       T = BME280_compensate_T_int32(ut);                             //*100
       P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
       H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
-      
+
+      //delay(100);
       digitalWrite(2, HIGH);
     }
 
@@ -194,9 +199,9 @@ void loop() {
         case CLUNET_COMMAND_TEMPERATURE:{
             if ((msg.size==1 && msg.data[0] == 0) 
                   || (msg.size == 2 && msg.data[0]==1 && msg.data[1]==2)){  //all devices or bmp/bme devices
-                char buf[4];
+                char buf[2+sizeof(T)];
                 buf[0] = 1; buf[1] = 2; //bmp/bme
-                memcpy(&buf[2], &T, 2);
+                memcpy(&buf[2], &T, sizeof(T));
                 clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
             }
           }
@@ -224,6 +229,10 @@ void loop() {
           if (msg.size == 0){
             clunetMulticastSend(msg.src_address, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
           }
+        }
+        break;
+        case CLUNET_COMMAND_DEBUG:{
+          clunetMulticastSend(msg.src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
         }
         break;
       }
