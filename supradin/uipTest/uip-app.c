@@ -31,6 +31,8 @@ void uip_app_init(void){
 void uip_tcp_appcall(void){
 }
 
+char use_ip = 0;
+
 void uip_udp_appcall(void){
  if (uip_newdata()){
 	 
@@ -134,15 +136,14 @@ void uip_udp_appcall(void){
 						ip_ = &ua->ip4;					//используем переданный IP-адрес устройства
 					}
 					
-					clunet_send_fake_fairy(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					//clunet_send_fake_fairy(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					clunet_send_fairy(ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					
+					
 					//while(clunet_ready_to_send());
 	
-					//copy src address directly to buffer (in client -> check src_id == CLUNET_DEVICE_ID and get ip then)
-					supradin_header_t *sb = ((supradin_header_t *)&supradin_buffer);
-					uip_ipaddr_copy(&sb->ip4, ip_);
-	
-					//queue to send by udp
-					clunet_data_received(src_address, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					//queue to send by udp with ip
+					clunet_data_received_(ip_, src_address, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
 
 				}
 			}
@@ -170,9 +171,16 @@ void uip_udp_appcall(void){
 	}
 }
 
-//here we get clunet messages and queue them to udp sending
-void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
+void clunet_data_received_(uint16_t* ip, unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
+		
 		supradin_header_t *sh = ((supradin_header_t *)&supradin_buffer);
+		
+		if (ip){
+			uip_ipaddr_copy(&sh->ip4, ip);
+		}else{
+			sh->ip4[0] = 0;
+			sh->ip4[1] = 0;
+		}
 		
 		sh->src_address = src_address;
 		sh->dst_address = dst_address;
@@ -190,6 +198,11 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 				s->state = STATE_WAITING;
 			}
 		}
+}
+
+//here we get clunet messages and queue them to udp sending
+void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
+	clunet_data_received_(0, src_address, dst_address, command, data, size);
 }
  
 /*---------------------------------------------------------------------------*/
