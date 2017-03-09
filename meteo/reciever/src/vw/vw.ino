@@ -94,6 +94,24 @@ IPAddress ip(192,168,1,121);  //Node static IP
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
+
+int32_t T;
+uint32_t P;
+uint16_t H;
+uint16_t L;
+uint16_t VCC;
+
+//время получения последних данных
+uint32_t M = 0xFFFFFFFF;
+
+void reset(){
+  T  = 0xFFFFFFFF;
+  P = 0xFFFFFFFF;
+  H = 0xFFFF;
+  L = 0xFFFF;
+  VCC = 0xFFFF;
+}
+
 void setup() {
   Serial.begin(115200);
   
@@ -140,6 +158,8 @@ void setup() {
   
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
+
+  reset();
   
   vw_set_rx_pin(14);
   vw_set_rx_inverted(1);
@@ -154,26 +174,35 @@ void setup() {
   clunetMulticastBegin();
 }
 
+void sendMeteoInfo(unsigned char address){
+    char buf[9];
+    buf[0] = ((L==0xFFFF ? 0 : 1) << 3)
+           | ((P==0xFFFFFFFF ? 0 : 1) << 2) 
+           | ((H==0xFFFF ? 0 : 1) << 1) 
+           | ((T==0xFFFFFFFF ? 0 : 1) << 0);
 
-int16_t  T = 0xFFFFFFFF;
-uint32_t P = 0xFFFFFFFF;
-uint16_t H = 0xFFFF;
-uint16_t L = 0xFFFF;
-uint16_t VCC = 0xFFFF;
-
-uint32_t m = 0xFFFFFFFF;
+    int16_t T16 = (int16_t)T;
+    memcpy(&buf[1], &T16, sizeof(T16));
+    memcpy(&buf[3], &H, sizeof(H));
+    int16_t P16 = P/100;
+    memcpy(&buf[5], &P16, sizeof(P16));
+    memcpy(&buf[7], &L, sizeof(L));
+    clunetMulticastSend(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
+}
 
 void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];
     uint8_t buflen = VW_MAX_MESSAGE_LEN;
 
-   if (vw_get_message(buf, &buflen)) { // Non-blocking
+    if (millis()-M > 10*60*1000){ //10 min
+        reset();
+    }
+
+    if (vw_get_message(buf, &buflen)) { // Non-blocking
       digitalWrite(2, LOW); // Flash a light to show received good message
 
-      m = millis();
-      //Serial.println("recieved rf");
-      clunetMulticastSend(CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
-      
+      uint32_t m = millis();
+
       BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
       BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
       BME280_S32_t uh = ((uint32_t)buf[6]<<8) | (uint32_t)buf[7];
@@ -189,7 +218,12 @@ void loop() {
       P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
       H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
 
-      //delay(100);
+      if (m-M > 1 * 1000){  //прошло больше секунды -> это не дублирующее сообщение
+        sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
+      }
+
+      M = m;
+      
       digitalWrite(2, HIGH);
     }
 
@@ -199,9 +233,14 @@ void loop() {
         case CLUNET_COMMAND_TEMPERATURE:{
             if ((msg.size==1 && msg.data[0] == 0) 
                   || (msg.size == 2 && msg.data[0]==1 && msg.data[1]==2)){  //all devices or bmp/bme devices
-                char buf[2+sizeof(T)];
-                buf[0] = 1; buf[1] = 2; //bmp/bme
-                memcpy(&buf[2], &T, sizeof(T));
+                
+                int16_t T16 = (int16_t)T;
+                char buf[3+sizeof(T16)];
+                buf[0] = 1; //num of devices
+                buf[1] = T==0xFFFFFFFF ? 0xFF : 2; //error / bmp/bme
+                buf[2] = 0; //device id
+                
+                memcpy(&buf[3], &T16, sizeof(T16));
                 clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
             }
           }
@@ -231,7 +270,14 @@ void loop() {
           }
         }
         break;
+        case CLUNET_COMMAND_METEO:{
+          if (msg.size == 0){
+            sendMeteoInfo(msg.src_address);
+          }
+        }
+        break;
         case CLUNET_COMMAND_DEBUG:{
+          uint32_t m = millis() - M;
           clunetMulticastSend(msg.src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
         }
         break;
