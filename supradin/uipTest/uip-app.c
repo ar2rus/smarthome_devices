@@ -31,8 +31,6 @@ void uip_app_init(void){
 void uip_tcp_appcall(void){
 }
 
-char use_ip = 0;
-
 void uip_udp_appcall(void){
  if (uip_newdata()){
 	 
@@ -117,33 +115,43 @@ void uip_udp_appcall(void){
 			
 				if (uip_datalen() == sizeof(supradin_header_t) + ua->size){
 					
-					//здесь реализованы 2 подхода:
-					//1) сообщения отправляемые модулем супрадин (ip = 0, в поле src_prio -> приоритет команды)
+					//здесь реализованы 2 случая:
+					//1) сообщения отправляемые клиентами модуля супрадин (ip = 0, в поле src_prio -> приоритет команды)
 					//2) сообщения отправляемые мостом между сетями ethernet <-> supradin (ip реальный, в поле src_prio -> адрес отправителя)
-					//Для использования моста необходимо передавать ненулевой IP адрес в пакете, а также следует не забывать указывать src_address устройства,
+					//Для использования моста необходимо передавать ненулевой IP адрес в пакете, а также следует не забывать указывать src_address устройства в поле prio,
 					//при этом приоритет сообщения используется дефолтный
 					
 					unsigned char src_address;
 					unsigned char prio;
-					void* ip_;
+					void* ip4;
 					if (ua->ip4[0] == 0 && ua->ip4[1] == 0){	//supradin
 						src_address = CLUNET_DEVICE_ID;	//отправляем от имени Supradin
 						prio = ua->prio;				//используем переданный приоритет
-						ip_ = &uip_udp_conn->ripaddr;	//добавляем IP-адрес клиента, подключенного к supradin
+						ip4 = &uip_udp_conn->ripaddr;	//добавляем IP-адрес клиента, подключенного к supradin
 					}else{										//bridge
 						src_address = ua->src_address;	//отправляем от имени отправителя
 						prio = CLUNET_PRIORITY_MESSAGE; //используем приоритет по умолчанию
-						ip_ = &ua->ip4;					//используем переданный IP-адрес устройства
+						ip4 = &ua->ip4;					//используем переданный IP-адрес устройства
 					}
 					
-					//clunet_send_fake_fairy(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
-					clunet_send_fairy(ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					//напрямую копируем ip в буфер для отправки клиентам 
+					supradin_header_t *sh = ((supradin_header_t *)&supradin_buffer);
+					uip_ipaddr_copy(&sh->ip4, ip4);
+					
+					//вызываем скрытый метод отправки от любого имени
+					clunet_send_fake_fairy(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					
+					//далее мы получим это сообщение в методе clunet_data_received
+					//ip заранее подставлен в буфер для отправки
+					
+					//Внимание IP может быть только у src_id=0 или src_id>0x80
+					
 					
 					
 					//while(clunet_ready_to_send());
 	
 					//queue to send by udp with ip
-					clunet_data_received_(ip_, src_address, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					//clunet_data_received_(ip_, src_address, ua->dst_address, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
 
 				}
 			}
@@ -171,38 +179,39 @@ void uip_udp_appcall(void){
 	}
 }
 
-void clunet_data_received_(uint16_t* ip, unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
-		
-		supradin_header_t *sh = ((supradin_header_t *)&supradin_buffer);
-		
-		if (ip){
-			uip_ipaddr_copy(&sh->ip4, ip);
-		}else{
-			sh->ip4[0] = 0;
-			sh->ip4[1] = 0;
-		}
-		
-		sh->src_address = src_address;
-		sh->dst_address = dst_address;
-		sh->command = command;
-		sh->size = size;
-		
-		memcpy(supradin_buffer + sizeof(supradin_header_t), data, size);
-		supradin_frame_size = sizeof(supradin_header_t) + size;
-		
-		//set connections as 'waiting'
-		for (uint8_t i = 0; i < UIP_UDP_CONNS; i++) {
-			struct uip_udp_conn *c = &uip_udp_conns[i];
-			if (c->lport == HTONS(SUPRADIN_UDP_DATA_PORT)){
-				uip_udp_appstate_t *s = &c->appstate;
-				s->state = STATE_WAITING;
-			}
-		}
-}
-
 //here we get clunet messages and queue them to udp sending
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
-	clunet_data_received_(0, src_address, dst_address, command, data, size);
+	
+	//check all connections are empty
+	for (uint8_t i = 0; i < UIP_UDP_CONNS; i++) {
+		struct uip_udp_conn *c = &uip_udp_conns[i];
+		if (c->lport == HTONS(SUPRADIN_UDP_DATA_PORT)){
+			uip_udp_appstate_t *s = &c->appstate;
+			if (s->state == STATE_WAITING){
+				return;	//если кому-то еще не отправили данные -> пропускаем пакет (хотя, по-хорошему, надо положить в очередь)
+			}
+		}
+	}
+	
+	
+	supradin_header_t *sh = ((supradin_header_t *)&supradin_buffer);
+	
+	sh->src_address = src_address;
+	sh->dst_address = dst_address;
+	sh->command = command;
+	sh->size = size;
+	
+	memcpy(supradin_buffer + sizeof(supradin_header_t), data, size);
+	supradin_frame_size = sizeof(supradin_header_t) + size;
+	
+	//set connections as 'waiting'
+	for (uint8_t i = 0; i < UIP_UDP_CONNS; i++) {
+		struct uip_udp_conn *c = &uip_udp_conns[i];
+		if (c->lport == HTONS(SUPRADIN_UDP_DATA_PORT)){
+			uip_udp_appstate_t *s = &c->appstate;
+			s->state = STATE_WAITING;
+		}
+	}
 }
  
 /*---------------------------------------------------------------------------*/
