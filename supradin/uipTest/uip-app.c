@@ -134,12 +134,14 @@ void uip_udp_appcall(void){
 						ip4 = &ua->ip4;					//используем переданный IP-адрес устройства
 					}
 					
-					//напрямую копируем ip в буфер для отправки клиентам 
+					
+					//ждем завершения текущих отправок
+					while(clunet_ready_to_send());
+					//напрямую копируем ip в буфер для отправки клиентам
 					supradin_header_t *sh = ((supradin_header_t *)&supradin_buffer);
 					uip_ipaddr_copy(&sh->ip4, ip4);
-					
 					//вызываем скрытый метод отправки от любого имени
-					clunet_send_fake_fairy(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
+					clunet_send_fake(src_address, ua->dst_address, prio, ua->command, uip_appdata + sizeof(supradin_header_t), ua->size);
 					
 					//далее мы получим это сообщение в методе clunet_data_received
 					//ip заранее подставлен в буфер для отправки

@@ -306,12 +306,8 @@ void clunet_set_on_data_received_sniff(void (*f)(unsigned char src_address, unsi
 	on_data_received_sniff = f;
 }
 
-void clunet_send_fake_fairy(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size){
-	while(clunet_ready_to_send());
-	clunet_send_fake(src_address, dst_address, prio, command, data, size);
-}
-
 void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
-	clunet_send_fake_fairy(CLUNET_DEVICE_ID, address, prio, command, data, size);
+	while(clunet_ready_to_send());
+	clunet_send(address, prio, command, data, size);
 }
 

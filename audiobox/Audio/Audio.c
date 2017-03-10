@@ -49,38 +49,13 @@ ISR(TIMER_COMP_B_VECTOR){
 	}
 }
 
-char encoderValue = 0;
+unsigned char encoderValue = 0;
+
+static signed char encoder_table[4][4] = {{0, 1, -1, 0}, {-1, 0, 0, 1}, {1, 0, 0, -1}, {0, -1, 1, 0}};
 
 signed char readEncoder(){
-	char newValue = bit(INPORT(ENCODER_1_PORT), ENCODER_1_PIN) | (bit(INPORT(ENCODER_2_PORT), ENCODER_2_PIN) << 1);
-	signed char value = 0;
-	switch(encoderValue){
-		case 2: {
-			if(newValue == 3) value = -1;
-			else
-			if(newValue == 0) value =  1;
-			break;
-		}
-		case 0:{
-			if(newValue == 2) value = -1;
-			else
-			if(newValue == 1) value =  1;
-			break;
-		}
-		case 1:{
-			if(newValue == 0) value = -1;
-			else
-			if(newValue == 3) value =  1;
-			break;
-		}
-		case 3:{
-			if(newValue == 1) value = -1;
-			else
-			if(newValue == 2) value =  1;
-			break;
-		}
-	}
-	
+	unsigned char newValue = bit(INPORT(ENCODER_1_PORT), ENCODER_1_PIN) | (bit(INPORT(ENCODER_2_PORT), ENCODER_2_PIN) << 1);
+	signed char value = encoder_table[encoderValue][newValue];
 	encoderValue = newValue;
 	return value;
 }
