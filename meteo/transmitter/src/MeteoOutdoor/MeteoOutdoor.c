@@ -63,19 +63,19 @@ int main(void){
 		 //ADSC = 1 Запускаем преобразование
 		 //ADPS2..0 = 6 Делитель частоты на 128
 		 ADCSRA = (1<<ADEN)|(1<<ADSC)|(7<<ADPS0);	
-		 
-		 //Ждем завершение преобразования АЦП
-		 while (!(ADCSRA & (1<<ADIF)));
-		 ADCSRA = 0;
-		 
-		 uint8_t lo = ADCL;
-		 uint8_t hi = ADCH;
-		 
+		 		 //Ждем завершение преобразования АЦП
+				 while (ADCSRA & (1<<ADSC));
+				 uint8_t lo = ADCL;
+				 uint8_t hi = ADCH;
+				 //вырубаем ацп
+				 ADCSRA = 0;
 		 uint8_t size_0 = bme280_readValues((char*)(&data[0]));
 		 if (size_0){
 		 	 uint8_t size_1 = bht1750_readValues((char*)(&data[size_0]));
 		 	 if (size_1){
 				size_0 += size_1;
+				
+
 				
 				//обратное вычисление:
 				//меряем внутренние 1,1В относительно AREF напряжения с батареи
@@ -103,12 +103,12 @@ int main(void){
 		 }
 
 		 //спим 56+- сек
-// 		 for (int i=0; i<7; i++){
-// 			 wdt_enable(WDTO_8S);
-// 			 WDTCSR |= _BV(WDIE);  // разрешаем прерывания по ватчдогу. Иначе будет резет.
-// 					  
-// 			sleep_enable(); // разрешаем сон
-// 			sleep_cpu();    // спать!
-// 		 }
+		 for (int i=0; i<7; i++){
+			 wdt_enable(WDTO_8S);
+			 WDTCSR |= _BV(WDIE);  // разрешаем прерывания по ватчдогу. Иначе будет резет.
+					  
+			sleep_enable(); // разрешаем сон
+			sleep_cpu();    // спать!
+		 }
     }
 }

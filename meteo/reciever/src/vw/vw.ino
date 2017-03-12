@@ -219,11 +219,12 @@ void loop() {
       H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
 
       if (m-M > 1 * 1000){  //прошло больше секунды -> это не дублирующее сообщение
-        //sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
+        sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
       }
 
       M = m;
-      
+
+      delay(100);
       digitalWrite(2, HIGH);
     }
 
