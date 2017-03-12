@@ -93,8 +93,8 @@
 #define CHARGE_HOUR 10
 #define CHARGE_MINUTE 0
 
-//6 hours, in seconds
-#define CHARGE_DURATION 21600
+//8 hours, in seconds
+#define CHARGE_DURATION 28800
 
 
 void start_charge(unsigned int num_seconds, unsigned char schedule);
