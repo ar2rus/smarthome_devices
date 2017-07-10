@@ -3,6 +3,8 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#include <ESP8266WebServer.h>
+
 #include "ClunetMulticast.h"
 
 const char *ssid = "espNet";
@@ -11,6 +13,8 @@ const char *pass = "esp8266A";
 IPAddress ip(192,168,1,122);  //Node static IP
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
+
+ESP8266WebServer server(80);
 
 
 const int BUTTON_PIN = 12;
@@ -79,8 +83,77 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   clunetMulticastBegin();
+
+   server.on("/", []() {  //toggle
+      char r = 404;
+      if (server.method() == HTTP_GET && server.args()==0){
+        switchExecute(0x02);
+        switchResponse(CLUNET_BROADCAST_ADDRESS);
+        r = 200;
+      }
+      server_response(r);
+  });
+
+   server.on("/on", []() {  //on and dimmer
+      char r = 404;
+      if (server.method() == HTTP_GET){
+        switch (server.args()){
+          case 0:
+            switchExecute(0x01);
+            switchResponse(CLUNET_BROADCAST_ADDRESS);
+            r = 200;
+            break;
+          case 1:
+            if (server.argName(0) == "d"){  //dimmer: 0 - 100
+               //check digits in arg value
+               char all_digits = 1;
+               for(byte i=0;i<server.arg(0).length();i++){
+                  if(!isDigit(server.arg(0).charAt(i))){
+                    all_digits = 0;
+                  }
+               }
+
+             if (all_digits){
+               if (dimmerExecute(server.arg(0).toInt())){
+                dimmerResponse(CLUNET_BROADCAST_ADDRESS);
+                r = 200;
+               }
+             }
+            }
+            break;
+        }
+      }
+      server_response(r);
+  });
+
+   server.on("/off", []() {  //off
+      char r = 404;
+      if (server.method() == HTTP_GET && server.args()==0){
+        switchExecute(0x00);
+        switchResponse(CLUNET_BROADCAST_ADDRESS);
+        r = 200;
+      }
+      server_response(r);
+  });
+  
+  server.onNotFound([]() {
+      server_response(404);
+  });
+  
+  server.begin();
 }
 
+void server_response(unsigned int response){
+  switch (response){
+    case 200:
+      server.send(200, "text/plain", "OK\n\n");
+    break;
+    default:
+    //case 404:
+      server.send(404, "text/plain", "File Not Found\n\n");
+    break;
+  }
+}
 
 
 const char RELAY_0_ID = 1;
@@ -137,33 +210,40 @@ void buttonResponse(unsigned char address){
 
 unsigned long button_pressed_time = 0;
 
+const int delay_before_toggle = 25;
 const int delay_before_pwm = 500;
 const int pwm_down_up_cycle_time = 4000;
 const int pwm_down_up_cycle_time_2 = pwm_down_up_cycle_time / 2;
 
 void loop() {
   int button_tmp = digitalRead(BUTTON_PIN);
+
   if (button_state != button_tmp){
-    button_state = button_tmp;
-    buttonResponse(CLUNET_BROADCAST_ADDRESS);
-    if (button_state == LOW){
-      switchExecute(0x02);
-      if (light_state){
-        button_pressed_time = millis();
+    if (button_tmp == LOW){
+      unsigned long m = millis();
+      if (!button_pressed_time){
+          button_pressed_time = m;
       }
-      switchResponse(CLUNET_BROADCAST_ADDRESS);
-    }else{
-      if (button_pressed_time > delay_before_pwm){
+      if (m - button_pressed_time >= delay_before_toggle){
+          button_state = button_tmp;
+          buttonResponse(CLUNET_BROADCAST_ADDRESS);
+          switchExecute(0x02);
+          switchResponse(CLUNET_BROADCAST_ADDRESS);
+      }
+    }
+  }
+
+  if (button_tmp == HIGH){
+      button_state = button_tmp;
+      if (button_pressed_time >= delay_before_pwm){
         dimmerResponse(CLUNET_BROADCAST_ADDRESS);
       }
       button_pressed_time = 0;
-    }
-    delay(5);  //дребезг
   }
-
+  
   if (button_pressed_time){
     unsigned long m = millis();
-    if (m - button_pressed_time > delay_before_pwm){
+    if (m - button_pressed_time >= delay_before_pwm){
       int v0 = (m - button_pressed_time - delay_before_pwm) % pwm_down_up_cycle_time;
       int v1 = v0 % pwm_down_up_cycle_time_2;
       if (v0 >= pwm_down_up_cycle_time_2){ //up
@@ -217,6 +297,7 @@ void loop() {
           }
       }
     }
-  
+
+  server.handleClient();
   ArduinoOTA.handle();
 }

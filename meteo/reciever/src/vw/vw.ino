@@ -3,6 +3,8 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#include <ESP8266WebServer.h>
+
 #include "VirtualWire.h"
 #include "ClunetMulticast.h"
 
@@ -94,6 +96,7 @@ IPAddress ip(192,168,1,121);  //Node static IP
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
+ESP8266WebServer server(80);
 
 int32_t T;
 uint32_t P;
@@ -172,6 +175,27 @@ void setup() {
   vw_rx_start();   // Start the receiver PLL running
 
   clunetMulticastBegin();
+
+  server.on("/", []() {
+      String message;
+      if (M==0xFFFFFFFF){
+          message = "No data recieved";
+      }else{
+        message = "Time: " + String((millis()-M)/1000) + " sec\n";
+        message += "\nT: " +  (T==0xFFFFFFFF ? "-" : String(T/100.0) + " *C");
+        message += "\nH: " +  (H==0xFFFF ? "-" : String(H/10.0) + " %");
+        message += "\nP: " +  (P==0xFFFFFFFF ? "-" : String(P/1000.0) + " mm Hg");
+        message += "\nL: " +  (L==0xFFFF ? "-" : String(L) + " Lx");
+        message += "\nV: " +  (VCC==0xFFFF ? "-" : String(VCC/100.0) + " V");
+      }
+      server.send(200, "text/plain", message);
+  });
+  
+  server.onNotFound([]() {
+       server.send(404, "text/plain", "File Not Found\n\n");
+  });
+  
+  server.begin();
 }
 
 void sendMeteoInfo(unsigned char address){
@@ -194,7 +218,7 @@ void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];
     uint8_t buflen = VW_MAX_MESSAGE_LEN;
 
-    if (millis()-M > 10*60*1000){ //10 min
+    if (millis()-M > 15*60*1000){ //15 min
         reset();
     }
 
@@ -285,6 +309,7 @@ void loop() {
       }
     }
 
+    server.handleClient();
     ArduinoOTA.handle();
 }
 
