@@ -216,33 +216,42 @@ const int pwm_down_up_cycle_time = 4000;
 const int pwm_down_up_cycle_time_2 = pwm_down_up_cycle_time / 2;
 
 void loop() {
+  
   int button_tmp = digitalRead(BUTTON_PIN);
+  unsigned long m = millis();
 
   if (button_state != button_tmp){
     if (button_tmp == LOW){
-      unsigned long m = millis();
+      
       if (!button_pressed_time){
           button_pressed_time = m;
       }
-      if (m - button_pressed_time >= delay_before_toggle){
+      if (m - button_pressed_time >= delay_before_toggle){  //HIGH->LOW
           button_state = button_tmp;
           buttonResponse(CLUNET_BROADCAST_ADDRESS);
           switchExecute(0x02);
           switchResponse(CLUNET_BROADCAST_ADDRESS);
+          if (!light_state){ //погасили
+            button_pressed_time = 0;  //таймер и диммер не нужны
+          }
+      }
+    }else{  //LOW->HIGH
+       button_state = button_tmp;
+       buttonResponse(CLUNET_BROADCAST_ADDRESS);
+       
+       if (button_pressed_time){
+         if (m - button_pressed_time >= delay_before_pwm){
+            dimmerResponse(CLUNET_BROADCAST_ADDRESS);
+          }
       }
     }
   }
 
   if (button_tmp == HIGH){
-      button_state = button_tmp;
-      if (button_pressed_time >= delay_before_pwm){
-        dimmerResponse(CLUNET_BROADCAST_ADDRESS);
-      }
       button_pressed_time = 0;
   }
   
   if (button_pressed_time){
-    unsigned long m = millis();
     if (m - button_pressed_time >= delay_before_pwm){
       int v0 = (m - button_pressed_time - delay_before_pwm) % pwm_down_up_cycle_time;
       int v1 = v0 % pwm_down_up_cycle_time_2;
