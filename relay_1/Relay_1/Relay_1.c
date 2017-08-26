@@ -1,7 +1,9 @@
 
 #include "Relay_1.h"
 
-volatile unsigned int systime = 0;
+#include <avr/wdt.h>
+
+volatile unsigned char systime = 0;
 
 
 //определяет кол-во активных 1-wire устройств; запрашивается только 1 раз после инициализации.
@@ -104,7 +106,7 @@ char temperatureRequest(OWI_device* device, signed int* temperature){
 	
 	clunet_wait_sending();
 	
-	if (DS18B20_ReadDeviceCache(OWI_BUS, (*device).id, temperature, systime) != READ_CRC_ERROR){
+	if (DS18B20_ReadDeviceCache(OWI_BUS, (*device).id, temperature) != READ_CRC_ERROR){
 		return 1;
 	}
 	return 0;
@@ -123,7 +125,7 @@ void temperatureResponse(unsigned char address, OWI_device* devices, unsigned ch
 		
 		clunet_wait_sending();
 		
-		if (DS18B20_ReadDeviceCache(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9], systime) != READ_CRC_ERROR){
+		if (DS18B20_ReadDeviceCache(OWI_BUS, (*devices).id, (signed int *)&temperatureInfo[pos + 9]) != READ_CRC_ERROR){
 			temperatureInfo[pos] = 0; //1-wire
 			memcpy(&temperatureInfo[pos + 1], (*devices).id, sizeof((*devices).id));
 			cnt++;
@@ -364,10 +366,10 @@ ISR(TIMER_COMP_VECTOR){
 
 
 
-unsigned int hf_time = 0;
+unsigned char cur_time = 0;
 
 int main(void){
-	
+	wdt_disable(); 
 	cli();
 	
 	RELAY_0_INIT;
@@ -392,16 +394,19 @@ int main(void){
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;
 		
+	wdt_enable(WDTO_2S);
 	while (1){
 		if (!clunet_buffered_is_empty()){
 			cmd(clunet_buffered_pop());
 		}
 		
-		if (systime != hf_time){
-			hf_time = systime;
+		if (systime != cur_time){
+			cur_time = systime;
 			
 			heatfloor_tick_second();
+			DS18B20_TickSecondForCache();
 		}
+		wdt_reset();
 	}
 	return 0;
 }

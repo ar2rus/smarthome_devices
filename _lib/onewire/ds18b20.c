@@ -137,12 +137,18 @@ unsigned char DS18B20_StartDeviceConvertingAndRead(unsigned char bus, unsigned c
 }
 
 
-unsigned int cacheTime = 100; //just for cache reset
+unsigned char cacheTime = 0;
 
-unsigned char DS18B20_ReadDeviceCache(unsigned char bus, unsigned char* id, signed int* temperature, unsigned int curTime){
-	if (curTime - cacheTime > 3){
-		cacheTime = curTime;
+unsigned char DS18B20_ReadDeviceCache(unsigned char bus, unsigned char* id, signed int* temperature){
+	if (!cacheTime){
 		DS18B20_StartAllDevicesConverting(bus);
+		cacheTime = DS18B20_CACHE_TIME + 1;
 	}
 	return DS18B20_ReadDevice(bus,id,temperature);
+}
+
+void DS18B20_TickSecondForCache(){
+	if (cacheTime){
+		cacheTime--;
+	}
 }
