@@ -47,6 +47,8 @@
 #define TIMER_NUM_TICKS (unsigned int)(TIMER_DELAY * F_CPU / TIMER_PRESCALER)
 #define TIMER_INIT {TCCR1B = 0; TCNT1 = 0; OCR1A = TIMER_NUM_TICKS; set_bit(TCCR1B, CS11); unset_bit2(TCCR1B, CS10, CS12); /*8x prescaler*/}
 
+#define TIMER_REG TCNT1
+
 #define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)
 #define DISABLE_TIMER_CMP_A unset_bit(TIMSK, OCIE1A)
 

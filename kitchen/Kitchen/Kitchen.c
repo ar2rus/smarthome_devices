@@ -92,12 +92,42 @@ void switchExecute(char id, char command){
 	}
 }
 
-ISR(TIMER_COMP_VECTOR){
+ISR(TIMER1_COMPA_vect){
+	sei();
+	
 	++systime;
 	
-	TIMER_REG = 0;	//reset counter
+	if (necCheckSignal()){
+		OCR1B  = TIMER_REG + NEC_TIMER_CMP_TICKS;
+		ENABLE_TIMER_CMP_B;
+	}
+	
+		uint8_t nec_address;
+		uint8_t nec_command;
+		uint8_t nec_repeated;
+		
+		if (necValue(&nec_address, &nec_command, &nec_repeated)){
+			char data[3];
+			data[0] = 0x00;
+			data[1] = nec_address;
+			if (nec_repeated){
+				data[1] |= _BV(7);
+			}
+			data[2] = nec_command;
+			clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
+		}
+		
+		
+		OCR1A = TIMER_REG + TIMER_NUM_TICKS;
 }
 
+ISR(TIMER_COMP_B_VECTOR){
+	if (necReadSignal()){
+		OCR1B += NEC_TIMER_CMP_TICKS;
+		}else{
+		DISABLE_TIMER_CMP_B;
+	}
+}
 
 void cmd(clunet_msg* m){
 	switch(m->command){
@@ -165,6 +195,11 @@ void cmd(clunet_msg* m){
 				}
 			}
 			break;
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
+			if (m->src_address == CLUNET_BROADCAST_ADDRESS){
+				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+			}
+			break;
 	}
 }
 
@@ -175,6 +210,7 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 		case CLUNET_COMMAND_HUMIDITY:
 		case CLUNET_COMMAND_BUTTON:
 		case CLUNET_COMMAND_DEVICE_STATE:
+		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
 			clunet_buffered_push(src_address, dst_address, command, data, size);
 	}
 }
