@@ -41,7 +41,6 @@ void power(char on){
 }
 
 
-uint8_t delayedResponseAddress = -1;
 int16_t delayedResponseCounterValue = -1;
 
 ISR(TIMER_COMP_VECTOR){
@@ -50,7 +49,7 @@ ISR(TIMER_COMP_VECTOR){
 	if (delayedResponseCounterValue >= 0){
 		if (--delayedResponseCounterValue < 0){
 			char d = 0xFF;
-			clunet_buffered_push(delayedResponseAddress, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &d, 1);
+			clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, &d, 1);
 		}
 	}
 	
@@ -75,8 +74,7 @@ void check_fm_channel(){
 
 void cmd(clunet_msg* m){
 	
-		//в выключенном состоянии разрешаем только
-		//CLUNET_COMMAND_POWER и CLUNET_COMMAND_CHANNEL
+		//в выключенном состоянии разрешаем только основные команды
 		if (!power_state){
 			switch (m->command){
 				case CLUNET_COMMAND_POWER:
@@ -91,7 +89,6 @@ void cmd(clunet_msg* m){
 		LED_ON;
 		
 		char response = 0;
-		char silent = (m->src_address == CLUNET_DEVICE_ID);
 		
 		switch(m->command){
 			
@@ -122,111 +119,113 @@ void cmd(clunet_msg* m){
 			break;
 			
 			case CLUNET_COMMAND_RC_BUTTON_PRESSED:
-				if (m->size == 3){
-					if (m->data[0] == 0x00){		//nec
-						if (m->data[1] == 0x00){	//address == 0, no repeats
-						char data[2];
-						switch(m->data[2]){
-							case 0xA2:	//toggle power
-								data[0] = 0x02;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, data, 1);
-								break;
-							case 0xE2:	//toggle mute
-								data[0] = 0x01;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_MUTE, data, 1);
-								break;
-							case 0x22:	//pad channel
-								data[0] = 0;
-								data[1] = 1;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 2);
-								break;
-							case 0xC2:	//fm channel
-								data[0] = 0;
-								data[1] = 4;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 2);
-								break;
-							case 0x30:	//treble up
-								data[0]=2;
-								data[1]=2;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-								break;
-							case 0x10:	//treble down
-								data[0]=2;
-								data[1]=3;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-								break;
-							case 0x18:	//bass up
-								data[0]=3;
-								data[1]=2;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-								break;
-							case 0x38:	//bass down
-								data[0]=3;
-								data[1]=3;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-								break;
-							case 0x7A:	//gain up
-								data[0]=1;
-								data[1]=2;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-								break;
-							case 0x5A:	//gain down
-								data[0]=1;
-								data[1]=3;
-								clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
-								break;
-							case 0x02:	//next
-								switch (lc75341_input_value()){
-									case 0:{		//android tablet
-										data[0] = 0x06;	//next
-										clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
-										break;
-									}
-									case 3:{		//fm tuner
-										data[0] = 0x02;
-										clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
-										break;
-									}
-								}
-								break;
-							case 0x98:	//prev
-								switch (lc75341_input_value()){
-									case 0:		//android tablet
-										data[0] = 0x05;	//next
-										clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
-										break;
-									case 3:		//fm tuner
-										data[0] = 0x03;
-										clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
-										break;
-								}
-								break;
-							case 0xA8:	//ok
-								switch (lc75341_input_value()){
-									case 0:		//android tablet
-										data[0] = 0x07;	//play/pause
-										clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
-										break;
-									case 3:		//fm tuner
-										break;
-								}
-								break;
-							}
-						}
-					
-						if ((m->data[1] & (~_BV(7))) == 0x00){	//address == 0, repeats allowed
+				if (m->src_address == IR_DEVICE_ID){
+					if (m->size == 3){
+						if (m->data[0] == 0x00){		//nec
+							if (m->data[1] == 0x00){	//address == 0, no repeats
 							char data[2];
 							switch(m->data[2]){
-								case 0x90:	//volume up
-									delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
-									data[0] = 2;
-									clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+								case 0xA2:	//toggle power
+									data[0] = 0x02;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, data, 1);
 									break;
-								case 0xE0:	//volume down
-									delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
-									data[0] = 3;
-									clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+								case 0xE2:	//toggle mute
+									data[0] = 0x01;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_MUTE, data, 1);
 									break;
+								case 0x22:	//pad channel
+									data[0] = 0;
+									data[1] = 1;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 2);
+									break;
+								case 0xC2:	//fm channel
+									data[0] = 0;
+									data[1] = 4;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 2);
+									break;
+								case 0x30:	//treble up
+									data[0]=2;
+									data[1]=2;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+									break;
+								case 0x10:	//treble down
+									data[0]=2;
+									data[1]=3;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+									break;
+								case 0x18:	//bass up
+									data[0]=3;
+									data[1]=2;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+									break;
+								case 0x38:	//bass down
+									data[0]=3;
+									data[1]=3;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+									break;
+								case 0x7A:	//gain up
+									data[0]=1;
+									data[1]=2;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+									break;
+								case 0x5A:	//gain down
+									data[0]=1;
+									data[1]=3;
+									clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_EQUALIZER, data, 2);
+									break;
+								case 0x02:	//next
+									switch (lc75341_input_value()){
+										case 0:{		//android tablet
+											data[0] = 0x06;	//next
+											clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
+											break;
+										}
+										case 3:{		//fm tuner
+											data[0] = 0x02;
+											clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
+											break;
+										}
+									}
+									break;
+								case 0x98:	//prev
+									switch (lc75341_input_value()){
+										case 0:		//android tablet
+											data[0] = 0x05;	//next
+											clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
+											break;
+										case 3:		//fm tuner
+											data[0] = 0x03;
+											clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_FM, data, 1);
+											break;
+									}
+									break;
+								case 0xA8:	//ok
+									switch (lc75341_input_value()){
+										case 0:		//android tablet
+											data[0] = 0x07;	//play/pause
+											clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_ANDROID, data, 1);
+											break;
+										case 3:		//fm tuner
+											break;
+									}
+									break;
+								}
+							}
+					
+							if ((m->data[1] & (~_BV(7))) == 0x00){	//address == 0, repeats allowed
+								char data[2];
+								switch(m->data[2]){
+									case 0x90:	//volume up
+										delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
+										data[0] = 2;
+										clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+										break;
+									case 0xE0:	//volume down
+										delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
+										data[0] = 3;
+										clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+										break;
+								}
 							}
 						}
 					}
@@ -530,7 +529,7 @@ void cmd(clunet_msg* m){
 			break;
 		}
 		
-		if (!silent){
+		if (m->src_address != CLUNET_DEVICE_ID){	//not silent
 			switch(response){
 				case 1:{
 					char channel = lc75341_input_value() + 1;	//0 channel -> to 1 channel
@@ -616,7 +615,7 @@ int main(void){
 		
 		data[0] = 0;
 		data[1] = 1;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_CHANNEL, data, 2);
+		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_CHANNEL, data, 2);
 	}
 	
 	lc75341_gain_dB(c.eq_gain);
@@ -637,7 +636,7 @@ int main(void){
 		//char data[2];
 		//data[0] = 0x00;
 		//data[1] = 30;		//30%
-		//clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 2);
+		//clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_VOLUME, data, 2);
 		
 		//muted by default
 	}
@@ -645,7 +644,7 @@ int main(void){
 	if (c.power < 0){
 		//power on, send response and write to eeprom, by default
 		char data = 1;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, &data, sizeof(data));
+		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_POWER, &data, sizeof(data));
 	}else{
 		power(c.power);
 	}

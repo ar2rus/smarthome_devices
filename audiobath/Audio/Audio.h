@@ -66,4 +66,7 @@ typedef struct{
 	uint8_t fm_controls;
 } config;
 
+#define IR_DEVICE_ID 0x1E
+
+
 #endif /* AUDIO_H_ */

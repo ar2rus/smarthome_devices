@@ -126,13 +126,13 @@ ISR(TIMER_COMP_A_VECTOR){
  		
  		data[0] = 2;
  		//src_address == CLUNET_DEVICE_ID -> silent
- 		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+ 		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_VOLUME, data, 1);
  	}else if (a < 0){
  		delayedResponseCounterValue = TIMER_SKIP_EVENTS_DELAY;
 		
  		data[0] = 3;
  		//src_address == CLUNET_DEVICE_ID -> silent
- 		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 1);
+ 		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_VOLUME, data, 1);
  	}
 	
 	if (necCheckSignal()){
@@ -151,7 +151,7 @@ ISR(TIMER_COMP_A_VECTOR){
 			data[1] |= _BV(7);
 		}
 		data[2] = nec_command;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, 3);
+		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, 3);
 	}
 
 	
@@ -202,8 +202,6 @@ static void cmd(clunet_msg* m){
 	LED_ON;
 	
 	char response = 0;
-	char silent = (m->src_address == CLUNET_DEVICE_ID);
-	char my_command = (m->src_address == CLUNET_BROADCAST_ADDRESS);
 	
 	switch(m->command){
 		
@@ -529,9 +527,8 @@ static void cmd(clunet_msg* m){
 		}
 		break;
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:{
-			if (my_command){
-				response = 20;
-			}
+			if (m->src_address == CLUNET_DEVICE_ID){
+				clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
 			
 			if (m->data[0] == 0x00){	//nec
 				char data[3];
@@ -655,11 +652,12 @@ static void cmd(clunet_msg* m){
 					}
 				}
 			}
+			}
 		}
 		break;
 	}
 	
-	if (!silent){
+	if (m->src_address != CLUNET_DEVICE_ID){	//not silent
 		char data[3];
 		switch(response){
 			case 1:{
@@ -698,10 +696,6 @@ static void cmd(clunet_msg* m){
 				fm_state_info* info = FM_state_info();
 				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
 				saveFMControls(info);
-			}
-			break;
-			case 20:{
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
 			}
 			break;
 		}
@@ -764,7 +758,7 @@ int main(void){
 		//char data[2];
 		//data[0] = 0x00;
 		//data[1] = 30;		//30%
-		//clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_VOLUME, data, 2);
+		//clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_VOLUME, data, 2);
 		
 		//muted by default
 	}
@@ -772,7 +766,7 @@ int main(void){
 	if (c.power < 0){
 		//power on, send response and write to eeprom, by default
 		char data = 1;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_POWER, &data, sizeof(data));
+		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_POWER, &data, sizeof(data));
 	}else{
 		power(c.power);
 	}

@@ -191,10 +191,12 @@ void cmd(clunet_msg* m){
 			}
 			break;
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
-			if (m->size == 3){
-				if (m->data[0] == 0x00 && m->data[1] == 0x00){
-					if (m->data[2] == 0x4A){
-						fan_button();
+			if (m->src_address == IR_DEVICE_ID){
+				if (m->size == 3){
+					if (m->data[0] == 0x00 && m->data[1] == 0x00){
+						if (m->data[2] == 0x4A){
+							fan_button();
+						}
 					}
 				}
 			}

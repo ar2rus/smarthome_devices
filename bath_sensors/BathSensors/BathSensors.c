@@ -118,7 +118,7 @@ ISR(TIMER_COMP_A_VECTOR){
 			data[1] |= _BV(7);
 		}
 		data[2] = nec_command;
-		clunet_buffered_push(CLUNET_BROADCAST_ADDRESS, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
+		clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
 	}
 		
 	
@@ -181,8 +181,8 @@ void cmd(clunet_msg* m){
 			}
 		break;
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
-			if (m->src_address == CLUNET_BROADCAST_ADDRESS){
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+			if (m->src_address == CLUNET_DEVICE_ID){
+				clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
 			}
 		break;
 		

@@ -114,7 +114,7 @@ ISR(TIMER1_COMPA_vect){
 				data[1] |= _BV(7);
 			}
 			data[2] = nec_command;
-			clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
+			clunet_buffered_push(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, CLUNET_COMMAND_RC_BUTTON_PRESSED, data, sizeof(data));
 		}
 		
 		
@@ -196,52 +196,51 @@ void cmd(clunet_msg* m){
 			}
 			break;
 		case CLUNET_COMMAND_RC_BUTTON_PRESSED:
-			if (m->src_address == CLUNET_DEVICE_ID){	//только свои сообщения
-				clunet_send_fairy(m->src_address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+			if (m->src_address == CLUNET_DEVICE_ID){
+				clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
 				
 				if (m->size == 3){
 					if (m->data[0] == 0x00){
 						if (m->data[1] == 0x00){	//address == 0, no repeats
 							char data[2];
 							switch(m->data[2]){
-								case 0xA2:	//mute
+								case 0x68:	//mute
 									data[0] = 0x02;
 									clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_MUTE, data, 1);
 								break;
-								case 0xA3:	//power
+								case 0xC8:	//power
 									data[0] = 0x00;
 									clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_POWER, data, 1);
 								break;
-								case 0xA4:	//fan toggle
+								case 0x28:	//fan toggle
 									switchExecute(FAN_RELAY_ID, 0x02);
 									switchResponse(CLUNET_BROADCAST_ADDRESS);
 								break;
 								
-								case 0xA5:	//kitchen light off
-									data[0] = KITCHEN_LIGHT_RELAY_ID;
+								case 0xCA:	//kitchen light off
+									data[0] = 0xFF;
 									data[1] = 0;
-									clunet_send_fairy(CLUNET_KITCHEN_LIGHT_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
+									clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
 								break;
-								case 0xA6:	//kitchen light dimmer = 33%
-									data[0] = KITCHEN_LIGHT_RELAY_ID;
+								case 0x4A:	//kitchen light dimmer = 33%
+									data[0] = 0xFF;
 									data[1] = 33;
-									clunet_send_fairy(CLUNET_KITCHEN_LIGHT_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
+									clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
 								break;
-								case 0xA7:	//kitchen light dimmer = 66%
-									data[0] = KITCHEN_LIGHT_RELAY_ID;
+								case 0x8A:	//kitchen light dimmer = 66%
+									data[0] = 0xFF;
 									data[1] = 66;
-									clunet_send_fairy(CLUNET_KITCHEN_LIGHT_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
+									clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
 								break;
-								case 0xA8:	//kitchen light on
-									data[0] = KITCHEN_LIGHT_RELAY_ID;
+								case 0x0A:	//kitchen light on
+									data[0] = 0xFF;
 									data[1] = 100;
-									clunet_send_fairy(CLUNET_KITCHEN_LIGHT_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
+									clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
 								break;
 							}
 						}
 					}
 				}
-				
 			}
 			break;
 	}
