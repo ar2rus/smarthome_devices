@@ -10,10 +10,10 @@
 
 /* Device address (0-254) */
 #define CLUNET_DEVICE_ID 0x1D
+/*29 dec*/
 
 /* Device name */
 #define CLUNET_DEVICE_NAME "Kitchen"
-/*29 dec*/
 
 /* Buffer sized (memory usage) */
 /* 128 + header + crc; so we can send <=128 bytes */
