@@ -319,6 +319,14 @@ static void cmd(clunet_msg* m){
 					lc75341_mute_toggle();
 					response = 2;
 					break;
+				case 2:
+					lc75341_mute();
+					response = 2;
+				break;
+				case 3:
+					lc75341_unmute();
+					response = 2;
+				break;
 			}
 		}
 		break;

@@ -82,9 +82,9 @@ void cmd(clunet_msg* m){
 				case CLUNET_COMMAND_POWER:
 				case CLUNET_COMMAND_CHANNEL:
 				case CLUNET_COMMAND_RC_BUTTON_PRESSED:
-				break;
+					break;
 				default:
-				return;
+					return;
 			}
 		}
 		
@@ -312,12 +312,20 @@ void cmd(clunet_msg* m){
 			if (m->size == 1){
 				switch(m->data[0]){
 					case 0:
-					lc75341_volume_percent(0);
-					response = 2;
+						lc75341_volume_percent(0);
+						response = 2;
 					break;
 					case 1:
-					lc75341_mute_toggle();
-					response = 2;
+						lc75341_mute_toggle();
+						response = 2;
+					break;
+					case 2:
+						lc75341_mute();
+						response = 2;
+					break;
+					case 3:
+						lc75341_unmute();
+						response = 2;
 					break;
 				}
 			}
@@ -617,7 +625,7 @@ int main(void){
 	
 	if (c.fm_channel >= 0){
 		FM_select_channel(c.fm_channel);
-		}else if (c.fm_freq > 0){
+	}else if (c.fm_freq > 0){
 		FM_select_frequency(c.fm_freq);
 	}
 	

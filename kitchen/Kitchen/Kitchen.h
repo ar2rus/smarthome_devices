@@ -89,4 +89,7 @@
 
 #define FAN_RELAY_ID RELAY_0_ID
 
+#define CLUNET_KITCHEN_LIGHT_ID 0x82
+#define KITCHEN_LIGHT_RELAY_ID 0x01
+
 #endif /* BATH_SENSORS_H_ */
