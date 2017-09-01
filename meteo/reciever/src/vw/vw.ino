@@ -115,6 +115,10 @@ void reset(){
   VCC = 0xFFFF;
 }
 
+void server_404(){
+  server.send(404, "text/plain", "File Not Found\n\n");
+}
+
 void setup() {
   Serial.begin(115200);
   
@@ -177,22 +181,64 @@ void setup() {
   clunetMulticastBegin();
 
   server.on("/", []() {
-      String message;
-      if (M==0xFFFFFFFF){
-          message = "No data recieved";
-      }else{
-        message = "Time: " + String((millis()-M)/1000) + " sec\n";
-        message += "\nT: " +  (T==0xFFFFFFFF ? "-" : String(T/100.0) + " *C");
-        message += "\nH: " +  (H==0xFFFF ? "-" : String(H/10.0) + " %");
-        message += "\nP: " +  (P==0xFFFFFFFF ? "-" : String(P/1000.0) + " mm Hg");
-        message += "\nL: " +  (L==0xFFFF ? "-" : String(L) + " Lx");
-        message += "\nV: " +  (VCC==0xFFFF ? "-" : String(VCC/100.0) + " V");
+    if (server.method() == HTTP_GET) {
+
+      int resp_format = -1;
+      switch (server.args()) {
+        case 0:
+          resp_format = 0;  //txt
+          break;
+        case 1:
+          if (server.argName(0) == "fmt"){
+            if (server.arg(0) == "txt"){
+              resp_format = 0;  //txt
+            } else if (server.arg(0) == "json"){
+              resp_format = 1;  //json
+            }
+          }
+          break;
       }
-      server.send(200, "text/plain", message);
+
+      switch (resp_format){
+        case 0:{
+          String message;
+          if (M==0xFFFFFFFF){
+              message = "No data recieved";
+          }else{
+            message = "Time: " + String((millis()-M)/1000) + " sec\n";
+            message += "\nT: " +  (T==0xFFFFFFFF ? "-" : String(T/100.0) + " *C");
+            message += "\nH: " +  (H==0xFFFF ? "-" : String(H/10.0) + " %");
+            message += "\nP: " +  (P==0xFFFFFFFF ? "-" : String(P/1000.0) + " mm Hg");
+            message += "\nL: " +  (L==0xFFFF ? "-" : String(L) + " Lx");
+            message += "\nV: " +  (VCC==0xFFFF ? "-" : String(VCC/100.0) + " V");
+          }
+          server.send(200, "text/plain", message);
+          }
+          break;
+        case 1:{
+          String message = "{";
+          if (M!=0xFFFFFFFF){
+            message += "\"time\":" + String((millis()-M)/1000) + ",";
+            message += "\"t\":" + (T==0xFFFFFFFF ? "-" : String(T/100.0)) + ",";
+            message += "\"h\":" + (H==0xFFFF ? "-" : String(H/10.0)) + ",";
+            message += "\"p\":" + (P==0xFFFFFFFF ? "-" : String(P/1000.0)) + ",";
+            message += "\"l\":" + (L==0xFFFF ? "-" : String(L)) + ",";
+            message += "\"v\":" + (VCC==0xFFFF ? "-" : String(VCC/100.0));
+          }
+          message += "}";
+          server.send(200, "application/json", message);
+          }
+          break;
+        default:
+          server_404();
+      }
+    }else{
+      server_404();
+    }
   });
   
   server.onNotFound([]() {
-       server.send(404, "text/plain", "File Not Found\n\n");
+       server_404();
   });
   
   server.begin();
