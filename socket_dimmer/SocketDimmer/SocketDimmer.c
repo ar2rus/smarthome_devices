@@ -99,7 +99,7 @@ ISR(ZERO_DETECTOR_INT_VECTOR){
 ISR(TIMER_COMP_VECTOR){
 	TIMER_COUNTER = 0;	//reset counter
 	
-	tick = 0;
+	tick++;
 	if (dimmer_value < tick){
 		RELAY_0_ON;
 	}
