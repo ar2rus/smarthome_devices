@@ -347,11 +347,11 @@ void loop() {
           }
         }
         break;
-        case CLUNET_COMMAND_DEBUG:{
+        /*case CLUNET_COMMAND_DEBUG:{
           uint32_t m = millis() - M;
           clunetMulticastSend(msg.src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
         }
-        break;
+        break;*/
       }
     }
 
