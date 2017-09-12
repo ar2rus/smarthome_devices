@@ -79,18 +79,18 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 
 uint8_t dimmer_value = 100;
 
-volatile uint8_t low_high = 0;	//rise or fall on zero detector
+volatile uint8_t low_high = 0;	//waiting for rising or falling edge on zero detector
 volatile uint8_t tick;
 
 ISR(ZERO_DETECTOR_INT_VECTOR){
 	if (ZERO_DETECTOR_READ == low_high){
-		tick = 0;
 		if (low_high){
 			DISABLE_TIMER_CMP_A;
 			RELAY_0_OFF;
 		}else{
 			ENABLE_TIMER_CMP_A;
 		}
+		tick = 0;
 		low_high = !low_high;
 	}
 }
