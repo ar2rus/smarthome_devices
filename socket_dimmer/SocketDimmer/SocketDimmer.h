@@ -21,7 +21,7 @@
 /* main timer controls*/
 #define TIMER_PRESCALER 64
 #define TIMER_COUNTER TCNT1
-#define TIMER_NUM_TICKS (unsigned int)(40e-6 * F_CPU / TIMER_PRESCALER)	/*40mks PWM tick*/
+#define TIMER_NUM_TICKS (unsigned int)(20e-6 * F_CPU / TIMER_PRESCALER)	/*40mks PWM tick*/
 #define TIMER_INIT {TCCR1B = 0; TIMER_COUNTER = 0; OCR1A = TIMER_NUM_TICKS; set_bit2(TCCR1B, CS11, CS10); unset_bit(TCCR1B, CS12); /*64x prescaler*/}
 
 #define ENABLE_TIMER_CMP_A set_bit(TIMSK, OCIE1A)

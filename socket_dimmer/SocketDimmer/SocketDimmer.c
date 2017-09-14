@@ -12,11 +12,12 @@ void dimmerEnable(char enable){
 	}else{
 		ZERO_DETECTOR_DISABLE_INT;
 		DISABLE_TIMER_CMP_A;
+		RELAY_0_OFF;
 	}
 }
 
-void switchExecute(unsigned char relay_id, unsigned char command){
-	if (relay_id == RELAY_0_ID){
+char switchExecute(unsigned char relay_id, unsigned char command){
+		if (relay_id == RELAY_0_ID){
 		switch(command){
 			case 0x00:	//откл
 				light_state = 0;
@@ -28,7 +29,7 @@ void switchExecute(unsigned char relay_id, unsigned char command){
 				light_state = !light_state;
 				break;
 			default:
-				return;
+				return 0;
 		}
 	
 		//disable pwm
@@ -40,7 +41,9 @@ void switchExecute(unsigned char relay_id, unsigned char command){
 		}else{
 			RELAY_0_OFF;
 		}
+		
 	}
+		return 1;
 }
 
 void switchResponse(unsigned char address){
@@ -48,17 +51,31 @@ void switchResponse(unsigned char address){
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-void dimmerExecute(unsigned char value) {
+void switch_exec(unsigned char relay_id, unsigned char command, unsigned char address){
+	if (switchExecute(relay_id, command)){
+		switchResponse(address);
+	}
+}
+
+char dimmerExecute(unsigned char value) {
 	if (value >= 0 && value <= dimmer_range) {
 		dimmer_value = value;
 		light_state = value > 0;
 		dimmerEnable(value > 0);
+		return 1;
 	}
+	return 0;
 }
 
 void dimmerResponse(unsigned char address){
 	char data[] = {1, RELAY_0_ID, dimmer_value};
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DIMMER_INFO, data, sizeof(data));
+}
+
+void dimmer_exec(unsigned char value, unsigned char address){
+	if (dimmerExecute(value)){
+		dimmerResponse(address);
+	}
 }
 
 void cmd(clunet_msg* m){
@@ -71,8 +88,7 @@ void cmd(clunet_msg* m){
 						case 0x00:
 						case 0x01:
 						case 0x02:
-							switchExecute(m->data[1], m->data[0]);
-							switchResponse(m->src_address);
+							switch_exec(m->data[1], m->data[0], m->src_address);
 							break;
 						case 0x03:
 							for (char i=0; i<8; i++){
@@ -89,8 +105,7 @@ void cmd(clunet_msg* m){
 			}else if (m->size == 2){
 				//у нас только один канал. Проверяем, что команда для него
 				if ((m->data[0] >> (RELAY_0_ID - 1)) & 0x01) {
-					dimmerExecute(m->data[1]);
-					dimmerResponse(m->src_address);
+					dimmer_exec(m->data[1], m->src_address);
 				}
 			}
 			break;
@@ -100,16 +115,18 @@ void cmd(clunet_msg* m){
 					if (m->data[1] == 0x02){
 						switch (m->data[2]){
 							case 0x12://красная кнопка
-							dimmerExecute(0);
+							//dimmer_exec(0, CLUNET_BROADCAST_ADDRESS);
+							switch_exec(RELAY_0_ID, 0x00, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0x92://зеленая кнопка
-							dimmerExecute(dimmer_range * 1/3);
+							dimmer_exec(dimmer_range * 1/3, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0x52://желтая кнопка
-							dimmerExecute(dimmer_range * 2/3);
+							dimmer_exec(dimmer_range * 2/3, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0xD2://синяя кнопка
-							dimmerExecute(dimmer_range);
+							//dimmer_exec(dimmer_range, CLUNET_BROADCAST_ADDRESS);
+							switch_exec(RELAY_0_ID, 0x01, CLUNET_BROADCAST_ADDRESS);
 							break;
 						}
 					}
