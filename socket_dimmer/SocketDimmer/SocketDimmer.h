@@ -14,7 +14,6 @@
 #include "clunet/clunet.h"
 #include "clunet/clunet_buffered.h"
 
-
 #include <avr/interrupt.h>
 
 
@@ -37,7 +36,9 @@
 #define ZERO_DETECTOR_INIT {unset_bit(DDRPORT(ZERO_DETECTOR_PORT), ZERO_DETECTOR_PIN); set_bit(OUTPORT(ZERO_DETECTOR_PORT), ZERO_DETECTOR_PIN);}
 #define ZERO_DETECTOR_READ (bit(INPORT(ZERO_DETECTOR_PORT), ZERO_DETECTOR_PIN))
 	
-#define ZERO_DETECTOR_INIT_INT {set_bit(MCUCR,ISC00); unset_bit(MCUCR,ISC01); set_bit(GICR, INT0);}
+#define ZERO_DETECTOR_INIT_INT {set_bit(MCUCR,ISC00); unset_bit(MCUCR,ISC01);}
+#define ZERO_DETECTOR_ENABLE_INT set_bit(GICR, INT0)
+#define ZERO_DETECTOR_DISABLE_INT unset_bit(GICR, INT0)
 #define ZERO_DETECTOR_INT_VECTOR INT0_vect
 
 
