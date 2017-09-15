@@ -4,7 +4,7 @@
 uint8_t light_state = 0;
 
 const char dimmer_range = 250;  //0 (low, off) - 250 (high)
-uint8_t dimmer_value = 0;
+volatile uint8_t dimmer_value = 0;
 
 void dimmerEnable(char enable){
 	if (enable){
@@ -14,6 +14,10 @@ void dimmerEnable(char enable){
 		DISABLE_TIMER_CMP_A;
 		RELAY_0_OFF;
 	}
+	//переводим clunet в режим низкоприоритетной обработки
+	//так его трафик не будет тормозить прерывания диммера
+	//однако часть его пакетов для устройства может быть потеряна
+	clunet_set_low_priority(enable);	
 }
 
 char switchExecute(unsigned char relay_id, unsigned char command){
@@ -153,9 +157,10 @@ ISR(ZERO_DETECTOR_INT_VECTOR){
 			DISABLE_TIMER_CMP_A;
 			RELAY_0_OFF;
 		}else{
+			TIMER_INIT;
 			ENABLE_TIMER_CMP_A;
 		}
-		tick = 0;
+		tick = dimmer_range;
 		low_high = !low_high;
 	}
 }
@@ -164,8 +169,7 @@ ISR(ZERO_DETECTOR_INT_VECTOR){
 ISR(TIMER_COMP_VECTOR){
 	TIMER_COUNTER = 0;	//reset counter
 	
-	tick++;
-	if (dimmer_range - dimmer_value < tick){
+	if (dimmer_value > --tick){
 		RELAY_0_ON;
 	}
 }
