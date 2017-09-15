@@ -14,6 +14,7 @@
 void (*on_data_received)(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size) = 0;
 void (*on_data_received_sniff)(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size) = 0;
 
+
 volatile unsigned char clunetSendingState = CLUNET_SENDING_STATE_IDLE;
 volatile unsigned short int clunetSendingDataLength;
 volatile unsigned char clunetSendingCurrentByte;
@@ -45,7 +46,20 @@ char check_crc(char* data, unsigned char size){
       return crc;
 }
 
+#ifdef CLUNET_USE_LOW_PRIORITY_MODE
+volatile unsigned char clunetLowPriority;
+
+void clunet_set_low_priority(unsigned char use_clunet_low_priority){
+	clunetLowPriority = use_clunet_low_priority;
+}
+#endif
+
 ISR(CLUNET_TIMER_COMP_VECTOR){
+	#ifdef CLUNET_USE_LOW_PRIORITY_MODE
+	if (clunetLowPriority){
+		sei();
+	}
+	#endif
 	unsigned char now = CLUNET_TIMER_REG;     // Запоминаем текущее время
 	
 	switch (clunetSendingState){
@@ -203,6 +217,11 @@ inline void clunet_data_received(unsigned char src_address, unsigned char dst_ad
 }
 
 ISR(CLUNET_TIMER_OVF_VECTOR){
+	#ifdef CLUNET_USE_LOW_PRIORITY_MODE
+	if (clunetLowPriority){
+		sei();
+	}
+	#endif
 	if (clunetTimerPeriods < 3){
 		clunetTimerPeriods++;
 	}else{ // Слишком долго нет сигнала, сброс и отключение прерывания
@@ -217,6 +236,11 @@ ISR(CLUNET_TIMER_OVF_VECTOR){
 
 
 ISR(CLUNET_INT_VECTOR){
+	#ifdef CLUNET_USE_LOW_PRIORITY_MODE
+	if (clunetLowPriority){
+		sei();
+	}
+	#endif
 	unsigned char time = (unsigned char)((CLUNET_TIMER_REG-clunetTimerStart) & 0xFF);
 	if (!CLUNET_READING){ // Линию отпустило
 		CLUNET_ENABLE_TIMER_OVF;
@@ -310,4 +334,3 @@ void clunet_send_fairy(unsigned char address, unsigned char prio, unsigned char 
 	while(clunet_ready_to_send());
 	clunet_send(address, prio, command, data, size);
 }
-
