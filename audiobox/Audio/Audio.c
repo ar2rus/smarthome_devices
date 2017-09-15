@@ -607,24 +607,24 @@ static void cmd(clunet_msg* m){
 							}
 							break;
 						
-						case 0x12://наше радио (92.9) -> красная кнопка
-						case 0x92://мегаполис (103.6) -> зеленая кнопка
-						case 0x52://эхо москвы (99.1) -> желтая кнопка
-						case 0xD2://вести fm (93.5) -> синяя кнопка
+						case 0xda://наше радио (92.9) ->menu
+						case 0x9a://мегаполис (103.6) ->ratio
+						case 0x88://эхо москвы (99.1) ->brightness
+						case 0xc2://вести fm (93.5)   ->exit
 							switch (m->data[2]){
-								case 0x12:
+								case 0xda:
 								 	data[1] = 0x4A;
 								 	data[2] = 0x24;
 								 	break;
-								case 0x92:
+								case 0x9a:
 								 	data[1] = 0x78;
 								 	data[2] = 0x28;
 								 	break;
-								case 0x52:
+								case 0x88:
 								 	data[1] = 0xB6;
 								 	data[2] = 0x26;
 								 	break;
-								case 0xD2:
+								case 0xc2:
 								 	data[1] = 0x86;
 								 	data[2] = 0x24;
 								 	break;
