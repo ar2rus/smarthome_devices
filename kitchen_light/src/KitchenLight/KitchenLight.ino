@@ -23,7 +23,7 @@ const int LIGHT_PIN = 14;
 int button_state;
 int light_state = LOW;
 
-const char pwmrange = 100;  //0 - 100
+const unsigned char pwmrange = 255;  //0 - 100
 int dimmer_value = 0;
 
 //fade-in
@@ -321,9 +321,9 @@ void loop() {
     int v0 = (m - fade_in_start_time) % pwm_down_up_cycle_time;
     int v1 = v0 % pwm_down_up_cycle_time_2;
     if (v0 >= pwm_down_up_cycle_time_2) { //up
-      dimmer_exec(100 * v1 / (pwm_down_up_cycle_time_2 - 1), false);
+      dimmer_exec(pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
     } else { //down
-      dimmer_exec(100 - 100 * v1 / (pwm_down_up_cycle_time_2 - 1), false);
+      dimmer_exec(pwmrange - pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
     }
   }
 
