@@ -81,28 +81,31 @@ void requestSystime(){
 signed int heatfloor_dispatcher_resolve_temperature_setting(unsigned char channel){
 	
 	if (is_time_valid()){
-		
-		switch (modes.channels[channel].mode){
+		unsigned char mode = modes.channels[channel].mode;
+		unsigned char program_num = modes.channels[channel].p;
+		switch (mode){
 			case HEATFLOOR_MODE_OFF:
 				return -1;							//отключен (режим)
 			case HEATFLOOR_MODE_MANUAL:
 			case HEATFLOOR_MODE_PARTY:
 				return modes.channels[channel].t * 10;
-			case HEATFLOOR_MODE_DAY:
 			case HEATFLOOR_MODE_DAY_FOR_TODAY:
+				if (program_num == 0xFF){	//программа с кодом 0xFF для HEATFLOOR_MODE_DAY_FOR_TODAY -> выключить до конца дня
+					return 0;
+				}
+			case HEATFLOOR_MODE_DAY:
 			case HEATFLOOR_MODE_WEEK:{
-					unsigned char program_num = modes.channels[channel].p;
-					if (modes.channels[channel].mode == HEATFLOOR_MODE_WEEK){
+					if (mode == HEATFLOOR_MODE_WEEK){
 						switch (time.day_of_week){
 							case 6:
-								program_num = modes.channels[channel].p_sa_su[HEATFLOOR_PROGRAM_SA];
-								break;
+							program_num = modes.channels[channel].p_sa_su[HEATFLOOR_PROGRAM_SA];
+							break;
 							case 7:
-								program_num = modes.channels[channel].p_sa_su[HEATFLOOR_PROGRAM_SU];
-								break;
+							program_num = modes.channels[channel].p_sa_su[HEATFLOOR_PROGRAM_SU];
+							break;
 						}
 					}
-					
+
 					if (program_num < HEATFLOOR_PROGRAMS_COUNT){
 						//если в кэше нет программы - то выгружаем туда из eeprom
 						if (programs_cache[channel].program_num != program_num){
