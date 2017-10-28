@@ -119,16 +119,20 @@ void cmd(clunet_msg* m){
 					if (m->data[1] == 0x02){
 						switch (m->data[2]){
 							case 0x12://красная кнопка
+							case 0xEA:
 							//dimmer_exec(0, CLUNET_BROADCAST_ADDRESS);
 							switch_exec(RELAY_0_ID, 0x00, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0x92://зеленая кнопка
+							case 0x6A:
 							dimmer_exec(dimmer_range * 1/3, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0x52://желтая кнопка
+							case 0xB0:
 							dimmer_exec(dimmer_range * 2/3, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0xD2://синяя кнопка
+							case 0x70:
 							//dimmer_exec(dimmer_range, CLUNET_BROADCAST_ADDRESS);
 							switch_exec(RELAY_0_ID, 0x01, CLUNET_BROADCAST_ADDRESS);
 							break;
