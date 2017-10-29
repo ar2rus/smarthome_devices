@@ -3,8 +3,10 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include <Adafruit_NeoPixel.h>  
+#include <Adafruit_NeoPixel.h>  digit_code
 #include <time.h>
+
+#include <SPI.h>
 
 #define LED_PIN 5
 #define NUMPIXELS 6
@@ -21,7 +23,69 @@ IPAddress subnet(255, 255, 255, 0);
 time_t this_second = 0;
 time_t last_second = 0;
 
+#define SPI_PIN_SS 15
+
+#define _BV(bit) (1 << (bit))
+#define _TB(v, bit) (v & _BV(bit))
+
+
+#define digit_code(digit, enable, point) (((!enable & 0x01)<<0x07) | ((point & 0x01)<<0x06) | (digit & 0x0F))
+#define digit_value(code) (code & 0x0F)
+#define digit_enable(code) (!_TB(code, 7))
+#define digit_point(code) (_TB(code, 6))
+
+#define digit_code_group_h(d) ((_TB(d, 0) ? _BV(4) : 0) | (_TB(d, 1) ? _BV(2) : 0) | (_TB(d, 2) ? _BV(1) : 0) | (_TB(d, 3) ? _BV(3) : 0))
+#define digit_code_group_l(d) ((_TB(d, 0) ? _BV(7) : 0) | (_TB(d, 1) ? _BV(5) : 0) | (_TB(d, 2) ? _BV(4) : 0) | (_TB(d, 3) ? _BV(6) : 0))
+
+#define digit_group_h(d, r0, r1, r2)(digit_code_group_h(digit_value(d)) | (digit_point(d) ? _BV(7) : 0) |\
+  (digit_enable(d) && r0 ? _BV(0) : 0) | (digit_enable(d) && r1 ? _BV(5) : 0) | (digit_enable(d) && r2 ? _BV(6) : 0))
+#define digit_group_l(d, r0, r1, r2)(digit_code_group_l(digit_value(d)) | (digit_point(d) ? _BV(3) : 0) |\
+  (digit_enable(d) && r0 ? _BV(2) : 0) | (digit_enable(d) && r1 ? _BV(1) : 0) | (digit_enable(d) && r2 ? _BV(0) : 0))
+
+#define NIXIE_UPDATE_PERIOD  2
+
+long nixie_t;
+char nixie_cnt;
+char digits[6];
+
+void nixie_update(){
+    long tmp = millis();
+    if (tmp - nixie_t > NIXIE_UPDATE_PERIOD){
+      if (++nixie_cnt > 2){
+        nixie_cnt = 0;
+      }
+
+      SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
+      digitalWrite(SPI_PIN_SS, LOW);
+      char d_h = digits[3+nixie_cnt];
+      SPI.transfer(digit_group_h(d_h, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
+      char d_l = digits[0+nixie_cnt];
+      SPI.transfer(digit_group_l(d_l, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
+      digitalWrite(SPI_PIN_SS, HIGH); 
+      SPI.endTransaction();
+      
+      nixie_t = tmp;  
+    }
+}
+
+void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
+    digits[0]=d0;
+    digits[1]=d1;
+    digits[2]=d2;
+    digits[3]=d3;
+    digits[4]=d4;
+    digits[5]=d5;
+    //nixie_t = 0;
+    //nixie_cnt = 0;
+    //nixie_update();
+}
+
+
 void setup() {
+
+  SPI.begin();
+  pinMode(SPI_PIN_SS, OUTPUT);
+  
   Serial.begin(115200);
 
   Serial.println("Booting");
@@ -65,11 +129,11 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  strip.begin();
-     strip.setPixelColor(1, strip.Color(10, 0, 0));
-  strip.show();
+   strip.begin();
+   //strip.setPixelColor(1, strip.Color(255, 0, 0));
+   strip.show();
 
-  configTime(3 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(4 * 3600, 0, "pool.ntp.org", "time.nist.gov");
   Serial.println("\nWaiting for time");
   while(!this_second)
      {
@@ -77,7 +141,8 @@ void setup() {
          Serial.print("-");
          delay(100);
      }
-  strip.setPixelColor(5, strip.Color(10, 0, 0));
+  //strip.setPixelColor(5, strip.Color(255, 0, 0));
+  strip.show();
 }
 
 // Input a value 0 to 255 to get a color value.
@@ -129,6 +194,9 @@ void rainbowCycle(uint8_t wait) {
 }
 
 
+long t;
+int n;
+
 void loop() {
     /*
    //strip.setPixelColor(5, strip.Color(0, 100, 0));
@@ -147,13 +215,53 @@ void loop() {
      delay(1);
 */
 
-theaterChaseRainbow(20);
+//theaterChaseRainbow(20);
 
-rainbowCycle(20);
+//rainbowCycle(20);
 
+
+
+     time(&this_second); // until time is set, it remains 0
+     if (this_second != last_second)
+     {
+         last_second = this_second;
+
+          int h = (this_second / 3600) % 24;
+          int m = (this_second / 60) % 60;
+          int s = (this_second % 60);
+
+          char p = this_second%2;
+          nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
+
+         strip.setPixelColor(0, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
+         strip.setPixelColor(1, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
+         
+         strip.setPixelColor(2, strip.Color(0, 127*((this_second / 60) % 60)/60, 0));
+         strip.setPixelColor(3, strip.Color(0, 127*((this_second / 60) % 60)/60, 0));
+         
+         strip.setPixelColor(4, strip.Color(0, 0, 127*(this_second%60)/60));
+         strip.setPixelColor(5, strip.Color(0, 0, 127*(this_second%60)/60));
+         strip.show(); 
+          
+     }
+
+    
+
+/*
+    long tmp = millis();
+    if (tmp-t > 500){
+      if (++n>9){
+        
+n=0;
+}
+      nixie_set(n, n, n, n, n, n);
+      
+        t = tmp;
+      }
+  */
+    
+    nixie_update();
+    
     ArduinoOTA.handle();
-
-   
-
- 
+    
 }
