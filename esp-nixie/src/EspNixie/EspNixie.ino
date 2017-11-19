@@ -10,6 +10,8 @@
 
 #include <OneWire.h>
 
+#include "Narodmon.h"
+
 long t;
 
 #define LED_PIN 5
@@ -159,6 +161,9 @@ void setup() {
   strip.show();
 
   t = millis();
+
+  //pass as UUID
+  //WiFi.macAddress();
 }
 
 int code = -1;
