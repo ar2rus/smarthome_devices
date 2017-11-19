@@ -3,15 +3,21 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include <Adafruit_NeoPixel.h>  digit_code
+#include <Adafruit_NeoPixel.h>
 #include <time.h>
 
 #include <SPI.h>
+
+#include <OneWire.h>
+
+long t;
 
 #define LED_PIN 5
 #define NUMPIXELS 6
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+OneWire  ds(16);  // GPIO16 (a 4.7K resistor is necessary)
 
 const char *ssid = "espNet";
 const char *pass = "esp8266A";
@@ -30,6 +36,8 @@ time_t last_second = 0;
 
 
 #define digit_code(digit, enable, point) (((!enable & 0x01)<<0x07) | ((point & 0x01)<<0x06) | (digit & 0x0F))
+#define digit_off (digit_code(0,0,0))
+
 #define digit_value(code) (code & 0x0F)
 #define digit_enable(code) (!_TB(code, 7))
 #define digit_point(code) (_TB(code, 6))
@@ -75,15 +83,21 @@ void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
     digits[3]=d3;
     digits[4]=d4;
     digits[5]=d5;
-    //nixie_t = 0;
-    //nixie_cnt = 0;
-    //nixie_update();
+    
+    nixie_t = 0;
+    nixie_update();
 }
 
+void nixie_clear(){
+  char d = digit_code(0,0,0);
+  nixie_set(d,d,d,d,d,d);
+}
 
 void setup() {
 
   SPI.begin();
+  nixie_clear();
+  
   pinMode(SPI_PIN_SS, OUTPUT);
   
   Serial.begin(115200);
@@ -143,7 +157,52 @@ void setup() {
      }
   //strip.setPixelColor(5, strip.Color(255, 0, 0));
   strip.show();
+
+  t = millis();
 }
+
+int code = -1;
+byte addr[8]; 
+float temperature;
+
+long start_conv_t = -1;
+
+int startTConversion(){
+  if (!ds.search(addr)) {
+    ds.reset_search();
+    //not found
+    return 1;
+  }
+  ds.reset_search(); 
+ 
+  if (OneWire::crc8(addr, 7) != addr[7]) {
+      //Serial.println("CRC is not valid!");
+      return 2;
+  }
+
+  ds.reset();            
+  ds.select(addr);        
+  ds.write(0x44);
+
+  return 0;
+}
+
+float getTemp(){
+  byte data[12];  
+  
+  ds.reset();
+  ds.select(addr);    
+  ds.write(0xBE);          
+
+  for (int i = 0; i < 9; i++) {           
+    data[i] = ds.read();  
+  }
+
+  int raw = (data[1] << 8) | data[0]; 
+  if (data[7] == 0x10) raw = (raw & 0xFFF0) + 12 - data[6];  
+  return raw / 16.0;
+} 
+
 
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
@@ -193,10 +252,6 @@ void rainbowCycle(uint8_t wait) {
   }
 }
 
-
-long t;
-int n;
-
 void loop() {
     /*
    //strip.setPixelColor(5, strip.Color(0, 100, 0));
@@ -219,11 +274,11 @@ void loop() {
 
 //rainbowCycle(20);
 
-
+    long delta = millis()-t;
+    //if (delta < 10000){
 
      time(&this_second); // until time is set, it remains 0
-     if (this_second != last_second)
-     {
+     if (this_second != last_second){
          last_second = this_second;
 
           int h = (this_second / 3600) % 24;
@@ -241,11 +296,43 @@ void loop() {
          
          strip.setPixelColor(4, strip.Color(0, 0, 127*(this_second%60)/60));
          strip.setPixelColor(5, strip.Color(0, 0, 127*(this_second%60)/60));
-         strip.show(); 
-          
+         strip.show();
      }
+  /*  }else if (delta < 20000){
+            
+      switch (code){
+        case -1:
+          code = startTConversion();
+          start_conv_t = millis();
+          break;
+        case 0:
+        if (millis() - start_conv_t > 1000){
+          temperature = getTemp();
+          code = 3;
+        }
+          break;
+       }
 
-    
+        
+      switch(code){
+        case 0:
+        case 1:
+        case 2:
+       nixie_set(digit_code(code,1,0), digit_off, digit_off, digit_off, digit_off, digit_off);
+          break;
+        case 3:
+          int t_int = abs(temperature) * 100;
+          int t_int_10 = t_int / 1000;
+          int t_int_1 = t_int / 100;
+          int t_int_01 = t_int / 10;
+          int t_int_001 = t_int % 10;
+          nixie_set(digit_off, digit_off, digit_code(t_int_10,t_int_10>0,0), digit_code(t_int_1,1,1), digit_code(t_int_01,1,0), digit_code(t_int_001,t_int_001 > 0,0));
+          code = 4;
+      }
+    }else{
+        t = millis();
+        code = -1;
+     }*/
 
 /*
     long tmp = millis();
