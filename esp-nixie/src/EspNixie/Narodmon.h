@@ -5,7 +5,10 @@
 #include <ESP8266WiFi.h>
 
 
-#define NARODMON_URL "http://narodmon.ru/api"
+//#define NARODMON_URL "narodmon.ru/api"
+#define NARODMON_HOST "narodmon.ru"
+#define NARODMON_API_PATH "/api"
+
 
 #define NARODMON_TIMEOUT 5
 
@@ -23,8 +26,8 @@
 
 class Narodmon{
 private:
-    char config_uuid[32];
-    char config_apiKey[16];
+    String config_uuid;
+    String config_apiKey;
     uint8_t config_useLatLon;
     double config_lat;
     double config_lon;
@@ -33,16 +36,15 @@ private:
     //время получения последнего значения температуры
     uint32_t t_time = 0;
     //последнее полученное значение температуры
-    int16_t t; 
+    int16_t t;
     //время инициализации последнего запроса
-    uint32_t request_time;
+    uint32_t request_time = 0;
 
     uint8_t waiting_response = 0;
     WiFiClient client;
-    
-    void read_response();
-    
+   //     HTTPClient http;
 public:
+    String response;
     Narodmon(char* device_id, char* api_key);
 
     void setConfigUseLatLon(uint8_t use);

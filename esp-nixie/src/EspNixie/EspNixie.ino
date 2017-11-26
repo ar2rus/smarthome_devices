@@ -10,6 +10,7 @@
 
 #include <OneWire.h>
 
+#include "SerialDebug.h"
 #include "Narodmon.h"
 
 long t;
@@ -58,7 +59,15 @@ long nixie_t;
 char nixie_cnt;
 char digits[6];
 
-void nixie_update(){
+Narodmon* nm = new Narodmon("esp8266.nixie.clock", "9M5UhuQA2c8f8");
+
+extern "C" {
+  #include "user_interface.h"
+}
+
+os_timer_t myTimer;
+
+/*void nixie_update(){
     long tmp = millis();
     if (tmp - nixie_t > NIXIE_UPDATE_PERIOD){
       if (++nixie_cnt > 2){
@@ -76,7 +85,7 @@ void nixie_update(){
       
       nixie_t = tmp;  
     }
-}
+}*/
 
 void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
     digits[0]=d0;
@@ -86,13 +95,28 @@ void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
     digits[4]=d4;
     digits[5]=d5;
     
-    nixie_t = 0;
-    nixie_update();
+    //nixie_t = 0;
+    //nixie_update();
 }
 
 void nixie_clear(){
   char d = digit_code(0,0,0);
   nixie_set(d,d,d,d,d,d);
+}
+
+void timerCallback(void *pArg) {
+    if (++nixie_cnt > 2){
+        nixie_cnt = 0;
+    }
+
+    SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
+    digitalWrite(SPI_PIN_SS, LOW);
+    char d_h = digits[3+nixie_cnt];
+    SPI.transfer(digit_group_h(d_h, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
+    char d_l = digits[0+nixie_cnt];
+    SPI.transfer(digit_group_l(d_l, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
+    digitalWrite(SPI_PIN_SS, HIGH); 
+    SPI.endTransaction();
 }
 
 void setup() {
@@ -164,6 +188,13 @@ void setup() {
 
   //pass as UUID
   //WiFi.macAddress();
+
+  nm->setConfigRadius(8);
+  
+  serailDebug_init();
+
+  os_timer_setfn(&myTimer, timerCallback, NULL);
+  os_timer_arm(&myTimer, NIXIE_UPDATE_PERIOD, true);
 }
 
 int code = -1;
@@ -257,31 +288,8 @@ void rainbowCycle(uint8_t wait) {
   }
 }
 
+
 void loop() {
-    /*
-   //strip.setPixelColor(5, strip.Color(0, 100, 0));
-   strip.show(); 
-
-
-  
-    time(&this_second); // until time is set, it remains 0
-     if (this_second != last_second)
-     {
-         last_second = this_second;
-         strip.setPixelColor(2, strip.Color(255*((this_second / 3600) % 24)/24, 0, 0));
-         strip.setPixelColor(3, strip.Color(0, 255*((this_second / 60) % 60)/60, 0));
-         strip.setPixelColor(4, strip.Color(0, 0, 255*(this_second%60)/60));
-     }
-     delay(1);
-*/
-
-//theaterChaseRainbow(20);
-
-//rainbowCycle(20);
-
-    long delta = millis()-t;
-    //if (delta < 10000){
-
      time(&this_second); // until time is set, it remains 0
      if (this_second != last_second){
          last_second = this_second;
@@ -290,10 +298,19 @@ void loop() {
           int m = (this_second / 60) % 60;
           int s = (this_second % 60);
 
+if (s==0){
+      nm->request();
+  }
+
+if (s==15){
+  _print("response: ");
+  _println(nm->response);
+  }
+
           char p = this_second%2;
           nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
 
-         strip.setPixelColor(0, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
+       /*  strip.setPixelColor(0, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
          strip.setPixelColor(1, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
          
          strip.setPixelColor(2, strip.Color(0, 127*((this_second / 60) % 60)/60, 0));
@@ -301,7 +318,7 @@ void loop() {
          
          strip.setPixelColor(4, strip.Color(0, 0, 127*(this_second%60)/60));
          strip.setPixelColor(5, strip.Color(0, 0, 127*(this_second%60)/60));
-         strip.show();
+         strip.show();*/
      }
   /*  }else if (delta < 20000){
             
@@ -351,8 +368,11 @@ n=0;
         t = tmp;
       }
   */
+
+    nm->update();
     
-    nixie_update();
+    //nixie_update();
+    serailDebug_update();
     
     ArduinoOTA.handle();
     

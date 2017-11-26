@@ -6,17 +6,18 @@
 #include <MD5Builder.h>
 #include "Arduino.h"
 
+
 Narodmon::Narodmon(char* device_id, char* api_key){
   MD5Builder md5;
   md5.begin();
   md5.add(device_id);
   md5.calculate();
-  md5.getChars(config_uuid);
+  config_uuid = md5.toString();
   setApiKey(api_key);
 }
 
 void Narodmon::setApiKey(char* api_key){
-  strcpy(config_apiKey, api_key);
+  config_apiKey = String(api_key);
 }
 
 void Narodmon::setConfigUseLatLon(uint8_t use){
@@ -33,11 +34,10 @@ void Narodmon::setConfigRadius(uint8_t radius){
   config_radius = radius;
 }
 
-
 uint8_t Narodmon::request(){
   if (!waiting_response){
     uint32_t tmp_t = millis();
-    if (tmp_t - request_time > MIN_REQUEST_PERIOD){
+    if ((request_time ==0) || ((tmp_t - request_time) > MIN_REQUEST_PERIOD)){
       
       StaticJsonBuffer<JSON_BUFFER_SIZE> JSONbuffer;
       JsonObject& JSONRequest = JSONbuffer.createObject();
@@ -60,21 +60,25 @@ uint8_t Narodmon::request(){
       String json_post_data;
       JSONRequest.printTo(json_post_data);
 
-     
-     if (client.connect(NARODMON_URL, 80)) {
-        client.println("POST /posts HTTP/1.1");
-        client.println(String("Host: ") + NARODMON_URL);
+     if (client.connect(NARODMON_HOST, 80)) {
+        client.println(String("POST ") + NARODMON_API_PATH +" HTTP/1.1");
+        client.println(String("Host: ") + NARODMON_HOST);
         client.println("Cache-Control: no-cache");
+        client.println("User-Agent: esp-nixie");
         client.println("Content-Type: application/json");
         client.print("Content-Length: ");
         client.println(json_post_data.length());
         client.println();
         client.println(json_post_data);
-      }
 
-      waiting_response = 1;
-      request_time = tmp_t;
-      return 1;
+        waiting_response = 1;
+        request_time = tmp_t;
+        return 1;
+      }else{
+        response = "conn timeout";
+      }
+    }else{
+      response = "too short req time";
     }
   }
   
@@ -82,28 +86,36 @@ uint8_t Narodmon::request(){
 }
 
 uint8_t Narodmon::hasT(){
-  return millis() - t_time < T_MAX_TIME;
+  return t_time > 0 && (millis() - t_time) < T_MAX_TIME;
 }
 
 int16_t Narodmon::getT(){
   return t;
 }
 
-void Narodmon::read_response(){
-  if (waiting_response){
-    if (client.available()){
-        
-    }
-  }
-}
-
 void Narodmon::update(){
   if (waiting_response){
-    if (millis() - request_time > RESPONSE_TIMEOUT){
-      //break connection
-      client.stop();
+    if (client.connected()){
+      if(client.available()){
+        while (client.available()){
+          response+=client.readStringUntil('\r')+'\r';
+        }
+        //response = client.readStringUntil('\r');
+        //while (client.available()){
+        //  ;
+        //}
+        waiting_response = 0;
+      }else{
+        if (millis() - request_time > RESPONSE_TIMEOUT){
+          client.stop();
+          waiting_response = 0;
+          response = "timeout";
+        }
+      }
     }else{
-      read_response();
+      client.stop();
+      waiting_response = 0;
+      response = "error";
     }
   }
 }
