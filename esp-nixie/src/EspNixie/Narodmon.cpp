@@ -1,23 +1,25 @@
 #include "Narodmon.h"
 
 #include <ArduinoJson.h>
-#include "JsonStreamingParser.h"
+#include "JsonListener.h"
 
 #include <MD5Builder.h>
 #include "Arduino.h"
 
 
-Narodmon::Narodmon(char* device_id, char* api_key){
+Narodmon::Narodmon(String device_id, String api_key){
   MD5Builder md5;
   md5.begin();
   md5.add(device_id);
   md5.calculate();
   config_uuid = md5.toString();
   setApiKey(api_key);
+
+  parser.setListener(this);
 }
 
-void Narodmon::setApiKey(char* api_key){
-  config_apiKey = String(api_key);
+void Narodmon::setApiKey(String api_key){
+  config_apiKey = api_key;
 }
 
 void Narodmon::setConfigUseLatLon(uint8_t use){
@@ -71,17 +73,16 @@ uint8_t Narodmon::request(){
         client.println();
         client.println(json_post_data);
 
+        response = "";
+        parser.reset();
+        
         waiting_response = 1;
         request_time = tmp_t;
         return 1;
-      }else{
-        response = "conn timeout";
-      }
-    }else{
-      response = "too short req time";
+     }
     }
+      response = "too short req time";
   }
-  
   return 0;
 }
 
@@ -98,13 +99,10 @@ void Narodmon::update(){
     if (client.connected()){
       if(client.available()){
         while (client.available()){
-          response+=client.readStringUntil('\r')+'\r';
+           char c = client.read();
+           parser.parse(c);
         }
-        //response = client.readStringUntil('\r');
-        //while (client.available()){
-        //  ;
-        //}
-        waiting_response = 0;
+        //waiting_response = 0;
       }else{
         if (millis() - request_time > RESPONSE_TIMEOUT){
           client.stop();
@@ -118,5 +116,41 @@ void Narodmon::update(){
       response = "error";
     }
   }
+}
+
+void Narodmon::whitespace(char c) {
+}
+
+void Narodmon::startDocument() {
+  //response += "START";
+}
+
+void Narodmon::key(String key) {
+  parser_key = key;
+}
+
+void Narodmon::value(String value) {
+  if (parser_key.equals("value")){
+    response += ("v=" + value + ";");
+  }else if (parser_key.equals("type")){
+    response += ("type=" + value + ";");
+  }
+  parser_key = "";
+}
+
+void Narodmon::endArray() {
+}
+
+void Narodmon::endObject() {
+}
+
+void Narodmon::endDocument() {
+waiting_response = 0;
+}
+
+void Narodmon::startArray() {
+}
+
+void Narodmon::startObject() {
 }
 

@@ -4,8 +4,9 @@
 #include <stdint.h>
 #include <ESP8266WiFi.h>
 
+#include "JsonStreamingParser.h"
+#include "JsonListener.h"
 
-//#define NARODMON_URL "narodmon.ru/api"
 #define NARODMON_HOST "narodmon.ru"
 #define NARODMON_API_PATH "/api"
 
@@ -24,7 +25,7 @@
 //значения температуры
 #define T_MAX_TIME 60*60*1000
 
-class Narodmon{
+class Narodmon: public JsonListener{
 private:
     String config_uuid;
     String config_apiKey;
@@ -41,21 +42,34 @@ private:
     uint32_t request_time = 0;
 
     uint8_t waiting_response = 0;
+    
     WiFiClient client;
-   //     HTTPClient http;
+    JsonStreamingParser parser;
+    String parser_key;
+    
 public:
     String response;
-    Narodmon(char* device_id, char* api_key);
+    Narodmon(String device_id, String api_key);
 
     void setConfigUseLatLon(uint8_t use);
     void setConfigLatLon(double lat, double lon);
     void setConfigRadius(uint8_t radius);
-    void setApiKey(char* api_key);
+    void setApiKey(String api_key);
     
     uint8_t request();
     uint8_t hasT();
     int16_t getT();
     void update();
+
+    virtual void whitespace(char c);
+    virtual void startDocument();
+    virtual void key(String key);
+    virtual void value(String value);
+    virtual void endArray();
+    virtual void endObject();
+    virtual void endDocument();
+    virtual void startArray();
+    virtual void startObject();
 };
 
 #endif

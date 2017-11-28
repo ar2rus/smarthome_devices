@@ -59,33 +59,15 @@ long nixie_t;
 char nixie_cnt;
 char digits[6];
 
-Narodmon* nm = new Narodmon("esp8266.nixie.clock", "9M5UhuQA2c8f8");
+Narodmon* nm = new Narodmon(/*"esp8266.nixie.clock"*/WiFi.macAddress(), "9M5UhuQA2c8f8");
 
 extern "C" {
   #include "user_interface.h"
 }
 
-os_timer_t myTimer;
-
-/*void nixie_update(){
-    long tmp = millis();
-    if (tmp - nixie_t > NIXIE_UPDATE_PERIOD){
-      if (++nixie_cnt > 2){
-        nixie_cnt = 0;
-      }
-
-      SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
-      digitalWrite(SPI_PIN_SS, LOW);
-      char d_h = digits[3+nixie_cnt];
-      SPI.transfer(digit_group_h(d_h, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
-      char d_l = digits[0+nixie_cnt];
-      SPI.transfer(digit_group_l(d_l, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
-      digitalWrite(SPI_PIN_SS, HIGH); 
-      SPI.endTransaction();
-      
-      nixie_t = tmp;  
-    }
-}*/
+os_timer_t esp_timer;
+os_timer_t clock_timer;
+os_timer_t event_timer;
 
 void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
     digits[0]=d0;
@@ -104,7 +86,7 @@ void nixie_clear(){
   nixie_set(d,d,d,d,d,d);
 }
 
-void timerCallback(void *pArg) {
+void nixieTimerCallback(void *pArg) {
     if (++nixie_cnt > 2){
         nixie_cnt = 0;
     }
@@ -117,6 +99,41 @@ void timerCallback(void *pArg) {
     SPI.transfer(digit_group_l(d_l, nixie_cnt==0, nixie_cnt==1, nixie_cnt==2));
     digitalWrite(SPI_PIN_SS, HIGH); 
     SPI.endTransaction();
+}
+
+void clockTimerCallback(void *pArg) {
+   time_t this_second;
+   time(&this_second);
+   if (this_second != last_second){
+      last_second = this_second;
+      
+      int h = (this_second / 3600) % 24;
+      int m = (this_second / 60) % 60;
+      int s = (this_second % 60);
+
+      char p = this_second%2;
+      nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
+  }
+}
+
+bool event_request_narodmon = false;
+bool event_response_narodmon = false;
+
+void eventTimerCallback(void *pArg) {
+   time_t this_second;
+   time(&this_second);
+      
+   int h = (this_second / 3600) % 24;
+   int m = (this_second / 60) % 60;
+   int s = (this_second % 60);
+
+   if (s == 0){
+    event_request_narodmon = true;
+   }
+
+   if (s == 10){
+    event_response_narodmon = true; 
+   }
 }
 
 void setup() {
@@ -186,15 +203,18 @@ void setup() {
 
   t = millis();
 
-  //pass as UUID
-  //WiFi.macAddress();
-
   nm->setConfigRadius(8);
   
   serailDebug_init();
 
-  os_timer_setfn(&myTimer, timerCallback, NULL);
-  os_timer_arm(&myTimer, NIXIE_UPDATE_PERIOD, true);
+  os_timer_setfn(&esp_timer, nixieTimerCallback, NULL);
+  os_timer_arm(&esp_timer, NIXIE_UPDATE_PERIOD, true);
+
+  os_timer_setfn(&clock_timer, clockTimerCallback, NULL);
+  os_timer_arm(&clock_timer, 50, true);
+
+  os_timer_setfn(&event_timer, eventTimerCallback, NULL);
+  os_timer_arm(&event_timer, 1000, true);
 }
 
 int code = -1;
@@ -290,25 +310,17 @@ void rainbowCycle(uint8_t wait) {
 
 
 void loop() {
-     time(&this_second); // until time is set, it remains 0
-     if (this_second != last_second){
-         last_second = this_second;
 
-          int h = (this_second / 3600) % 24;
-          int m = (this_second / 60) % 60;
-          int s = (this_second % 60);
+if (event_request_narodmon){
+    event_request_narodmon = false;
+    nm->request();
+}
 
-if (s==0){
-      nm->request();
-  }
-
-if (s==15){
-  _print("response: ");
-  _println(nm->response);
-  }
-
-          char p = this_second%2;
-          nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
+if (event_response_narodmon){
+    event_response_narodmon = false;
+   _print("response: ");
+   _println(nm->response);
+}
 
        /*  strip.setPixelColor(0, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
          strip.setPixelColor(1, strip.Color(127*((this_second / 3600) % 24)/24, 0, 0));
@@ -319,7 +331,7 @@ if (s==15){
          strip.setPixelColor(4, strip.Color(0, 0, 127*(this_second%60)/60));
          strip.setPixelColor(5, strip.Color(0, 0, 127*(this_second%60)/60));
          strip.show();*/
-     }
+     
   /*  }else if (delta < 20000){
             
       switch (code){
@@ -370,8 +382,6 @@ n=0;
   */
 
     nm->update();
-    
-    //nixie_update();
     serailDebug_update();
     
     ArduinoOTA.handle();
