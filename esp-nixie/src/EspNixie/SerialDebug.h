@@ -5,7 +5,7 @@
 
 
 //how many clients should be able to telnet to this ESP8266
-#define MAX_SRV_CLIENTS 1
+#define MAX_SRV_CLIENTS 5
 
 void serailDebug_init();
 void serailDebug_update();
