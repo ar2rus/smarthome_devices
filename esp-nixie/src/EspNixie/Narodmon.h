@@ -25,15 +25,28 @@
 //значения температуры
 #define T_MAX_TIME 60*60*1000
 
+#define REQUEST_DEVICES_LIMIT 20
+
+struct sensor_value {
+  uint8_t type;
+  uint16_t value;
+};
+
 class Narodmon: public JsonListener{
 private:
     String config_uuid;
     String config_apiKey;
+    
     uint8_t config_useLatLon;
     double config_lat;
     double config_lon;
+    
     uint8_t config_radius = 0;
 
+    uint8_t config_ReqT = 1;
+    uint8_t config_ReqH = 1;
+    uint8_t config_ReqP = 1;
+    
     //время получения последнего значения температуры
     uint32_t t_time = 0;
     //последнее полученное значение температуры
@@ -46,6 +59,9 @@ private:
     WiFiClient client;
     JsonStreamingParser parser;
     String parser_key;
+
+    uint8_t values_cnt;
+    sensor_value values[REQUEST_DEVICES_LIMIT * 3];
     
 public:
     String response;
@@ -55,6 +71,10 @@ public:
     void setConfigLatLon(double lat, double lon);
     void setConfigRadius(uint8_t radius);
     void setApiKey(String api_key);
+
+    void setConfigReqT(uint8_t reqT);
+    void setConfigReqH(uint8_t reqH);
+    void setConfigReqP(uint8_t reqP);
     
     uint8_t request();
     uint8_t hasT();

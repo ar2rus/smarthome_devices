@@ -6,7 +6,6 @@
 #include <MD5Builder.h>
 #include "Arduino.h"
 
-
 Narodmon::Narodmon(String device_id, String api_key){
   MD5Builder md5;
   md5.begin();
@@ -36,6 +35,19 @@ void Narodmon::setConfigRadius(uint8_t radius){
   config_radius = radius;
 }
 
+void Narodmon::setConfigReqT(uint8_t reqT){
+  config_ReqT = reqT;
+}
+
+void Narodmon::setConfigReqH(uint8_t reqH){
+  config_ReqH = reqH;
+}
+
+void Narodmon::setConfigReqP(uint8_t reqP){
+  config_ReqP = reqP;
+}
+    
+
 uint8_t Narodmon::request(){
   if (!waiting_response){
     uint32_t tmp_t = millis();
@@ -53,8 +65,17 @@ uint8_t Narodmon::request(){
         JSONRequest["radius"] = config_radius;
       }
       JsonArray& types = JSONRequest.createNestedArray("types");
-      types.add(1); //temperature
-      
+      if (config_ReqT){
+        types.add(1); //temperature
+      }
+      if (config_ReqH){
+        types.add(2); //humidity
+      }
+      if (config_ReqP){
+        types.add(3); //pressure
+      }
+
+      JSONRequest["limit"] = REQUEST_DEVICES_LIMIT;
       JSONRequest["pub"] = 1;
       JSONRequest["uuid"] = config_uuid;
       JSONRequest["api_key"] = config_apiKey;
@@ -74,6 +95,7 @@ uint8_t Narodmon::request(){
         client.println(json_post_data);
 
         response = "";
+        values_cnt = 0;
         parser.reset();
         
         waiting_response = 1;
@@ -131,9 +153,11 @@ void Narodmon::key(String key) {
 
 void Narodmon::value(String value) {
   if (parser_key.equals("value")){
+    //values[values_cnt]->value = 1;
+    //if (values[values_cnt]->type)
     response += ("v=" + value + ";");
   }else if (parser_key.equals("type")){
-    response += ("type=" + value + ";");
+    response += ("t=" + value + ";");
   }
   parser_key = "";
 }
