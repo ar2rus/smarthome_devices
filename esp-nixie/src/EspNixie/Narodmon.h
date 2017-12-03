@@ -25,11 +25,21 @@
 //значения температуры
 #define T_MAX_TIME 60*60*1000
 
+//максимальное время использования полученного
+//значения давления
+#define P_MAX_TIME 3*60*60*1000
+
 #define REQUEST_DEVICES_LIMIT 20
+#define SENSOR_COUNT_LIMIT REQUEST_DEVICES_LIMIT * 3
 
 struct sensor_value {
-  uint8_t type;
-  uint16_t value;
+  int8_t type;
+  int16_t value;
+  int16_t distance;
+};
+
+struct device {
+  int16_t distance;
 };
 
 class Narodmon: public JsonListener{
@@ -37,23 +47,29 @@ private:
     String config_uuid;
     String config_apiKey;
     
-    uint8_t config_useLatLon;
+    uint8_t config_useLatLng;
     double config_lat;
-    double config_lon;
+    double config_lng;
     
     uint8_t config_radius = 0;
 
-    uint8_t config_ReqT = 1;
-    uint8_t config_ReqH = 1;
-    uint8_t config_ReqP = 1;
+    uint8_t config_reqT = 1;
+    uint8_t config_reqH = 1;
+    uint8_t config_reqP = 1;
     
     //время получения последнего значения температуры
     uint32_t t_time = 0;
     //последнее полученное значение температуры
     int16_t t;
+
+    //время получения последнего значения давления
+    uint32_t p_time = 0;
+    //последнее полученное значение давления
+    int16_t p;
+    
     //время инициализации последнего запроса
     uint32_t request_time = 0;
-
+    //флаг ожидания/получения ответа
     uint8_t waiting_response = 0;
     
     WiFiClient client;
@@ -61,14 +77,16 @@ private:
     String parser_key;
 
     uint8_t values_cnt;
-    sensor_value values[REQUEST_DEVICES_LIMIT * 3];
+    sensor_value values[SENSOR_COUNT_LIMIT];
+
+    device d;
     
 public:
     String response;
-    Narodmon(String device_id, String api_key);
+    Narodmon(String device_id);
 
-    void setConfigUseLatLon(uint8_t use);
-    void setConfigLatLon(double lat, double lon);
+    void setConfigUseLatLng(uint8_t use);
+    void setConfigLatLng(double lat, double lng);
     void setConfigRadius(uint8_t radius);
     void setApiKey(String api_key);
 
@@ -77,8 +95,13 @@ public:
     void setConfigReqP(uint8_t reqP);
     
     uint8_t request();
+    
     uint8_t hasT();
     int16_t getT();
+    
+    uint8_t hasP();
+    int16_t getP();
+    
     void update();
 
     virtual void whitespace(char c);
