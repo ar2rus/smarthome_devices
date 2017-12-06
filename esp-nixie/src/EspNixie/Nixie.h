@@ -10,6 +10,8 @@
 
 #define DIGITS_COUNT 6
 
+typedef char nixie_codes[DIGITS_COUNT];
+
 #define _BV(bit) (1 << (bit))
 #define _TB(v, bit) (v & _BV(bit))
 

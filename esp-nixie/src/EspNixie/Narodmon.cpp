@@ -6,6 +6,8 @@
 #include <MD5Builder.h>
 #include "Arduino.h"
 
+#include "SerialDebug.h"
+
 Narodmon::Narodmon(String device_id){
   MD5Builder md5;
   md5.begin();
@@ -17,40 +19,60 @@ Narodmon::Narodmon(String device_id){
 }
 
 void Narodmon::setApiKey(String api_key){
+  #if DEBUG
+  Serial.println("setApiKey: " + api_key);
+  #endif
   config_apiKey = api_key;
 }
 
 void Narodmon::setConfigUseLatLng(uint8_t use){
+  #if DEBUG
+  Serial.println("setConfigUseLatLng: " + String(use));
+  #endif
   config_useLatLng = use;
 }
 
 void Narodmon::setConfigLatLng(double lat, double lng){
+  #if DEBUG
+  Serial.println("setConfigLatLng: " + String(lat) + ";" + String(lng));
+  #endif
   config_lat = lat;
   config_lng = lng;
   setConfigUseLatLng(1);
 }
 
 void Narodmon::setConfigRadius(uint8_t radius){
+  #if DEBUG
+  Serial.println("setConfigRadius: " + String(radius));
+  #endif
   config_radius = radius;
 }
 
 void Narodmon::setConfigReqT(uint8_t reqT){
+  #if DEBUG
+  Serial.println("setConfigReqH: " + String(reqT));
+  #endif
   config_reqT = reqT;
 }
 
 void Narodmon::setConfigReqH(uint8_t reqH){
+  #if DEBUG
+  Serial.println("setConfigReqT: " + String(reqH));
+  #endif
   config_reqH = reqH;
 }
 
 void Narodmon::setConfigReqP(uint8_t reqP){
+  #if DEBUG
+  Serial.println("setConfigReqP: " + String(reqP));
+  #endif
   config_reqP = reqP;
 }
     
 
 uint8_t Narodmon::request(){
-  response = "request";
+  response = "";
   if (!waiting_response){
-    response += "!wr";
     uint32_t tmp_t = millis();
     if ((request_time ==0) || ((tmp_t - request_time) > MIN_REQUEST_PERIOD)){
       
@@ -95,16 +117,28 @@ uint8_t Narodmon::request(){
         client.println();
         client.println(json_post_data);
 
-        response += json_post_data;
+        #if DEBUG
+        Serial.println("Request: " + json_post_data);
+        #endif
+
         values_cnt = 0;
         parser.reset();
         
         waiting_response = 1;
         request_time = tmp_t;
         return 1;
+     }else{
+        response = "Can't connect to " + String(NARODMON_HOST);
+        #if DEBUG
+        Serial.println(response);
+        #endif
      }
-    }
+    }else{
       response = "Too short interval between requests";
+      #if DEBUG
+      Serial.println(response);
+      #endif
+    }
   }
   return 0;
 }
@@ -129,23 +163,30 @@ void Narodmon::update(){
   if (waiting_response){
     if (client.connected()){
       if(client.available()){
-        response += String(client.available()) + " ";
+        #if DEBUG
+        Serial.println("Available bytes to parse: " + String(client.available()));
+        #endif
         while (client.available()){
            char c = client.read();
            parser.parse(c);
         }
-        //waiting_response = 0;
       }else{
         if (millis() - request_time > RESPONSE_TIMEOUT){
           client.stop();
           waiting_response = 0;
-          response = "Timeout";
+          response = "Timeout in response reading";
+          #if DEBUG
+          Serial.println(response);
+          #endif
         }
       }
     }else{
       client.stop();
       waiting_response = 0;
-      response = "Can't connect to server";
+      response = "No connection to server";
+      #if DEBUG
+      Serial.println(response);
+      #endif
     }
   }
 }
@@ -154,15 +195,15 @@ void Narodmon::whitespace(char c) {
 }
 
 void Narodmon::startDocument() {
-  //response += "start";
 }
 
 void Narodmon::key(String key) {
-  response += key+";";
+  //Serial.print(key + "=");
   parser_key = key;
 }
 
 void Narodmon::value(String value) {
+  //Serial.println(value);
   if (parser_key.equals("value")){
     values[values_cnt].value = (int)(value.toFloat()*10);
   }else if (parser_key.equals("type")){
@@ -191,14 +232,17 @@ void Narodmon::endDocument() {
   for (int i=0; i < values_cnt; i++){
     switch (values[i].type){
       case 1: //температуру берем самую низкую
+        #if DEBUG
+        Serial.print("t [val="+String(values[i].value)+"];");
+        #endif
         if (values[i].value < t){
           t = values[i].value;
         }
         break;
       case 3: //давление берем с ближайшего датчика
-        response += "dist=" + String(values[i].distance);
-        response += "val=" + String(values[i].value);
-      
+        #if DEBUG
+        Serial.print("p [dist="+String(values[i].distance)+"; val="+String(values[i].value)+"];");
+        #endif
         if (p==INT16_MAX || values[i].distance < values[p].distance){
           p = i;
         }
@@ -206,16 +250,31 @@ void Narodmon::endDocument() {
     }
   }
 
+  boolean r = false;
   if (t < INT16_MAX){
     t_time = millis();
-    response += "OK (t=" + String((float)getT()/10.0) + ")";
+    #if DEBUG
+    Serial.print("T=" + String((float)getT()/10.0));
+    r = true;
+    #endif
+    response += "OK(T="+String((float)getT()/10.0)+");";
   }
 
   if (p < INT16_MAX){
     p = values[p].value;
     p_time = millis();
-    response += "OK (p=" + String((float)getP()/10.0) + ")";
+    #if DEBUG
+    Serial.print("P=" + String((float)getP()/10.0));
+    r = true;
+    #endif
+    response += "OK(P=" + String((float)getP()/10.0)+");";
   }
+
+  #if DEBUG
+  if (r){
+    Serial.println();
+  }
+  #endif
 
   waiting_response = 0;
 }

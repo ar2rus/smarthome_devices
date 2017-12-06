@@ -3,6 +3,7 @@
 
 #include <ESP8266WiFi.h>
 
+#define DEBUG 0
 
 //how many clients should be able to telnet to this ESP8266
 #define MAX_SRV_CLIENTS 5

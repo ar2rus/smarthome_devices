@@ -50,28 +50,44 @@ void timerCallback(void *pArg) {
       int s = (this_second % 60);
 
       if (s == 0){
+        #if DEBUG
+        Serial.println("Event NM_REQUEST");
+        #endif
         event = NM_REQUEST;
       }
 
-      if (s == 10){
-        event = NM_RESPONSE;
-      }
+      //if (s == 10){
+      //  Serial.println("Event NM_RESPONSE");
+      //  event = NM_RESPONSE;
+      //}
 
       if (s == 15 || s == 35){
+        #if DEBUG
+        Serial.println("Event MODE_TERMOMETER");
+        #endif
         event = MODE_TERMOMETER;
       }
 
       if (s == 20 || s == 40){
+        #if DEBUG
+        Serial.println("Event MODE_BAROMETER");
+        #endif
         event = MODE_BAROMETER;
       }
 
       if (s == 30 || s == 45){
+        #if DEBUG
+        Serial.println("Event MODE_CLOCK");
+        #endif
         event = MODE_CLOCK;
       }
 
-      if (mode == MODE_CLOCK){
-        char p = this_second%2;
-        nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
+      switch (mode){
+        case CLOCK:{
+          char p = this_second%2;
+          nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
+        }
+         break; 
       }
    }
 }
@@ -79,13 +95,19 @@ void timerCallback(void *pArg) {
 void config_time(float timezone_hours_offset, int daylightOffset_sec, 
     const char* server1, const char* server2, const char* server3){
   configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
-  
-  Serial.println("\nWaiting for time");
+  #if DEBUG
+  Serial.println("Waiting for time");
+  #endif
   while(!this_second) {
          time(&this_second);
+         #if DEBUG
          Serial.print("-");
+         #endif
          delay(100);
   }
+  #if DEBUG
+  Serial.println("");
+  #endif
 }
 
 void config_narodmon(String apiKey, 
@@ -103,11 +125,17 @@ uint8_t radius){
 }
 
 void setup() {
-  nixie_init();
-  neopixels_clear(neopixels_strip);
-  
+  #if DEBUG
   Serial.begin(115200);
-  Serial.println("Booting");
+  Serial.println("\nBooting");
+  #endif
+  
+  nixie_init();
+  neopixels_strip.begin();
+  neopixels_clear(neopixels_strip);
+            neopixels_strip.setPixelColor(3, neopixels_strip.Color(0, 0, 25));
+          neopixels_strip.setPixelColor(4, neopixels_strip.Color(0, 0, 25));
+          neopixels_strip.show();
   
   WiFi.mode(WIFI_STA);
 
@@ -121,8 +149,10 @@ void setup() {
     ESP.restart();
   }
 
+  #if DEBUG
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  #endif
 
   ArduinoOTA.setHostname("esp-nixie");
   ArduinoOTA.begin();
@@ -136,6 +166,10 @@ void setup() {
 
   os_timer_setfn(&timer, timerCallback, NULL);
   os_timer_arm(&timer, 50, true);
+
+  #if DEBUG
+  Serial.println("Setup done");
+  #endif
 }
 
 
@@ -146,52 +180,51 @@ void loop() {
       nm->request();
       break;
     case NM_RESPONSE:
+      #if DEBUG
+      Serial.print("response: ");
+      Serial.println(nm->response);
+      #endif
       _print("response: ");
       _println(nm->response);
-    break;
+      break;
     case MODE_CLOCK:
-    break; 
+      mode = CLOCK;
+      //neopixels_clear(neopixels_strip);
+      break; 
     case MODE_TERMOMETER:
+      //neopixels_clear(neopixels_strip);
       if (nm->hasT()){
-        int16_t t = nm->getT();
-    
-        uint8_t sign = t >= 0 ? 1 : 0;
-        t = abs(t);
-        uint8_t t10 = t/100;
-        uint8_t e10 = t10 > 0;
-        uint8_t t1_1 = t%100;
-        uint8_t t1 = t1_1 / 10;
-        uint8_t t_1 = t1_1 % 10;
-        nixie_set(digit_off, digit_off, digit_code(t10,e10,0), digit_code(t1,1,1), digit_code(t_1,1,0), digit_off);
-    
-        if (!sign){
-          if (e10){
-            neopixels_strip.setPixelColor(2, neopixels_strip.Color(0, 0, 25));
+          //Serial.println(nm->getT()/10.0);
+          int16_t t = nm->getT();
+          nixie_set(t/10.0, 3, 1);
+        
+          uint8_t sign = t >= 0 ? 1 : 0;
+          uint8_t e10 = (abs(t)/100) > 0;
+          
+          if (!sign){
+            if (e10){
+              neopixels_strip.setPixelColor(2, neopixels_strip.Color(0, 0, 25));
           }
           neopixels_strip.setPixelColor(3, neopixels_strip.Color(0, 0, 25));
           neopixels_strip.setPixelColor(4, neopixels_strip.Color(0, 0, 25));
           neopixels_strip.show();
         }
+          
         mode = TERMOMETER;
       }else{
         mode = CLOCK;
       }
-    break;
+      break;
     case MODE_BAROMETER:
+      //neopixels_clear(neopixels_strip);
       if (nm->hasP()){
-        int16_t p = nm->getP();
-        uint8_t p100 = p / 1000;  //755.6 (7556) -> 7
-        uint16_t r100 = p % 1000; //7556 -> 556
-        uint8_t p10 = r100 / 100; //556 -> 5
-        uint16_t r10 = r100 % 100; //556 -> 56
-        uint8_t p1 = r10 / 10;  //56 -> 5
-        uint8_t r1 = r10 % 10; //56 -> 6
-        nixie_set(digit_off, digit_code(p100,1,0), digit_code(p10,1,0), digit_code(p1,1,1), digit_code(r1,1,0), digit_off);
+        //Serial.println(nm->getP()/10.0);
+        nixie_set(nm->getP()/10.0, 4, 1);
         mode = BAROMETER;
       }else{
         mode = CLOCK;
       }
-    break;
+      break;
   }
 
   event = NONE;
@@ -201,4 +234,3 @@ void loop() {
     
   ArduinoOTA.handle();
 }
-
