@@ -6,11 +6,10 @@
 #define LED_PIN 5
 #define NUMPIXELS 6
 
-void neopixels_clear(Adafruit_NeoPixel neopixels_strip){
-  for (int i=0; i<neopixels_strip.numPixels(); i++){
-    neopixels_strip.setPixelColor(i+1, 0);
+void neopixels_clear(Adafruit_NeoPixel* strip){
+  for (int i=0; i<strip->numPixels(); i++){
+    strip->setPixelColor(i, 0);
   }
-  neopixels_strip.show();
 }
 
 // Input a value 0 to 255 to get a color value.

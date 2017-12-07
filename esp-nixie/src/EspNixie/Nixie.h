@@ -6,7 +6,7 @@
 #define SPI_PIN_SS 15
 
 //ms
-#define NIXIE_UPDATE_PERIOD  2
+#define NIXIE_UPDATE_PERIOD  5
 
 #define DIGITS_COUNT 6
 

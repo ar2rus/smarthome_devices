@@ -34,7 +34,10 @@ time_t last_second = 0;
 
 
 Narodmon* nm = new Narodmon(WiFi.macAddress());
-Adafruit_NeoPixel neopixels_strip = Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel* neopixels_strip = new Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+uint32_t minus_color = neopixels_strip->Color(0, 0, 20);
+
 
 os_timer_t timer;
 
@@ -85,7 +88,7 @@ void timerCallback(void *pArg) {
       switch (mode){
         case CLOCK:{
           char p = this_second%2;
-          nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));
+          nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));        
         }
          break; 
       }
@@ -131,11 +134,10 @@ void setup() {
   #endif
   
   nixie_init();
-  neopixels_strip.begin();
+
+  neopixels_strip->begin();
   neopixels_clear(neopixels_strip);
-            neopixels_strip.setPixelColor(3, neopixels_strip.Color(0, 0, 25));
-          neopixels_strip.setPixelColor(4, neopixels_strip.Color(0, 0, 25));
-          neopixels_strip.show();
+  neopixels_strip->show();
   
   WiFi.mode(WIFI_STA);
 
@@ -189,10 +191,11 @@ void loop() {
       break;
     case MODE_CLOCK:
       mode = CLOCK;
-      //neopixels_clear(neopixels_strip);
+      neopixels_clear(neopixels_strip);
+      neopixels_strip->show();
       break; 
     case MODE_TERMOMETER:
-      //neopixels_clear(neopixels_strip);
+      neopixels_clear(neopixels_strip);
       if (nm->hasT()){
           //Serial.println(nm->getT()/10.0);
           int16_t t = nm->getT();
@@ -203,28 +206,28 @@ void loop() {
           
           if (!sign){
             if (e10){
-              neopixels_strip.setPixelColor(2, neopixels_strip.Color(0, 0, 25));
+              neopixels_strip->setPixelColor(2, minus_color);
+            }
+            neopixels_strip->setPixelColor(3, minus_color);
+            neopixels_strip->setPixelColor(4, minus_color);
           }
-          neopixels_strip.setPixelColor(3, neopixels_strip.Color(0, 0, 25));
-          neopixels_strip.setPixelColor(4, neopixels_strip.Color(0, 0, 25));
-          neopixels_strip.show();
-        }
-          
-        mode = TERMOMETER;
+          neopixels_strip->show();  
+          mode = TERMOMETER;
       }else{
-        mode = CLOCK;
+          mode = CLOCK;
       }
       break;
     case MODE_BAROMETER:
-      //neopixels_clear(neopixels_strip);
-      if (nm->hasP()){
-        //Serial.println(nm->getP()/10.0);
-        nixie_set(nm->getP()/10.0, 4, 1);
-        mode = BAROMETER;
-      }else{
-        mode = CLOCK;
-      }
-      break;
+        neopixels_clear(neopixels_strip);
+        neopixels_strip->show();
+        if (nm->hasP()){
+          //Serial.println(nm->getP()/10.0);
+          nixie_set(nm->getP()/10.0, 4, 1);
+          mode = BAROMETER;
+        }else{
+          mode = CLOCK;
+        }
+        break;
   }
 
   event = NONE;
