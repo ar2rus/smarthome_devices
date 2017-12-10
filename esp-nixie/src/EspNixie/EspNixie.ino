@@ -200,6 +200,8 @@ void setup() {
   #if DEBUG
   Serial.println("Setup done");
   #endif  
+
+
 }
 
 
@@ -268,7 +270,7 @@ void loop() {
   event = NONE;
 
   nm->update();
-  serailDebug_update();
+  //serailDebug_update();
     
   ArduinoOTA.handle();
 }
