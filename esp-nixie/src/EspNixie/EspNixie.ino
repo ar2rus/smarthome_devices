@@ -9,16 +9,24 @@
 #include "Narodmon.h"
 #include "Nixie.h"
 #include "NeoPixels.h"
-#include "OneWireT.h"
+
+//#include "InsideTermometer.h"
 
 extern "C" {
   #include "user_interface.h"
 }
 
-enum MODES { CLOCK_SETUP, CLOCK, TERMOMETER, HUMIDITY, BAROMETER, ALARM};
+enum MODES { CLOCK_SETUP, CLOCK, TERMOMETER_INSIDE, TERMOMETER, HUMIDITY, BAROMETER, ALARM};
 enum MODES mode;
 
-enum EVENTS { NONE, NM_REQUEST, NM_RESPONSE, MODE_CLOCK, MODE_TERMOMETER, MODE_BAROMETER};
+enum EVENTS { NONE, 
+              NM_REQUEST, 
+              NM_RESPONSE, 
+              INSIDE_TERMOMETER_REQUEST,
+              MODE_CLOCK, 
+              MODE_TERMOMETER, 
+              MODE_BAROMETER,
+              MODE_INSIDE_TERMOMETER};
 enum EVENTS event = NONE;
 
 const char *ssid = "espNet";
@@ -59,10 +67,26 @@ void timerCallback(void *pArg) {
         event = NM_REQUEST;
       }
 
-      //if (s == 10){
-      //  Serial.println("Event NM_RESPONSE");
-      //  event = NM_RESPONSE;
-      //}
+      /*if (s == 3){
+        #if DEBUG
+        Serial.println("Event INSIDE_TERMOMETER_REQUEST");
+        #endif
+        event = INSIDE_TERMOMETER_REQUEST;
+      }
+
+      if (s == 5){
+        #if DEBUG
+        Serial.println("Event MODE_INSIDE_TERMOMETER");
+        #endif
+        event = MODE_INSIDE_TERMOMETER;
+      }*/
+
+      if (s == 10){
+        //#if DEBUG
+        //Serial.println("Event NM_RESPONSE");
+        //#endif
+        //event = NM_RESPONSE;
+      }
 
       if (s == 15 || s == 35){
         #if DEBUG
@@ -78,7 +102,7 @@ void timerCallback(void *pArg) {
         event = MODE_BAROMETER;
       }
 
-      if (s == 30 || s == 45){
+      if (s == 10 || s == 30 || s == 45){
         #if DEBUG
         Serial.println("Event MODE_CLOCK");
         #endif
@@ -88,7 +112,7 @@ void timerCallback(void *pArg) {
       switch (mode){
         case CLOCK:{
           char p = this_second%2;
-          nixie_set(digit_code(h/10,1,p), digit_code(h%10,1,p), digit_code(m/10,1,p), digit_code(m%10,1,p), digit_code(s/10,1,p), digit_code(s%10,1,p));        
+          nixie_set(digit_code(h/10,1,0), digit_code(h%10,1,p), digit_code(m/10,1,0), digit_code(m%10,1,p), digit_code(s/10,1,0), digit_code(s%10,1,p));        
         }
          break; 
       }
@@ -112,6 +136,8 @@ void config_time(float timezone_hours_offset, int daylightOffset_sec,
   Serial.println("");
   #endif
 }
+
+int oneWireRes = 5;
 
 void config_narodmon(String apiKey, 
 uint8_t use_latlng, double  lat, double lng, 
@@ -165,13 +191,15 @@ void setup() {
   mode = CLOCK;
   
   serailDebug_init();
+  
+  //insideTermometerInit();
 
   os_timer_setfn(&timer, timerCallback, NULL);
   os_timer_arm(&timer, 50, true);
 
   #if DEBUG
   Serial.println("Setup done");
-  #endif
+  #endif  
 }
 
 
@@ -183,12 +211,19 @@ void loop() {
       break;
     case NM_RESPONSE:
       #if DEBUG
-      Serial.print("response: ");
-      Serial.println(nm->response);
+        Serial.print("response: ");
+        Serial.println(nm->response);
       #endif
       _print("response: ");
       _println(nm->response);
       break;
+    /*case INSIDE_TERMOMETER_REQUEST:
+      insideTermometerRequest();
+      break;
+    case MODE_INSIDE_TERMOMETER:
+      mode = TERMOMETER_INSIDE;
+      nixie_set(insideTermometerTemperature(), 2, 3);
+      break;*/
     case MODE_CLOCK:
       mode = CLOCK;
       neopixels_clear(neopixels_strip);
@@ -222,7 +257,7 @@ void loop() {
         neopixels_strip->show();
         if (nm->hasP()){
           //Serial.println(nm->getP()/10.0);
-          nixie_set(nm->getP()/10.0, 4, 1);
+          nixie_set(nm->getP()/10.0, 3, 1);
           mode = BAROMETER;
         }else{
           mode = CLOCK;
