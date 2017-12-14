@@ -71,7 +71,7 @@ void Narodmon::setConfigReqP(uint8_t reqP){
     
 
 uint8_t Narodmon::request(){
-  response = "";
+  response = String(ESP.getFreeHeap())+";";
   if (!waiting_response){
     uint32_t tmp_t = millis();
     if ((request_time ==0) || ((tmp_t - request_time) > MIN_REQUEST_PERIOD)){

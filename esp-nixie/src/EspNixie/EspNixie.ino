@@ -82,10 +82,10 @@ void timerCallback(void *pArg) {
       }*/
 
       if (s == 10){
-        //#if DEBUG
-        //Serial.println("Event NM_RESPONSE");
-        //#endif
-        //event = NM_RESPONSE;
+        #if DEBUG
+        Serial.println("Event NM_RESPONSE");
+        #endif
+        event = NM_RESPONSE;
       }
 
       if (s == 15 || s == 35){
@@ -102,7 +102,7 @@ void timerCallback(void *pArg) {
         event = MODE_BAROMETER;
       }
 
-      if (s == 10 || s == 30 || s == 45){
+      if (/*s == 10 || */s == 30 || s == 45){
         #if DEBUG
         Serial.println("Event MODE_CLOCK");
         #endif
@@ -270,7 +270,7 @@ void loop() {
   event = NONE;
 
   nm->update();
-  //serailDebug_update();
+  serailDebug_update();
     
   ArduinoOTA.handle();
 }
