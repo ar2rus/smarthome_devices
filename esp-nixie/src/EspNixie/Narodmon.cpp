@@ -71,7 +71,7 @@ void Narodmon::setConfigReqP(uint8_t reqP){
     
 
 uint8_t Narodmon::request(){
-  response = String(ESP.getFreeHeap())+";";
+  response = String(millis())+";"+String(ESP.getFreeHeap())+";";
   if (!waiting_response){
     uint32_t tmp_t = millis();
     if ((request_time ==0) || ((tmp_t - request_time) > MIN_REQUEST_PERIOD)){
@@ -106,21 +106,23 @@ uint8_t Narodmon::request(){
       String json_post_data;
       JSONRequest.printTo(json_post_data);
 
-     if (client.connect(NARODMON_HOST, 80)) {
-        client.println(String("POST ") + NARODMON_API_PATH +" HTTP/1.1");
-        client.println(String("Host: ") + NARODMON_HOST);
-        client.println("Cache-Control: no-cache");
-        client.println("User-Agent: esp-nixie");
-        client.println("Content-Type: application/json");
-        client.print("Content-Length: ");
-        client.println(json_post_data.length());
-        client.println();
-        client.println(json_post_data);
+      response += json_post_data + ";";
 
-        #if DEBUG
+      #if DEBUG
         Serial.println("Request: " + json_post_data);
-        #endif
+      #endif
 
+      http.begin(NARODMON_HOST, 80, NARODMON_API_PATH);
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("User-Agent", "esp-nixie");
+      int httpCode = http.POST(json_post_data);
+
+    //temp
+    response += String(httpCode)+";";
+
+     if (httpCode == HTTP_CODE_OK){
+        response += "size="+String(http.getSize());
+      
         values_cnt = 0;
         parser.reset();
         
@@ -128,11 +130,13 @@ uint8_t Narodmon::request(){
         request_time = tmp_t;
         return 1;
      }else{
-        response = "Can't connect to " + String(NARODMON_HOST);
+        //+= temp
+        response += "HTTP response code = " + String(httpCode);
         #if DEBUG
         Serial.println(response);
         #endif
      }
+     
     }else{
       response = "Too short interval between requests";
       #if DEBUG
@@ -161,18 +165,19 @@ int16_t Narodmon::getP(){
 
 void Narodmon::update(){
   if (waiting_response){
-    if (client.connected()){
-      if(client.available()){
+    if (http.connected()){
+      WiFiClient * stream = http.getStreamPtr();
+      if(stream->available()){
         #if DEBUG
-        Serial.println("Available bytes to parse: " + String(client.available()));
+        Serial.println("Available bytes to parse: " + String(stream.available()));
         #endif
-        while (client.available()){
-           char c = client.read();
+        while (stream->available()){
+           char c = stream->read();
            parser.parse(c);
         }
       }else{
         if (millis() - request_time > RESPONSE_TIMEOUT){
-          client.stop();
+          http.end();
           waiting_response = 0;
           response = "Timeout in response reading";
           #if DEBUG
@@ -181,7 +186,7 @@ void Narodmon::update(){
         }
       }
     }else{
-      client.stop();
+      http.end();
       waiting_response = 0;
       response = "No connection to server";
       #if DEBUG

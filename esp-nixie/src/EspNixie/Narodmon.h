@@ -2,7 +2,9 @@
 #define NARODMON_h
 
 #include <stdint.h>
+
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 
 #include "JsonStreamingParser.h"
 #include "JsonListener.h"
@@ -72,7 +74,7 @@ private:
     //флаг ожидания/получения ответа
     uint8_t waiting_response = 0;
     
-    WiFiClient client;
+    HTTPClient http;
     JsonStreamingParser parser;
     String parser_key;
 
