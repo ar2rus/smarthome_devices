@@ -74,7 +74,7 @@ uint8_t Narodmon::request(){
   response = String(millis())+";"+String(ESP.getFreeHeap())+";";
   if (!waiting_response){
     uint32_t tmp_t = millis();
-    if ((request_time ==0) || ((tmp_t - request_time) > MIN_REQUEST_PERIOD)){
+    if ((request_time == 0) || ((tmp_t - request_time) >= MIN_REQUEST_PERIOD)){
       
       StaticJsonBuffer<JSON_BUFFER_SIZE> JSONbuffer;
       JsonObject& JSONRequest = JSONbuffer.createObject();
@@ -155,6 +155,14 @@ int16_t Narodmon::getT(){
   return t;
 }
 
+uint8_t Narodmon::hasH(){
+  return h_time > 0 && (millis() - h_time) < H_MAX_TIME;
+}
+
+int16_t Narodmon::getH(){
+  return h;
+}
+
 uint8_t Narodmon::hasP(){
   return p_time > 0 && (millis() - p_time) < P_MAX_TIME;
 }
@@ -162,6 +170,8 @@ uint8_t Narodmon::hasP(){
 int16_t Narodmon::getP(){
   return p;
 }
+
+
 
 void Narodmon::update(){
   if (waiting_response){
@@ -179,7 +189,7 @@ void Narodmon::update(){
         if (millis() - request_time > RESPONSE_TIMEOUT){
           http.end();
           waiting_response = 0;
-          response = "Timeout in response reading";
+          response = "Timeout while response reading";
           #if DEBUG
           Serial.println(response);
           #endif
@@ -233,6 +243,7 @@ void Narodmon::endObject() {
 
 void Narodmon::endDocument() {
   t = INT16_MAX;
+  h = INT16_MAX;
   p = INT16_MAX;
   for (int i=0; i < values_cnt; i++){
     switch (values[i].type){
@@ -242,6 +253,14 @@ void Narodmon::endDocument() {
         #endif
         if (values[i].value < t){
           t = values[i].value;
+        }
+        break;
+      case 2: //влажность берем с ближайшего датчика
+        #if DEBUG
+        Serial.print("h [dist="+String(values[i].distance)+"; val="+String(values[i].value)+"];");
+        #endif
+        if (h==INT16_MAX || values[i].distance < values[h].distance){
+          h = i;
         }
         break;
       case 3: //давление берем с ближайшего датчика
@@ -263,6 +282,16 @@ void Narodmon::endDocument() {
     r = true;
     #endif
     response += "OK(T="+String((float)getT()/10.0)+");";
+  }
+
+  if (h < INT16_MAX){
+    h = values[h].value;
+    h_time = millis();
+    #if DEBUG
+    Serial.print("H=" + String((float)getH()/10.0));
+    r = true;
+    #endif
+    response += "OK(H=" + String((float)getH()/10.0)+");";
   }
 
   if (p < INT16_MAX){

@@ -21,7 +21,6 @@ void serailDebug_update(){
       if (!serverClients[i] || !serverClients[i].connected()){
         if(serverClients[i]) serverClients[i].stop();
         serverClients[i] = server.available();
-        //Serial1.print("New client: "); Serial1.print(i);
         continue;
       }
     }
