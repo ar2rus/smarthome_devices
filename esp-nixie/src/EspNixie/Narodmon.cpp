@@ -121,7 +121,7 @@ uint8_t Narodmon::request(){
     response += String(httpCode)+";";
 
      if (httpCode == HTTP_CODE_OK){
-        response += "size="+String(http.getSize());
+        response += "size="+String(http.getSize())+";";
       
         values_cnt = 0;
         parser.reset();
