@@ -16,7 +16,7 @@ void nixie_update() {
     if (++nixie_cnt > 2){
         nixie_cnt = 0;
     }
-
+    
     SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
     digitalWrite(SPI_PIN_SS, LOW);
     char d_h = nixie_digits[3+nixie_cnt];
@@ -37,7 +37,7 @@ void nixie_init(){
   
   nixie_clear();
   
-  esp_ticker.attach(NIXIE_UPDATE_PERIOD, nixie_update);
+  esp_ticker.attach_ms(NIXIE_UPDATE_PERIOD, nixie_update);
 }
 
 /*String digitToString(char d){

@@ -89,13 +89,13 @@ uint8_t Narodmon::request(){
       }
       JsonArray& types = JSONRequest.createNestedArray("types");
       if (config_reqT){
-        types.add(1); //temperature
+        types.add(NARODMON_TYPE_TEMPERATURE); //temperature
       }
       if (config_reqH){
-        types.add(2); //humidity
+        types.add(NARODMON_TYPE_HUMIDITY); //humidity
       }
       if (config_reqP){
-        types.add(3); //pressure
+        types.add(NARODMON_TYPE_PRESSURE); //pressure
       }
 
       JSONRequest["limit"] = REQUEST_DEVICES_LIMIT;
@@ -180,9 +180,17 @@ void Narodmon::update(){
         #if DEBUG
           Serial.println("Available bytes to parse: " + String(stream.available()));
         #endif
+        
+        //int yield_cnt = 0;
         while (stream->available()){
            char c = stream->read();
            parser.parse(c);
+           yield();
+           //if (++yield_cnt==100){
+           //     //break;
+           //     yield_cnt = 0;
+           //     
+           //}
         }
       }else{
         if (millis() - request_time > RESPONSE_TIMEOUT){
@@ -251,12 +259,12 @@ int16_t resolve_value(sensor_value* values, int values_cnt, int type, RESOLVE_MO
           }
           break;
         case MIN:
-          if (cnt==0 || values[value].value < value){
+          if (cnt==0 || values[i].value < value){
             value = values[i].value;
           }
           break;
         case MAX:
-          if (cnt==0 || values[value].value > value){
+          if (cnt==0 || values[i].value > value){
             value = values[i].value;
           }
           break;
@@ -285,7 +293,7 @@ int16_t resolve_value(sensor_value* values, int values_cnt, int type, RESOLVE_MO
 
 void Narodmon::endDocument() {
   
-  int16_t value = resolve_value(values, values_cnt, 0, MIN);
+  int16_t value = resolve_value(values, values_cnt, NARODMON_TYPE_TEMPERATURE, MIN);
   if (value != VALUE_NONE){
     t = value;
     t_time = millis();
@@ -296,7 +304,7 @@ void Narodmon::endDocument() {
     #endif
   }
 
-  value = resolve_value(values, values_cnt, 1, CLOSEST);
+  value = resolve_value(values, values_cnt, NARODMON_TYPE_HUMIDITY, CLOSEST);
   if (value != VALUE_NONE){
     h = value;
     h_time = millis();
@@ -307,7 +315,7 @@ void Narodmon::endDocument() {
     #endif
   }
 
-  value = resolve_value(values, values_cnt, 2, CLOSEST);
+  value = resolve_value(values, values_cnt, NARODMON_TYPE_PRESSURE, CLOSEST);
   if (value != VALUE_NONE){
     p = value;
     p_time = millis();

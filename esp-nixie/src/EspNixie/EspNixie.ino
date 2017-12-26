@@ -74,30 +74,30 @@ void ticker_update() {
         Serial.println("Event MODE_INSIDE_TERMOMETER");
         #endif
         event = MODE_INSIDE_TERMOMETER;
-      }*/
+      }
 
       if (s == 10){
         #if DEBUG
           Serial.println("Event NM_RESPONSE");
         #endif
         event = NM_RESPONSE;
-      }
+      }*/
 
-      if (s == 15 || s == 35){
+      if (s == 30){
         #if DEBUG
           Serial.println("Event MODE_TERMOMETER");
         #endif
         event = MODE_TERMOMETER;
       }
 
-      if (s == 20 || s == 40){
+      if (s == 35){
         #if DEBUG
           Serial.println("Event MODE_BAROMETER");
         #endif
         event = MODE_BAROMETER;
       }
 
-      if (/*s == 10 || */s == 30 || s == 45){
+      if (/*s == 10 || */s == 40){
         #if DEBUG
         Serial.println("Event MODE_CLOCK");
         #endif
@@ -188,7 +188,7 @@ void setup() {
   //insideTermometerInit();
 
   mode = CLOCK;
-  main_ticker.attach(50, ticker_update);
+  main_ticker.attach_ms(100, ticker_update);
   
   //serailDebug_init();
   
@@ -266,4 +266,6 @@ void loop() {
   //serailDebug_update();
     
   ArduinoOTA.handle();
+
+  yield();
 }
