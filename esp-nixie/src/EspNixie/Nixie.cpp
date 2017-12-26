@@ -1,19 +1,18 @@
 #include "Nixie.h"
 
-#include <SPI.h>
 #include "Arduino.h"
 
+#include <SPI.h>
+#include <Ticker.h>
 
-extern "C" {
-  #include "user_interface.h"
-}
+#include "SerialDebug.h"
 
-char nixie_cnt;
-char nixie_digits[DIGITS_COUNT];
+volatile char nixie_cnt;
+volatile char nixie_digits[DIGITS_COUNT];
 
-os_timer_t nixie_timer;
+Ticker esp_ticker;
 
-void nixieTimerCallback(void *pArg) {
+void nixie_update() {
     if (++nixie_cnt > 2){
         nixie_cnt = 0;
     }
@@ -29,24 +28,25 @@ void nixieTimerCallback(void *pArg) {
 }
 
 void nixie_init(){
+  #if DEBUG
   Serial.println("Nixie initialization");
+  #endif
   
   pinMode(SPI_PIN_SS, OUTPUT);
   SPI.begin();
   
   nixie_clear();
-
-  os_timer_setfn(&nixie_timer, nixieTimerCallback, NULL);
-  os_timer_arm(&nixie_timer, NIXIE_UPDATE_PERIOD, true);
+  
+  esp_ticker.attach(NIXIE_UPDATE_PERIOD, nixie_update);
 }
 
-String digitToString(char d){
+/*String digitToString(char d){
   if (digit_enable(d)){
     return String(digit_value(d)) + (digit_point(d) ? "." : "");
   }else{
     return " ";
   }
-}
+}*/
 
 void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
     nixie_digits[0]=d0;
@@ -65,7 +65,7 @@ void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
 
 void nixie_clear(){
   char d = digit_off;
-  nixie_set(d,d,d,d,d,d);
+  nixie_set(d, d, d, d, d, d);
 }
 
 uint8_t nixie_int(uint32_t v, uint8_t pos_1, char* digits){
@@ -80,7 +80,6 @@ uint8_t nixie_int(uint32_t v, uint8_t pos_1, char* digits){
     for (int i=0; i<DIGITS_COUNT; i++){
       digits[i] = digit_code(digits[i], (i>=pos && i<=pos_1), 0);
     }
-
     return 1;
   }
   return 0;
@@ -90,7 +89,7 @@ void nixie_set(uint32_t v, uint8_t pos_1){
   char digits[DIGITS_COUNT];
 
   if (nixie_int(v, pos_1, digits)){
-    nixie_set(digits[0],digits[1],digits[2],digits[3],digits[4],digits[5]);
+    nixie_set(digits[0], digits[1], digits[2], digits[3], digits[4], digits[5]);
   }
 }
 
@@ -103,6 +102,6 @@ void nixie_set(float v, uint8_t pos_1, int num_frac){
   char digits[DIGITS_COUNT];
   if (nixie_int(b, pos_1+num_frac, digits)){
     digits[pos_1] = digit_code(digit_value(digits[pos_1]), 1, 1); //add point
-    nixie_set(digits[0],digits[1],digits[2],digits[3],digits[4],digits[5]);
+    nixie_set(digits[0], digits[1], digits[2], digits[3], digits[4], digits[5]);
   }
 }

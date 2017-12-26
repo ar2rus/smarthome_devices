@@ -117,8 +117,8 @@ uint8_t Narodmon::request(){
       http.addHeader("User-Agent", "esp-nixie");
       int httpCode = http.POST(json_post_data);
 
-    //temp
-    response += String(httpCode)+";";
+      //temp
+      response += String(httpCode)+";";
 
      if (httpCode == HTTP_CODE_OK){
         response += "size="+String(http.getSize())+";";
@@ -133,14 +133,13 @@ uint8_t Narodmon::request(){
         //+= temp
         response += "HTTP response code = " + String(httpCode);
         #if DEBUG
-        Serial.println(response);
+          Serial.println(response);
         #endif
      }
-     
     }else{
       response = "Too short interval between requests";
       #if DEBUG
-      Serial.println(response);
+        Serial.println(response);
       #endif
     }
   }
@@ -179,7 +178,7 @@ void Narodmon::update(){
       WiFiClient * stream = http.getStreamPtr();
       if(stream->available()){
         #if DEBUG
-        Serial.println("Available bytes to parse: " + String(stream.available()));
+          Serial.println("Available bytes to parse: " + String(stream.available()));
         #endif
         while (stream->available()){
            char c = stream->read();
@@ -191,7 +190,7 @@ void Narodmon::update(){
           waiting_response = 0;
           response = "Timeout while response reading";
           #if DEBUG
-          Serial.println(response);
+            Serial.println(response);
           #endif
         }
       }
@@ -200,7 +199,7 @@ void Narodmon::update(){
       waiting_response = 0;
       response = "No connection to server";
       #if DEBUG
-      Serial.println(response);
+        Serial.println(response);
       #endif
     }
   }
@@ -213,12 +212,10 @@ void Narodmon::startDocument() {
 }
 
 void Narodmon::key(String key) {
-  //Serial.print(key + "=");
   parser_key = key;
 }
 
 void Narodmon::value(String value) {
-  //Serial.println(value);
   if (parser_key.equals("value")){
     values[values_cnt].value = (int)(value.toFloat()*10);
   }else if (parser_key.equals("type")){
@@ -233,7 +230,7 @@ void Narodmon::endArray() {
 }
 
 void Narodmon::endObject() {
-  if (values[values_cnt].type >= 0 && values[values_cnt].value != INT16_MAX){
+  if (values[values_cnt].type >= 0 && values[values_cnt].value != VALUE_NONE){
     if (values_cnt < SENSOR_COUNT_LIMIT){
       values_cnt++;
       startObject();
@@ -241,74 +238,85 @@ void Narodmon::endObject() {
   }
 }
 
-void Narodmon::endDocument() {
-  t = INT16_MAX;
-  h = INT16_MAX;
-  p = INT16_MAX;
+int16_t resolve_value(sensor_value* values, int values_cnt, int type, RESOLVE_MODE resolve_mode){
+  int32_t value = 0;
+
+  int cnt = 0;
   for (int i=0; i < values_cnt; i++){
-    switch (values[i].type){
-      case 1: //температуру берем самую низкую
-        #if DEBUG
-        Serial.print("t [val="+String(values[i].value)+"];");
-        #endif
-        if (values[i].value < t){
-          t = values[i].value;
-        }
-        break;
-      case 2: //влажность берем с ближайшего датчика
-        #if DEBUG
-        Serial.print("h [dist="+String(values[i].distance)+"; val="+String(values[i].value)+"];");
-        #endif
-        if (h==INT16_MAX || values[i].distance < values[h].distance){
-          h = i;
-        }
-        break;
-      case 3: //давление берем с ближайшего датчика
-        #if DEBUG
-        Serial.print("p [dist="+String(values[i].distance)+"; val="+String(values[i].value)+"];");
-        #endif
-        if (p==INT16_MAX || values[i].distance < values[p].distance){
-          p = i;
-        }
-        break;
+    if (values[i].type == type){
+      switch (resolve_mode){
+        case CLOSEST:
+          if (cnt==0 || values[i].distance < values[value].distance){
+            value = i;
+          }
+          break;
+        case MIN:
+          if (cnt==0 || values[value].value < value){
+            value = values[i].value;
+          }
+          break;
+        case MAX:
+          if (cnt==0 || values[value].value > value){
+            value = values[i].value;
+          }
+          break;
+        case AVG:
+          value += values[i].value;
+          break;
+      }
+      cnt++;
     }
   }
 
-  boolean r = false;
-  if (t < INT16_MAX){
+  if (cnt > 0){
+    switch (resolve_mode){
+      case CLOSEST:
+        value = values[value].value;
+        break;
+      case AVG:
+        value /= cnt;
+        break;
+    }
+    return value;
+  }
+  
+  return VALUE_NONE;
+}
+
+void Narodmon::endDocument() {
+  
+  int16_t value = resolve_value(values, values_cnt, 0, MIN);
+  if (value != VALUE_NONE){
+    t = value;
     t_time = millis();
-    #if DEBUG
-    Serial.print("T=" + String((float)getT()/10.0));
-    r = true;
-    #endif
     response += "OK(T="+String((float)getT()/10.0)+");";
+    
+    #if DEBUG
+      Serial.print("T=" + String((float)getT()/10.0));
+    #endif
   }
 
-  if (h < INT16_MAX){
-    h = values[h].value;
+  value = resolve_value(values, values_cnt, 1, CLOSEST);
+  if (value != VALUE_NONE){
+    h = value;
     h_time = millis();
-    #if DEBUG
-    Serial.print("H=" + String((float)getH()/10.0));
-    r = true;
-    #endif
     response += "OK(H=" + String((float)getH()/10.0)+");";
-  }
-
-  if (p < INT16_MAX){
-    p = values[p].value;
-    p_time = millis();
+    
     #if DEBUG
-    Serial.print("P=" + String((float)getP()/10.0));
-    r = true;
+      Serial.print("H=" + String((float)getH()/10.0));
     #endif
-    response += "OK(P=" + String((float)getP()/10.0)+");";
   }
 
-  #if DEBUG
-  if (r){
-    Serial.println();
+  value = resolve_value(values, values_cnt, 2, CLOSEST);
+  if (value != VALUE_NONE){
+    p = value;
+    p_time = millis();
+    response += "OK(P=" + String((float)getP()/10.0)+");";
+    
+    #if DEBUG
+      Serial.print("P=" + String((float)getP()/10.0));
+    #endif
   }
-  #endif
 
   waiting_response = 0;
 }
@@ -318,6 +326,6 @@ void Narodmon::startArray() {
 
 void Narodmon::startObject() {
   values[values_cnt].type = -1;
-  values[values_cnt].value = INT16_MAX;
+  values[values_cnt].value = VALUE_NONE;
   values[values_cnt].distance = d.distance;
 }

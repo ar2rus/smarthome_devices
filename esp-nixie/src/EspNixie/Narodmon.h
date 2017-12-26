@@ -38,6 +38,10 @@
 #define REQUEST_DEVICES_LIMIT 20
 #define SENSOR_COUNT_LIMIT REQUEST_DEVICES_LIMIT * 3
 
+#define VALUE_NONE INT16_MAX
+
+enum RESOLVE_MODE {CLOSEST, MIN, MAX, AVG};
+
 struct sensor_value {
   int8_t type;
   int16_t value;
@@ -81,7 +85,7 @@ private:
     //время инициализации последнего запроса
     uint32_t request_time = 0;
     //флаг ожидания/получения ответа
-    uint8_t waiting_response = 0;
+    volatile uint8_t waiting_response = 0;
     
     HTTPClient http;
     JsonStreamingParser parser;

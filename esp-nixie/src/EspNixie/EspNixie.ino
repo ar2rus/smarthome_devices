@@ -4,6 +4,7 @@
 #include <ArduinoOTA.h>
 
 #include <time.h>
+#include <Ticker.h>
 
 #include "SerialDebug.h"
 #include "Narodmon.h"
@@ -12,11 +13,7 @@
 
 //#include "InsideTermometer.h"
 
-extern "C" {
-  #include "user_interface.h"
-}
-
-enum MODES { CLOCK_SETUP, CLOCK, TERMOMETER_INSIDE, TERMOMETER, HUMIDITY, BAROMETER, ALARM};
+enum MODES {CLOCK_SETUP, CLOCK, TERMOMETER_INSIDE, TERMOMETER, HUMIDITY, BAROMETER, ALARM};
 enum MODES mode;
 
 enum EVENTS { NONE, 
@@ -36,20 +33,18 @@ IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
-
-time_t this_second = 0;
 time_t last_second = 0;
 
 
 Narodmon* nm = new Narodmon(WiFi.macAddress());
-Adafruit_NeoPixel* neopixels_strip = new Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+Adafruit_NeoPixel* neopixels_strip = new Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 uint32_t minus_color = neopixels_strip->Color(0, 0, 20);
 
 
-os_timer_t timer;
+Ticker main_ticker;
 
-void timerCallback(void *pArg) {
+void ticker_update() {
    time_t this_second;
    time(&this_second);
    
@@ -62,7 +57,7 @@ void timerCallback(void *pArg) {
 
       if (s == 0){
         #if DEBUG
-        Serial.println("Event NM_REQUEST");
+          Serial.println("Event NM_REQUEST");
         #endif
         event = NM_REQUEST;
       }
@@ -83,21 +78,21 @@ void timerCallback(void *pArg) {
 
       if (s == 10){
         #if DEBUG
-        Serial.println("Event NM_RESPONSE");
+          Serial.println("Event NM_RESPONSE");
         #endif
         event = NM_RESPONSE;
       }
 
       if (s == 15 || s == 35){
         #if DEBUG
-        Serial.println("Event MODE_TERMOMETER");
+          Serial.println("Event MODE_TERMOMETER");
         #endif
         event = MODE_TERMOMETER;
       }
 
       if (s == 20 || s == 40){
         #if DEBUG
-        Serial.println("Event MODE_BAROMETER");
+          Serial.println("Event MODE_BAROMETER");
         #endif
         event = MODE_BAROMETER;
       }
@@ -123,8 +118,10 @@ void config_time(float timezone_hours_offset, int daylightOffset_sec,
     const char* server1, const char* server2, const char* server3){
   configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
   #if DEBUG
-  Serial.println("Waiting for time");
+    Serial.println("Waiting for time");
   #endif
+  
+  time_t this_second = 0;
   while(!this_second) {
          time(&this_second);
          #if DEBUG
@@ -133,7 +130,7 @@ void config_time(float timezone_hours_offset, int daylightOffset_sec,
          delay(100);
   }
   #if DEBUG
-  Serial.println("");
+    Serial.println("");
   #endif
 }
 
@@ -155,8 +152,8 @@ uint8_t radius){
 
 void setup() {
   #if DEBUG
-  Serial.begin(115200);
-  Serial.println("\nBooting");
+    Serial.begin(115200);
+    Serial.println("\nBooting");
   #endif
   
   nixie_init();
@@ -178,8 +175,8 @@ void setup() {
   }
 
   #if DEBUG
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
   #endif
 
   ArduinoOTA.setHostname("esp-nixie");
@@ -187,21 +184,17 @@ void setup() {
 
   config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
   config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 8);
-
-  mode = CLOCK;
-  
-  serailDebug_init();
-  
+ 
   //insideTermometerInit();
 
-  os_timer_setfn(&timer, timerCallback, NULL);
-  os_timer_arm(&timer, 50, true);
-
+  mode = CLOCK;
+  main_ticker.attach(50, ticker_update);
+  
+  //serailDebug_init();
+  
   #if DEBUG
-  Serial.println("Setup done");
+    Serial.println("Setup done");
   #endif  
-
-
 }
 
 
@@ -270,7 +263,7 @@ void loop() {
   event = NONE;
 
   nm->update();
-  serailDebug_update();
+  //serailDebug_update();
     
   ArduinoOTA.handle();
 }
