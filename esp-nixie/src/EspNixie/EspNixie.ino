@@ -3,17 +3,21 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#define FASTLED_ALLOW_INTERRUPTS 0
+//#define FASTLED_INTERRUPT_RETRY_COUNT 10
+#include <FastLED.h>
+
 #include <time.h>
 #include <Ticker.h>
 
 #include "SerialDebug.h"
 #include "Narodmon.h"
 #include "Nixie.h"
-#include "NeoPixels.h"
+//#include "NeoPixels.h"
 
 //#include "InsideTermometer.h"
 
-enum MODES {CLOCK_SETUP, CLOCK, TERMOMETER_INSIDE, TERMOMETER, HUMIDITY, BAROMETER, ALARM};
+enum MODES {CLOCK_SETUP, CLOCK, TERMOMETER_INSIDE, TERMOMETER, HYGROMETR, BAROMETER, ALARM};
 enum MODES mode;
 
 enum EVENTS { NONE, 
@@ -38,9 +42,20 @@ time_t last_second = 0;
 
 Narodmon* nm = new Narodmon(WiFi.macAddress());
 
-Adafruit_NeoPixel* neopixels_strip = new Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-uint32_t minus_color = neopixels_strip->Color(0, 0, 20);
+#define LED_PIN 5
+#define NUMPIXELS 6
 
+// This is an array of leds.  One item for each led in your strip.
+CRGB leds[NUMPIXELS];
+
+//Adafruit_NeoPixel neopixels_strip = Adafruit_NeoPixel(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+//uint32_t minus_color = neopixels_strip.Color(0, 0, 20);
+
+void neopixels_clear(){
+  for (int i=0; i<NUMPIXELS; i++){
+    leds[i] = CRGB::White;
+  }
+}
 
 Ticker main_ticker;
 
@@ -155,12 +170,14 @@ void setup() {
     Serial.begin(115200);
     Serial.println("\nBooting");
   #endif
-  
+
   nixie_init();
 
-  neopixels_strip->begin();
-  neopixels_clear(neopixels_strip);
-  neopixels_strip->show();
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUMPIXELS).setCorrection(TypicalPixelString);
+  FastLED.setBrightness(40);
+  
+  neopixels_clear();
+  FastLED.show();
   
   WiFi.mode(WIFI_STA);
 
@@ -184,17 +201,19 @@ void setup() {
 
   config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
   config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 8);
+  //config_narodmon("9M5UhuQA2c8f8", 1, 56.1676, 113.5667, 8);
  
   //insideTermometerInit();
 
   mode = CLOCK;
-  main_ticker.attach_ms(100, ticker_update);
+  main_ticker.attach_ms(1000, ticker_update);
   
   //serailDebug_init();
   
   #if DEBUG
     Serial.println("Setup done");
-  #endif  
+  #endif
+  
 }
 
 
@@ -220,12 +239,12 @@ void loop() {
       nixie_set(insideTermometerTemperature(), 2, 3);
       break;*/
     case MODE_CLOCK:
-      mode = CLOCK;
-      neopixels_clear(neopixels_strip);
-      neopixels_strip->show();
+      mode = CLOCK;     
+      neopixels_clear();
+      FastLED.show();
       break; 
     case MODE_TERMOMETER:
-      neopixels_clear(neopixels_strip);
+      neopixels_clear();
       if (nm->hasT()){
           //Serial.println(nm->getT()/10.0);
           int16_t t = nm->getT();
@@ -236,20 +255,20 @@ void loop() {
           
           if (!sign){
             if (e10){
-              neopixels_strip->setPixelColor(2, minus_color);
+              leds[2] = CRGB::Blue;
             }
-            neopixels_strip->setPixelColor(3, minus_color);
-            neopixels_strip->setPixelColor(4, minus_color);
+            leds[3] = CRGB::Blue;
+            leds[4] = CRGB::Blue;
           }
-          neopixels_strip->show();  
           mode = TERMOMETER;
       }else{
           mode = CLOCK;
       }
+      FastLED.show();  
       break;
     case MODE_BAROMETER:
-        neopixels_clear(neopixels_strip);
-        neopixels_strip->show();
+        neopixels_clear();
+        FastLED.show();
         if (nm->hasP()){
           //Serial.println(nm->getP()/10.0);
           nixie_set(nm->getP()/10.0, 3, 1);
@@ -269,3 +288,4 @@ void loop() {
 
   yield();
 }
+
