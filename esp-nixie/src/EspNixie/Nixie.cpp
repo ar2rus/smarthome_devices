@@ -68,13 +68,14 @@ void nixie_clear(){
   nixie_set(d, d, d, d, d, d);
 }
 
-uint8_t nixie_int(uint32_t v, uint8_t pos_1, char* digits){
-  if (pos_1 >= 0 && pos_1 < DIGITS_COUNT){
+uint8_t nixie_int(uint32_t v, uint8_t pos_1, uint8_t min_num_digits, char* digits){
+  if (min_num_digits >=1 && pos_1 >= 0 && pos_1 < DIGITS_COUNT){
+
     int8_t pos = pos_1;
     do{
       digits[pos] = v % 10;
       v /= 10;
-    }while(--pos >= 0 && v > 0);
+    }while(--pos >= 0 && (v > 0 || (pos_1-pos<min_num_digits)));
     pos++;
     
     for (int i=0; i<DIGITS_COUNT; i++){
@@ -88,7 +89,7 @@ uint8_t nixie_int(uint32_t v, uint8_t pos_1, char* digits){
 void nixie_set(uint32_t v, uint8_t pos_1){
   char digits[DIGITS_COUNT];
 
-  if (nixie_int(v, pos_1, digits)){
+  if (nixie_int(v, pos_1, 1, digits)){
     nixie_set(digits[0], digits[1], digits[2], digits[3], digits[4], digits[5]);
   }
 }
@@ -100,7 +101,7 @@ void nixie_set(float v, uint8_t pos_1, int num_frac){
   uint32_t b = (uint32_t)abs(v);
 
   char digits[DIGITS_COUNT];
-  if (nixie_int(b, pos_1+num_frac, digits)){
+  if (nixie_int(b, pos_1+num_frac, num_frac+1, digits)){
     digits[pos_1] = digit_code(digit_value(digits[pos_1]), 1, 1); //add point
     nixie_set(digits[0], digits[1], digits[2], digits[3], digits[4], digits[5]);
   }
