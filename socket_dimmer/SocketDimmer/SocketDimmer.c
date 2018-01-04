@@ -3,7 +3,12 @@
 
 uint8_t light_state = 0;
 
-const char dimmer_range = 250;  //0 (low, off) - 250 (high)
+//0 (low, off) - 250 (high)
+#define DIMMER_MIN_VALUE 0
+#define DIMMER_MAX_VALUE 250
+//+- delta
+#define CHANGE_DELTA 10
+
 volatile uint8_t dimmer_value = 0;
 
 void dimmerEnable(char enable){
@@ -38,6 +43,8 @@ char switchExecute(unsigned char relay_id, unsigned char command){
 	
 		//disable pwm
 		dimmerEnable(0);
+		//for +/- compatibility after switch on/off
+		dimmer_value = light_state ? DIMMER_MAX_VALUE : DIMMER_MIN_VALUE;
 		
 		//set value
 		if (light_state){
@@ -62,10 +69,10 @@ void switch_exec(unsigned char relay_id, unsigned char command, unsigned char ad
 }
 
 char dimmerExecute(unsigned char value) {
-	if (value >= 0 && value <= dimmer_range) {
+	if (value >= DIMMER_MIN_VALUE && value <= DIMMER_MAX_VALUE) {
 		dimmer_value = value;
-		light_state = value > 0;
-		dimmerEnable(value > 0);
+		light_state = value > DIMMER_MIN_VALUE;
+		dimmerEnable(value > DIMMER_MIN_VALUE);
 		return 1;
 	}
 	return 0;
@@ -80,6 +87,17 @@ void dimmer_exec(unsigned char value, unsigned char address){
 	if (dimmerExecute(value)){
 		dimmerResponse(address);
 	}
+}
+
+void dimmer_change(signed char delta, unsigned char address){
+	int value = dimmer_value + delta;
+	if (value > DIMMER_MAX_VALUE){
+		value = DIMMER_MAX_VALUE;
+	}
+	if (value < DIMMER_MIN_VALUE){
+		value = DIMMER_MIN_VALUE;
+	}
+	dimmer_exec(value, address);
 }
 
 void cmd(clunet_msg* m){
@@ -125,16 +143,27 @@ void cmd(clunet_msg* m){
 							break;
 							case 0x92://зеленая кнопка
 							case 0x6A:
-							dimmer_exec(dimmer_range * 1/3, CLUNET_BROADCAST_ADDRESS);
+							dimmer_exec(DIMMER_MAX_VALUE * 1/3, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0x52://желтая кнопка
 							case 0xB0:
-							dimmer_exec(dimmer_range * 2/3, CLUNET_BROADCAST_ADDRESS);
+							dimmer_exec(DIMMER_MAX_VALUE * 2/3, CLUNET_BROADCAST_ADDRESS);
 							break;
 							case 0xD2://синяя кнопка
 							case 0x70:
 							//dimmer_exec(dimmer_range, CLUNET_BROADCAST_ADDRESS);
 							switch_exec(RELAY_0_ID, 0x01, CLUNET_BROADCAST_ADDRESS);
+							break;
+						}
+					}
+					if (m->data[1] == 0x02 || m->data[1] == 0x82){
+						switch (m->data[2]){							
+							case 0x8A:
+							dimmer_change(((signed char)-CHANGE_DELTA), CLUNET_BROADCAST_ADDRESS);
+							break;
+							
+							case 0xC8:
+							dimmer_change(CHANGE_DELTA, CLUNET_BROADCAST_ADDRESS);
 							break;
 						}
 					}
@@ -164,7 +193,7 @@ ISR(ZERO_DETECTOR_INT_VECTOR){
 			TIMER_INIT;
 			ENABLE_TIMER_CMP_A;
 		}
-		tick = dimmer_range;
+		tick = DIMMER_MAX_VALUE;
 		low_high = !low_high;
 	}
 }
