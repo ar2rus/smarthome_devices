@@ -3,7 +3,8 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include <ESP8266WebServer.h>
+#include "ESPAsyncTCP.h"
+#include "ESPAsyncWebServer.h"
 
 #include "ClunetMulticast.h"
 
@@ -14,7 +15,7 @@ IPAddress ip(192, 168, 1, 122); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
-ESP8266WebServer server(80);
+AsyncWebServer server(80);
 
 
 const int BUTTON_PIN = 12;
@@ -86,82 +87,86 @@ void setup() {
 
   clunetMulticastBegin();
 
-  server.on("/", []() {  //toggle
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     char r = 404;
-    if (server.method() == HTTP_GET && server.args() == 0) {
+    if (request->args() == 0) {
       if (switch_toggle(true)){
         r = 200;
       }
     }
-    server_response(r);
+    server_response(request, r);
   });
 
-  server.on("/on", []() {  //on and dimmer
+  server.on("/on", HTTP_GET, [](AsyncWebServerRequest *request){  //on and dimmer
     char r = 404;
-    if (server.method() == HTTP_GET) {
-      switch (server.args()) {
+      switch (request->args()) {
         case 0:
           if (switch_on(true)){
             r = 200;
           }
           break;
         case 1:
-          if (server.argName(0) == "d") { //dimmer: 0 - 100
+          if(request->hasArg("d")){//dimmer: 0 - 100
+            String arg = request->arg("d");
+            
             //check digits in arg value
             char all_digits = 1;
-            for (byte i = 0; i < server.arg(0).length(); i++) {
-              if (!isDigit(server.arg(0).charAt(i))) {
+            for (byte i = 0; i < arg.length(); i++) {
+              if (!isDigit(arg.charAt(i))) {
                 all_digits = 0;
               }
             }
 
             if (all_digits) {
-              if (dimmer_exec(server.arg(0).toInt(), true)) {
+              if (dimmer_exec(arg.toInt(), true)) {
                 r = 200;
               }
             }
           }
           break;
       }
-    }
-    server_response(r);
+    server_response(request, r);
   });
 
-  server.on("/off", []() {  //off
+  server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request){  //off
     char r = 404;
-    if (server.method() == HTTP_GET && server.args() == 0) {
+    if (request->args() == 0) {
       if (switch_off(true)){
         r = 200;
       }
     }
-    server_response(r);
+    server_response(request, r);
   });
 
-  server.on("/fadein", []() {  //fade-in
+  server.on("/fadein", HTTP_GET, [](AsyncWebServerRequest *request){ //fade-in
     char r = 404;
-    if (server.method() == HTTP_GET && server.args() == 0) {
+    if (request->args() == 0) {
       if (fade_in_start()){
         r = 200;
       }
     }
-    server_response(r);
+    server_response(request, r);
   });
 
-  server.onNotFound([]() {
-    server_response(404);
+  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", String(ESP.getFreeHeap()));
+  });
+
+  server.onNotFound( [](AsyncWebServerRequest *request) {
+    server_response(request, 404);
   });
 
   server.begin();
 }
 
-void server_response(unsigned int response) {
+void server_response(AsyncWebServerRequest *request, unsigned int response) {
   switch (response) {
     case 200:
-      server.send(200, "text/plain", "OK\n\n");
+      request->send(200);
       break;
     default:
       //case 404:
-      server.send(404, "text/plain", "File Not Found\n\n");
+      request->send(404, "text/plain", "File Not Found\n\n");
       break;
   }
 }
@@ -371,6 +376,6 @@ void loop() {
     }
   }
 
-  server.handleClient();
   ArduinoOTA.handle();
+  yield();
 }

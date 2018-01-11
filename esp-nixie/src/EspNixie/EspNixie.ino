@@ -330,7 +330,6 @@ void loop() {
   
   nm->update();
 
-  //server.handleClient();
   ArduinoOTA.handle();
 
   yield();

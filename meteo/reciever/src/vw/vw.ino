@@ -3,7 +3,8 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include <ESP8266WebServer.h>
+#include "ESPAsyncTCP.h"
+#include "ESPAsyncWebServer.h"
 
 #include "VirtualWire.h"
 #include "ClunetMulticast.h"
@@ -96,7 +97,7 @@ IPAddress ip(192,168,1,121);  //Node static IP
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
-ESP8266WebServer server(80);
+AsyncWebServer server(80);
 
 int32_t T;
 uint32_t P;
@@ -115,8 +116,8 @@ void reset(){
   VCC = 0xFFFF;
 }
 
-void server_404(){
-  server.send(404, "text/plain", "File Not Found\n\n");
+void server_404(AsyncWebServerRequest *request){
+  request->send(404, "text/plain", "File Not Found\n\n");
 }
 
 void setup() {
@@ -180,19 +181,18 @@ void setup() {
 
   clunetMulticastBegin();
 
-  server.on("/", []() {
-    if (server.method() == HTTP_GET) {
-
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
       int resp_format = -1;
-      switch (server.args()) {
+      switch (request->args()) {
         case 0:
           resp_format = 0;  //txt
           break;
         case 1:
-          if (server.argName(0) == "fmt"){
-            if (server.arg(0) == "txt"){
+          if(request->hasArg("fmt")){
+            String fmt = request->arg("fmt");
+            if (fmt == "txt"){
               resp_format = 0;  //txt
-            } else if (server.arg(0) == "json"){
+            }else if (fmt == "json"){
               resp_format = 1;  //json
             }
           }
@@ -212,7 +212,7 @@ void setup() {
             message += "\nL: " +  (L==0xFFFF ? "-" : String(L) + " Lx");
             message += "\nV: " +  (VCC==0xFFFF ? "-" : String(VCC/100.0) + " V");
           }
-          server.send(200, "text/plain", message);
+          request->send(200, "text/plain", message);
           }
           break;
         case 1:{
@@ -226,19 +226,20 @@ void setup() {
             message += "\"v\":" + (VCC==0xFFFF ? "-" : String(VCC/100.0));
           }
           message += "}";
-          server.send(200, "application/json", message);
+          request->send(200, "application/json", message);
           }
           break;
         default:
-          server_404();
+          server_404(request);
       }
-    }else{
-      server_404();
-    }
+  });
+
+  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
   
-  server.onNotFound([]() {
-       server_404();
+  server.onNotFound( [](AsyncWebServerRequest *request) {
+    server_404(request);
   });
   
   server.begin();
@@ -355,7 +356,7 @@ void loop() {
       }
     }
 
-    server.handleClient();
     ArduinoOTA.handle();
+    yield();
 }
 
