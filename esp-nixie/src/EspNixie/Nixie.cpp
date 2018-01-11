@@ -5,7 +5,7 @@
 #include <SPI.h>
 #include <Ticker.h>
 
-#include "SerialDebug.h"
+//#include "SerialDebug.h"
 
 volatile char nixie_cnt;
 volatile char nixie_digits[DIGITS_COUNT];

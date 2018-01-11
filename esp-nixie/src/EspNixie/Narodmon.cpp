@@ -6,7 +6,7 @@
 #include <MD5Builder.h>
 #include "Arduino.h"
 
-#include "SerialDebug.h"
+//#include "SerialDebug.h"
 
 Narodmon::Narodmon(String device_id){
   MD5Builder md5;
