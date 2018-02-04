@@ -6,10 +6,16 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
+#include "ESPAsyncTCP.h"
+
 #include "JsonStreamingParser.h"
 #include "JsonListener.h"
 
+
 #define NARODMON_HOST "narodmon.ru"
+//#define NARODMON_HOST "192.168.1.21"
+#define NARODMON_PORT 80
+//#define NARODMON_PORT 4444
 #define NARODMON_API_PATH "/api"
 
 #define NARODMON_TYPE_TEMPERATURE 1
@@ -88,9 +94,12 @@ private:
     //время инициализации последнего запроса
     uint32_t request_time = 0;
     //флаг ожидания/получения ответа
-    volatile uint8_t waiting_response = 0;
+    //volatile uint8_t waiting_response = 0;
     
-    HTTPClient http;
+    //HTTPClient http;
+    AsyncClient * aClient = NULL;
+
+    
     JsonStreamingParser parser;
     String parser_key;
 
@@ -123,7 +132,7 @@ public:
     uint8_t hasP();
     int16_t getP();
     
-    void update();
+    //void update();
 
     virtual void whitespace(char c);
     virtual void startDocument();

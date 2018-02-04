@@ -207,6 +207,10 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
+  server.on("/narodmon", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", "NARODMON: " + nm->response);
+  });
+
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest *request){
     led_event = EVENT_ALARM;
     request->send(200);
@@ -238,10 +242,9 @@ void setup() {
 }
 
 
+CRGB _leds[NUMPIXELS];
+
 void loop() {
-  
-  CRGB _leds[NUMPIXELS];
-  
   switch(event){
     case EVENT_NM_REQUEST:
       nm->request();
@@ -328,7 +331,7 @@ void loop() {
   
   leds_apply(_leds);
   
-  nm->update();
+  //nm->update();
 
   ArduinoOTA.handle();
 

@@ -69,7 +69,134 @@ void Narodmon::setConfigReqP(uint8_t reqP){
   config_reqP = reqP;
 }
     
+uint8_t Narodmon::request(){
+  response = String(millis())+";"+String(ESP.getFreeHeap())+";";
+  //if (!aClient){
+    aClient = new AsyncClient();
+    uint32_t tmp_t = millis();
+    if ((request_time == 0) || ((tmp_t - request_time) >= MIN_REQUEST_PERIOD)){
+      
+      aClient->onError([this](void * arg, AsyncClient * client, int error){
+        String err = "Connect error: " + String(error);
+        response += err;
+        #if DEBUG
+          Serial.println(err);
+        #endif
+        
+        aClient = NULL;
+        delete client;
+      }, NULL);
 
+      aClient->onConnect([this](void * arg, AsyncClient * client){
+  
+        StaticJsonBuffer<JSON_BUFFER_SIZE> JSONbuffer;
+        JsonObject& JSONRequest = JSONbuffer.createObject();
+        
+        JSONRequest["cmd"] = "sensorsNearby";
+        if (config_useLatLng){
+          JSONRequest["lat"] = config_lat;
+          JSONRequest["lng"] = config_lng;
+        }
+        if (config_radius > 0){
+          JSONRequest["radius"] = config_radius;
+        }
+        JsonArray& types = JSONRequest.createNestedArray("types");
+        if (config_reqT){
+          types.add(NARODMON_TYPE_TEMPERATURE); //temperature
+        }
+        if (config_reqH){
+          types.add(NARODMON_TYPE_HUMIDITY); //humidity
+        }
+        if (config_reqP){
+          types.add(NARODMON_TYPE_PRESSURE); //pressure
+        }
+  
+        JSONRequest["limit"] = REQUEST_DEVICES_LIMIT;
+        JSONRequest["pub"] = 1;
+        JSONRequest["uuid"] = config_uuid;
+        JSONRequest["api_key"] = config_apiKey;
+  
+        String json_post_data;
+        JSONRequest.printTo(json_post_data);
+  
+        response += json_post_data + ";";
+  
+        #if DEBUG
+          Serial.println("Request: " + json_post_data);
+        #endif
+
+        values_cnt = 0;
+        parser.reset();
+        
+        //request_time = tmp_t;
+        
+        String con = "Connected";
+        response += con;
+        #if DEBUG
+          Serial.println(con);
+        #endif
+        aClient->onError(NULL, NULL);
+
+        client->onDisconnect([this](void * arg, AsyncClient * c){
+           String dis = "Disconnected [" + String(millis()) + "]";
+           response += dis;
+           #if DEBUG
+            Serial.println(dis);
+           #endif
+           aClient = NULL;
+           delete c;
+         }, NULL);
+
+        client->onData([this](void * arg, AsyncClient * c, void * data, size_t len){
+            response += len;
+            char * d = (char*)data;
+            response += d;
+          
+            #if DEBUG
+              Serial.println("Available bytes to parse: " + String(len));
+            #endif
+            
+            
+            for(size_t i=0; i<len;i++){
+              parser.parse(d[i]);
+            }
+        }, NULL);
+
+        //send the request
+        
+        client->write("POST "); client->write(NARODMON_API_PATH); client->write(" HTTP/1.1\r\n");
+        client->write("Host: "); client->write(NARODMON_HOST); client->write("\r\n");
+        client->write("Content-Type: application/json\r\n");
+        client->write("Cache-Control: no-cache\r\n");
+        client->write("User-Agent: esp-nixie\r\n");
+
+        client->write("Content-Length: "); client->write(String(json_post_data.length()).c_str()); client->write("\r\n");
+        client->write("\r\n");
+        client->write(json_post_data.c_str(), json_post_data.length());
+        client->write("\r\n");
+      }, NULL);
+
+      if(!aClient->connect(NARODMON_HOST, NARODMON_PORT)){
+        String cf = "Connect Fail";
+        response += cf;
+        #if DEBUG
+          Serial.println(cf);
+        #endif
+        
+        AsyncClient * client = aClient;
+        aClient = NULL;
+        delete client;
+      }
+    }else{
+      response = "Too short interval between requests";
+      #if DEBUG
+        Serial.println(response);
+      #endif
+    }
+  //}
+  return 0;
+}
+/*
 uint8_t Narodmon::request(){
   response = String(millis())+";"+String(ESP.getFreeHeap())+";";
   if (!waiting_response){
@@ -145,7 +272,7 @@ uint8_t Narodmon::request(){
   }
   return 0;
 }
-
+*/
 uint8_t Narodmon::hasT(){
   return t_time > 0 && (millis() - t_time) < T_MAX_TIME;
 }
@@ -171,7 +298,7 @@ int16_t Narodmon::getP(){
 }
 
 
-
+/*
 void Narodmon::update(){
   if (waiting_response){
     if (http.connected()){
@@ -212,6 +339,7 @@ void Narodmon::update(){
     }
   }
 }
+*/
 
 void Narodmon::whitespace(char c) {
 }
@@ -326,7 +454,7 @@ void Narodmon::endDocument() {
     #endif
   }
 
-  waiting_response = 0;
+  //waiting_response = 0;
 }
 
 void Narodmon::startArray() {
