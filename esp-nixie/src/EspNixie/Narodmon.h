@@ -11,18 +11,15 @@
 #include "JsonStreamingParser.h"
 #include "JsonListener.h"
 
-
 #define NARODMON_HOST "narodmon.ru"
-//#define NARODMON_HOST "192.168.1.21"
 #define NARODMON_PORT 80
-//#define NARODMON_PORT 4444
 #define NARODMON_API_PATH "/api"
 
 #define NARODMON_TYPE_TEMPERATURE 1
 #define NARODMON_TYPE_HUMIDITY 2
 #define NARODMON_TYPE_PRESSURE 3
 
-#define NARODMON_TIMEOUT 5
+//#define NARODMON_TIMEOUT 5
 
 #define JSON_BUFFER_SIZE 300
 
@@ -96,7 +93,6 @@ private:
     //флаг ожидания/получения ответа
     //volatile uint8_t waiting_response = 0;
     
-    //HTTPClient http;
     AsyncClient * aClient = NULL;
 
     
@@ -109,7 +105,9 @@ private:
     device d;
     
 public:
+    //just for debug
     String response;
+    
     Narodmon(String device_id);
 
     void setConfigUseLatLng(uint8_t use);
@@ -131,8 +129,6 @@ public:
     
     uint8_t hasP();
     int16_t getP();
-    
-    //void update();
 
     virtual void whitespace(char c);
     virtual void startDocument();
@@ -143,6 +139,34 @@ public:
     virtual void endDocument();
     virtual void startArray();
     virtual void startObject();
+
 };
+
+enum LoggingLevel {
+  LoggingLevelDebug,
+  LoggingLevelInfo,
+  LoggingLevelError,
+};
+
+class LoggingClass {
+  public:
+    LoggingClass() {};
+  
+    String _response;
+    String _error;
+    
+    void log(LoggingLevel level, const char *fmt, ...);
+    
+    void reset(){
+      _response = "";
+     };
+};
+extern class LoggingClass Logging;
+
+#define DEBUG(...) Logging.log(LoggingLevelDebug, __VA_ARGS__)
+#define ERROR(...) Logging.log(LoggingLevelError, __VA_ARGS__)
+#define INFO(...)  Logging.log(LoggingLevelInfo, __VA_ARGS__)
+
+#define RESET(...) Logging.reset();
 
 #endif

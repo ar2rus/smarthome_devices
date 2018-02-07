@@ -208,7 +208,11 @@ void setup() {
   });
 
   server.on("/narodmon", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", "NARODMON: " + nm->response);
+    request->send(200, "text/plain", Logging._response);
+  });
+
+  server.on("/error", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", Logging._error);
   });
 
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest *request){

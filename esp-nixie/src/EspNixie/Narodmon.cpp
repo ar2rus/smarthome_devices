@@ -4,9 +4,43 @@
 #include "JsonListener.h"
 
 #include <MD5Builder.h>
-#include "Arduino.h"
+#include <Arduino.h>
 
-//#include "SerialDebug.h"
+//#include "logging/Logging.h"
+
+// Instantiate the shared instance that will be used.
+LoggingClass Logging;
+
+void LoggingClass::log(LoggingLevel level, const char *fmt, ...){
+
+  //static const char *logLevelPrefixes[] = { "D", "I", "E"};
+
+  //_stream.print(logLevelPrefixes[level]);
+  //_stream.print(" ");
+
+  String* s = NULL;
+  switch (level){
+    case LoggingLevelError:
+      s = &_error;
+      break;
+    default:
+      s = &_response;
+      break;
+  }
+
+  if (s){
+    *s += String(millis());
+    *s += ": ";
+    va_list fmtargs;
+    va_start(fmtargs, fmt);
+    char tmp[512];
+    vsnprintf(tmp, sizeof(tmp), fmt, fmtargs);
+    va_end(fmtargs);
+    *s += tmp;
+    *s += "\r\n";
+  }
+}
+
 
 Narodmon::Narodmon(String device_id){
   MD5Builder md5;
@@ -19,75 +53,85 @@ Narodmon::Narodmon(String device_id){
 }
 
 void Narodmon::setApiKey(String api_key){
-  #if DEBUG
-  Serial.println("setApiKey: " + api_key);
-  #endif
+  DEBUG("setApiKey: %s", api_key.c_str());
   config_apiKey = api_key;
 }
 
 void Narodmon::setConfigUseLatLng(uint8_t use){
-  #if DEBUG
-  Serial.println("setConfigUseLatLng: " + String(use));
-  #endif
+  DEBUG("setConfigUseLatLng: %u", use);
   config_useLatLng = use;
 }
 
 void Narodmon::setConfigLatLng(double lat, double lng){
-  #if DEBUG
-  Serial.println("setConfigLatLng: " + String(lat) + ";" + String(lng));
-  #endif
+  DEBUG("setConfigLatLng: %f; %f", lat, lng);
   config_lat = lat;
   config_lng = lng;
   setConfigUseLatLng(1);
 }
 
 void Narodmon::setConfigRadius(uint8_t radius){
-  #if DEBUG
-  Serial.println("setConfigRadius: " + String(radius));
-  #endif
+  DEBUG("setConfigRadius: %u", radius);
   config_radius = radius;
 }
 
 void Narodmon::setConfigReqT(uint8_t reqT){
-  #if DEBUG
-  Serial.println("setConfigReqH: " + String(reqT));
-  #endif
+  DEBUG("setConfigReqH: %u", reqT);
   config_reqT = reqT;
 }
 
 void Narodmon::setConfigReqH(uint8_t reqH){
-  #if DEBUG
-  Serial.println("setConfigReqT: " + String(reqH));
-  #endif
+  DEBUG("setConfigReqT: %u", reqH);
   config_reqH = reqH;
 }
 
 void Narodmon::setConfigReqP(uint8_t reqP){
-  #if DEBUG
-  Serial.println("setConfigReqP: " + String(reqP));
-  #endif
+  DEBUG("setConfigReqP: %u", reqP);
   config_reqP = reqP;
 }
     
 uint8_t Narodmon::request(){
-  response = String(millis())+";"+String(ESP.getFreeHeap())+";";
-  //if (!aClient){
+  RESET();
+  DEBUG("New request");
+  if (!aClient){
     aClient = new AsyncClient();
+    if(!aClient){//could not allocate client
+      ERROR("Couldn't allocate memory");
+      return 0;
+    }
     uint32_t tmp_t = millis();
-    if ((request_time == 0) || ((tmp_t - request_time) >= MIN_REQUEST_PERIOD)){
+    uint32_t delta_t = tmp_t - request_time;
+    if ((request_time == 0) || (delta_t >= MIN_REQUEST_PERIOD)){
       
       aClient->onError([this](void * arg, AsyncClient * client, int error){
-        String err = "Connect error: " + String(error);
-        response += err;
-        #if DEBUG
-          Serial.println(err);
-        #endif
+        ERROR("Error %s (%i)", client->errorToString(error), error);
         
-        aClient = NULL;
-        delete client;
+        //aClient = NULL;
+        //delete client;
       }, NULL);
 
-      aClient->onConnect([this](void * arg, AsyncClient * client){
+      aClient->onTimeout([this](void * arg, AsyncClient *client, uint32_t time) {
+          ERROR("Timeout on client in %i", time);
+          client->close();
+      }, NULL);
+
+      aClient->onDisconnect([this](void * arg, AsyncClient * client){
+           DEBUG("Disconnected");
+           
+           aClient = NULL;
+           delete client;
+       }, NULL);
+
+      aClient->onData([this](void * arg, AsyncClient * client, void * data, size_t len){
+            DEBUG ("Got data: %i bytes", len);
+            
+            char * d = (char*)data;
+            for(size_t i=0; i<len;i++){
+              parser.parse(d[i]);
+            }
+      }, NULL);
+
+      aClient->onConnect([this, tmp_t](void * arg, AsyncClient * client){
+        DEBUG("Connected");
   
         StaticJsonBuffer<JSON_BUFFER_SIZE> JSONbuffer;
         JsonObject& JSONRequest = JSONbuffer.createObject();
@@ -119,50 +163,12 @@ uint8_t Narodmon::request(){
         String json_post_data;
         JSONRequest.printTo(json_post_data);
   
-        response += json_post_data + ";";
-  
-        #if DEBUG
-          Serial.println("Request: " + json_post_data);
-        #endif
+        DEBUG("Request: %s", json_post_data.c_str());
 
         values_cnt = 0;
         parser.reset();
         
-        //request_time = tmp_t;
-        
-        String con = "Connected";
-        response += con;
-        #if DEBUG
-          Serial.println(con);
-        #endif
-        aClient->onError(NULL, NULL);
-
-        client->onDisconnect([this](void * arg, AsyncClient * c){
-           String dis = "Disconnected [" + String(millis()) + "]";
-           response += dis;
-           #if DEBUG
-            Serial.println(dis);
-           #endif
-           aClient = NULL;
-           delete c;
-         }, NULL);
-
-        client->onData([this](void * arg, AsyncClient * c, void * data, size_t len){
-            response += len;
-            char * d = (char*)data;
-            response += d;
-          
-            #if DEBUG
-              Serial.println("Available bytes to parse: " + String(len));
-            #endif
-            
-            
-            for(size_t i=0; i<len;i++){
-              parser.parse(d[i]);
-            }
-        }, NULL);
-
-        //send the request
+        //send a request
         
         client->write("POST "); client->write(NARODMON_API_PATH); client->write(" HTTP/1.1\r\n");
         client->write("Host: "); client->write(NARODMON_HOST); client->write("\r\n");
@@ -174,105 +180,34 @@ uint8_t Narodmon::request(){
         client->write("\r\n");
         client->write(json_post_data.c_str(), json_post_data.length());
         client->write("\r\n");
+
+        request_time = tmp_t;
+
+        aClient->onPoll([this](void * arg, AsyncClient * client){
+            if (millis() - request_time > RESPONSE_TIMEOUT){
+              ERROR("Poll timeout");
+              client->close();
+            }
+        },NULL);
+        
       }, NULL);
 
       if(!aClient->connect(NARODMON_HOST, NARODMON_PORT)){
-        String cf = "Connect Fail";
-        response += cf;
-        #if DEBUG
-          Serial.println(cf);
-        #endif
+        DEBUG("Connect fail");
         
         AsyncClient * client = aClient;
         aClient = NULL;
         delete client;
       }
     }else{
-      response = "Too short interval between requests";
-      #if DEBUG
-        Serial.println(response);
-      #endif
+      DEBUG("Too short interval between requests. %u less then", delta_t, MIN_REQUEST_PERIOD);
     }
-  //}
-  return 0;
-}
-/*
-uint8_t Narodmon::request(){
-  response = String(millis())+";"+String(ESP.getFreeHeap())+";";
-  if (!waiting_response){
-    uint32_t tmp_t = millis();
-    if ((request_time == 0) || ((tmp_t - request_time) >= MIN_REQUEST_PERIOD)){
-      
-      StaticJsonBuffer<JSON_BUFFER_SIZE> JSONbuffer;
-      JsonObject& JSONRequest = JSONbuffer.createObject();
-      
-      JSONRequest["cmd"] = "sensorsNearby";
-      if (config_useLatLng){
-        JSONRequest["lat"] = config_lat;
-        JSONRequest["lng"] = config_lng;
-      }
-      if (config_radius > 0){
-        JSONRequest["radius"] = config_radius;
-      }
-      JsonArray& types = JSONRequest.createNestedArray("types");
-      if (config_reqT){
-        types.add(NARODMON_TYPE_TEMPERATURE); //temperature
-      }
-      if (config_reqH){
-        types.add(NARODMON_TYPE_HUMIDITY); //humidity
-      }
-      if (config_reqP){
-        types.add(NARODMON_TYPE_PRESSURE); //pressure
-      }
-
-      JSONRequest["limit"] = REQUEST_DEVICES_LIMIT;
-      JSONRequest["pub"] = 1;
-      JSONRequest["uuid"] = config_uuid;
-      JSONRequest["api_key"] = config_apiKey;
-
-      String json_post_data;
-      JSONRequest.printTo(json_post_data);
-
-      response += json_post_data + ";";
-
-      #if DEBUG
-        Serial.println("Request: " + json_post_data);
-      #endif
-
-      http.begin(NARODMON_HOST, 80, NARODMON_API_PATH);
-      http.addHeader("Content-Type", "application/json");
-      http.addHeader("User-Agent", "esp-nixie");
-      int httpCode = http.POST(json_post_data);
-
-      //temp
-      response += String(httpCode)+";";
-
-     if (httpCode == HTTP_CODE_OK){
-        response += "size="+String(http.getSize())+";";
-      
-        values_cnt = 0;
-        parser.reset();
-        
-        waiting_response = 1;
-        request_time = tmp_t;
-        return 1;
-     }else{
-        //+= temp
-        response += "HTTP response code = " + String(httpCode);
-        #if DEBUG
-          Serial.println(response);
-        #endif
-     }
-    }else{
-      response = "Too short interval between requests";
-      #if DEBUG
-        Serial.println(response);
-      #endif
-    }
+  }else{
+    DEBUG("Client is still working");
   }
   return 0;
 }
-*/
+
 uint8_t Narodmon::hasT(){
   return t_time > 0 && (millis() - t_time) < T_MAX_TIME;
 }
@@ -296,50 +231,6 @@ uint8_t Narodmon::hasP(){
 int16_t Narodmon::getP(){
   return p;
 }
-
-
-/*
-void Narodmon::update(){
-  if (waiting_response){
-    if (http.connected()){
-      WiFiClient * stream = http.getStreamPtr();
-      if(stream->available()){
-        #if DEBUG
-          Serial.println("Available bytes to parse: " + String(stream.available()));
-        #endif
-        
-        //int yield_cnt = 0;
-        while (stream->available()){
-           char c = stream->read();
-           parser.parse(c);
-           yield();
-           //if (++yield_cnt==100){
-           //     //break;
-           //     yield_cnt = 0;
-           //     
-           //}
-        }
-      }else{
-        if (millis() - request_time > RESPONSE_TIMEOUT){
-          http.end();
-          waiting_response = 0;
-          response = "Timeout while response reading";
-          #if DEBUG
-            Serial.println(response);
-          #endif
-        }
-      }
-    }else{
-      http.end();
-      waiting_response = 0;
-      response = "No connection to server";
-      #if DEBUG
-        Serial.println(response);
-      #endif
-    }
-  }
-}
-*/
 
 void Narodmon::whitespace(char c) {
 }
@@ -425,36 +316,30 @@ void Narodmon::endDocument() {
   if (value != VALUE_NONE){
     t = value;
     t_time = millis();
-    response += "OK(T="+String((float)getT()/10.0)+");";
-    
-    #if DEBUG
-      Serial.print("T=" + String((float)getT()/10.0));
-    #endif
+
+    DEBUG("T=%f", (float)getT()/10);
   }
 
   value = resolve_value(values, values_cnt, NARODMON_TYPE_HUMIDITY, CLOSEST);
   if (value != VALUE_NONE){
     h = value;
     h_time = millis();
-    response += "OK(H=" + String((float)getH()/10.0)+");";
-    
-    #if DEBUG
-      Serial.print("H=" + String((float)getH()/10.0));
-    #endif
+
+    DEBUG("H=%f", (float)getH()/10);
   }
 
   value = resolve_value(values, values_cnt, NARODMON_TYPE_PRESSURE, CLOSEST);
   if (value != VALUE_NONE){
     p = value;
     p_time = millis();
-    response += "OK(P=" + String((float)getP()/10.0)+");";
-    
-    #if DEBUG
-      Serial.print("P=" + String((float)getP()/10.0));
-    #endif
+
+    DEBUG("P=%f", (float)getP()/10);
   }
 
-  //waiting_response = 0;
+  AsyncClient * client = aClient;
+  if (client){
+    client->close();
+  }
 }
 
 void Narodmon::startArray() {
