@@ -215,6 +215,10 @@ void setup() {
     request->send(200, "text/plain", Logging._error);
   });
 
+  server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", String(millis()));
+  });
+
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest *request){
     led_event = EVENT_ALARM;
     request->send(200);
