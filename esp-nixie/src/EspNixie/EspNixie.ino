@@ -218,6 +218,10 @@ void setup() {
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request){
         ESP.restart();
   });
+
+  server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(200, "text/plain", String(millis()));
+  });
   
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest *request){
     led_event = EVENT_ALARM;
