@@ -27,12 +27,16 @@ enum MODES {MODE_NONE,
             MODE_HYGROMETR, 
             MODE_BAROMETER,
             MODE_TERMOMETER_INSIDE,
-            MODE_ALARM};
+            MODE_ALARM,
+            MODE_OTA
+           };
 enum MODES mode;
 enum MODES led_mode;
 
 #define ALARM_TIME 10000
 uint32_t alarm_t;
+
+uint8_t ota_progress;
 
 enum EVENTS { EVENT_NONE, 
               EVENT_UPDATE_MODE,
@@ -43,7 +47,9 @@ enum EVENTS { EVENT_NONE,
               EVENT_MODE_TERMOMETER, 
               EVENT_MODE_BAROMETER,
               EVENT_MODE_INSIDE_TERMOMETER,
-              EVENT_ALARM};
+              EVENT_ALARM,
+              EVENT_MODE_OTA
+            };
               
 enum EVENTS event = EVENT_NONE;
 enum EVENTS led_event = EVENT_NONE;
@@ -65,6 +71,8 @@ Narodmon* nm = new Narodmon(WiFi.macAddress());
 
 // This is an array of leds.  One item for each led in your strip.
 CRGB leds[NUMPIXELS];
+//tmp leds
+CRGB _leds[NUMPIXELS];
 
 //ESP8266WebServer server(80);
 AsyncWebServer server(80);
@@ -91,9 +99,19 @@ void leds_apply(CRGB* _leds){
 Ticker main_ticker;
 
 void ticker_update() {
+
+   if (mode == MODE_NONE){
+      nixie_clear();
+      return;
+   }
+
+   if (mode == MODE_OTA){
+      nixie_set(ota_progress, 5);
+      return;
+   }
+
    time_t this_second;
    time(&this_second);
-   
    if (this_second != last_second || event == EVENT_UPDATE_MODE){
       last_second = this_second;
       
@@ -137,9 +155,7 @@ void ticker_update() {
 void config_time(float timezone_hours_offset, int daylightOffset_sec, 
     const char* server1, const char* server2, const char* server3){
   configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
-  #if DEBUG
-    Serial.println("Waiting for time");
-  #endif
+  INFO("Waiting for time");
   
   time_t this_second = 0;
   while(!this_second) {
@@ -230,6 +246,41 @@ void setup() {
   server.begin();
 
   ArduinoOTA.setHostname("esp-nixie");
+  ArduinoOTA.onStart([]() {
+    //if (ArduinoOTA.getCommand() == U_FLASH)
+    //  type = "sketch";
+    //else // U_SPIFFS
+    //  type = "filesystem";
+    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+
+    //event = EVENT_MODE_OTA;
+    //led_event = EVENT_MODE_OTA;
+
+    mode = MODE_OTA;
+    led_mode = MODE_OTA;
+    
+  });
+
+  ArduinoOTA.onEnd([]() {
+    mode = MODE_NONE;
+  });
+  
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    ota_progress = (progress / (total / 100));
+
+    leds_clear(_leds);
+      for (int i=0; i<6; i++){
+        if (ota_progress >= (i+1)*100/6){
+          _leds[i] = CRGB::Orange; 
+        }else{
+          break;
+        }
+     }
+    leds_apply(_leds);
+     
+  });
+
+  
   ArduinoOTA.begin();
 
   config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
@@ -239,7 +290,7 @@ void setup() {
 
   mode = MODE_CLOCK;
   led_mode = MODE_NONE;
-  main_ticker.attach_ms(1000, ticker_update);
+  main_ticker.attach_ms(100, ticker_update);
   
   //serailDebug_init();
   
@@ -248,9 +299,6 @@ void setup() {
   #endif
   
 }
-
-
-CRGB _leds[NUMPIXELS];
 
 void loop() {
   switch(event){
@@ -307,6 +355,11 @@ void loop() {
         }else{
           mode = MODE_CLOCK;
         }
+        break;
+     case EVENT_MODE_OTA:
+        leds_clear(_leds);
+        mode = MODE_OTA;
+        led_mode = MODE_OTA;
         break;
   }
 
