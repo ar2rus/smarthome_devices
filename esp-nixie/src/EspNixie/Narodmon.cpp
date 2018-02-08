@@ -90,17 +90,19 @@ void Narodmon::setConfigReqP(uint8_t reqP){
 }
     
 uint8_t Narodmon::request(){
-  RESET();
-  DEBUG("New request");
   if (!aClient){
-    aClient = new AsyncClient();
-    if(!aClient){//could not allocate client
-      ERROR("Couldn't allocate memory");
-      return 0;
-    }
+    RESET();
+    DEBUG("New request");
+   
     uint32_t tmp_t = millis();
     uint32_t delta_t = tmp_t - request_time;
     if ((request_time == 0) || (delta_t >= MIN_REQUEST_PERIOD)){
+
+      aClient = new AsyncClient();
+      if(!aClient){//could not allocate client
+         ERROR("Couldn't allocate memory");
+         return 0;
+      }
       
       aClient->onError([this](void * arg, AsyncClient * client, int error){
         ERROR("Error %s (%i)", client->errorToString(error), error);
@@ -200,10 +202,10 @@ uint8_t Narodmon::request(){
         delete client;
       }
     }else{
-      DEBUG("Too short interval between requests. %u less then", delta_t, MIN_REQUEST_PERIOD);
+      DEBUG("Too short interval between requests. %u less then %u", delta_t, MIN_REQUEST_PERIOD);
     }
   }else{
-    DEBUG("Client is still working");
+    //DEBUG("Client is still working");
   }
   return 0;
 }
