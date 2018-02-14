@@ -113,19 +113,27 @@ void ticker_update() {
       _task.duration = 0;
     }
 
-    _task_start_t = t;
-    
+    _task_start_t = t;    
   }
 
-   if (mode == MODE_NONE){
+  switch (mode){
+    case MODE_NONE:
       nixie_clear();
-      return;
-   }
-
-   if (mode == MODE_OTA){
+      break;
+    case MODE_OTA:
       nixie_set(ota_progress, 5);
-      return;
-   }
+      break;
+    case MODE_CLOCK:{
+      time_t this_second;
+      time(&this_second);
+      int h = (this_second / 3600) % 24;
+      int m = (this_second / 60) % 60;
+      int s = (this_second % 60);
+      char p = this_second%2;
+      nixie_set(digit_code(h/10,1,0), digit_code(h%10,1,p), digit_code(m/10,1,0), digit_code(m%10,1,p), digit_code(s/10,1,0), digit_code(s%10,1,p));
+      break;
+    }
+  }
 
    time_t this_second;
    time(&this_second);
