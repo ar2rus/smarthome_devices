@@ -313,7 +313,7 @@ int16_t resolve_value(sensor_value* values, int values_cnt, int type, RESOLVE_MO
 }
 
 void Narodmon::endDocument() {
-  
+  DEBUG("End document");
   int16_t value = resolve_value(values, values_cnt, NARODMON_TYPE_TEMPERATURE, MIN);
   if (value != VALUE_NONE){
     t = value;

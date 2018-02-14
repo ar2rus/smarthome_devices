@@ -18,18 +18,17 @@
 #include "Narodmon.h"
 #include "Nixie.h"
 //#include "NeoPixels.h"
-
 //#include "InsideTermometer.h"
+#include "Tasks.h"
 
-enum MODES {MODE_NONE,
-            MODE_CLOCK,
-            MODE_TERMOMETER, 
-            MODE_HYGROMETR, 
-            MODE_BAROMETER,
-            MODE_TERMOMETER_INSIDE,
-            MODE_ALARM,
-            MODE_OTA
-           };
+task tasks[TASK_MAX_COUNT];
+uint8_t task_count = 0;
+
+task _task;
+uint8_t _task_index;
+uint32_t _task_start_t = 0;
+
+
 enum MODES mode;
 enum MODES led_mode;
 
@@ -99,6 +98,24 @@ void leds_apply(CRGB* _leds){
 Ticker main_ticker;
 
 void ticker_update() {
+
+  uint32_t t = millis();
+  if (t >= _task_start_t + _task.duration){
+    if (_task_index++ >= task_count){
+      _task_index = 0;
+    }
+
+    if (_task_index < task_count){
+      _task.mode = tasks[_task_index].mode;
+      _task.duration = tasks[_task_index].duration;
+    }else{
+      _task.mode = MODE_NONE;
+      _task.duration = 0;
+    }
+
+    _task_start_t = t;
+    
+  }
 
    if (mode == MODE_NONE){
       nixie_clear();
@@ -184,6 +201,26 @@ uint8_t radius){
   }
    
   nm->setConfigRadius(radius);
+}
+
+void add_mode(MODES mode, uint16_t duration){
+  if (task_count < TASK_MAX_COUNT){
+    if (duration){
+      tasks[task_count].mode = mode;
+      tasks[task_count].duration = duration;
+      task_count++;
+    }
+  }
+}
+
+void config_modes(uint16_t clock_duration, uint16_t t_duration, uint16_t p_duration, uint16_t h_duration){
+  task_count = 0;
+  add_mode(MODE_CLOCK, clock_duration);
+  add_mode(MODE_TERMOMETER, t_duration);
+  add_mode(MODE_CLOCK, clock_duration);
+  add_mode(MODE_BAROMETER, p_duration);
+  add_mode(MODE_CLOCK, clock_duration);
+  add_mode(MODE_HYGROMETR, h_duration);
 }
 
 void setup() {
@@ -291,6 +328,8 @@ void setup() {
   config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 8);
  
   //insideTermometerInit();
+
+  config_modes(10000, 5000, 5000, 0);
 
   mode = MODE_CLOCK;
   led_mode = MODE_NONE;
