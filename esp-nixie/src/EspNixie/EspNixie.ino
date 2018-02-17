@@ -19,6 +19,7 @@
 #include "Nixie.h"
 //#include "NeoPixels.h"
 //#include "InsideTermometer.h"
+
 #include "Tasks.h"
 
 task tasks[TASK_MAX_COUNT];
@@ -28,6 +29,7 @@ task _task;
 uint8_t _task_index;
 uint32_t _task_start_t = 0;
 
+#include "Credentials.h"
 
 enum MODES mode;
 enum MODES led_mode;
@@ -53,8 +55,8 @@ enum EVENTS { EVENT_NONE,
 enum EVENTS event = EVENT_NONE;
 enum EVENTS led_event = EVENT_NONE;
 
-const char *ssid = "espNet";
-const char *pass = "esp8266A";
+const char *ssid = AP_SSID;
+const char *pass = AP_PASSWORD;
 
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);

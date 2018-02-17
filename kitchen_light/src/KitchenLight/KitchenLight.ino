@@ -7,9 +7,10 @@
 #include "ESPAsyncWebServer.h"
 
 #include "ClunetMulticast.h"
+#include "Credentials.h"
 
-const char *ssid = "espNet";
-const char *pass = "esp8266A";
+const char *ssid = AP_SSID;
+const char *pass = AP_PASSWORD;
 
 IPAddress ip(192, 168, 1, 122); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
