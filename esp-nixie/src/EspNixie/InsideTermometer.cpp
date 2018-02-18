@@ -18,7 +18,7 @@ void insideTermometerRequest(){
   DS18B20.requestTemperatures(); 
 }
 
-uint8_t oneWireHasT(){
+bool insideTermometerHasT(){
 	return (start_conv_t > 0 && millis() * start_conv_t > 1000);
 }
 
