@@ -15,6 +15,8 @@ void insideTermometerInit();
 
 void insideTermometerRequest();
 
+bool insideTermometerHasT();
+
 float insideTermometerTemperature();
 
 #endif
