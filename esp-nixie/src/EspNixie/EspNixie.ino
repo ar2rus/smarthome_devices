@@ -28,24 +28,19 @@ IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
-TaskWrapper* tw = new TaskWrapper(NULL);
+TaskWrapper* tw = new TaskWrapper();
 Narodmon* nm = new Narodmon(WiFi.macAddress());
+
+AsyncWebServer server(80);
 
 #define LED_PIN 5
 #define NUMPIXELS 6
 
-// This is an array of leds.  One item for each led in your strip.
-CRGB leds[NUMPIXELS];
-//tmp leds
-CRGB _leds[NUMPIXELS];
-
-//ESP8266WebServer server(80);
-AsyncWebServer server(80);
+bool leds_on = true;
+CRGB leds[NUMPIXELS], _leds[NUMPIXELS];
 
 void leds_clear(CRGB* _leds) {
-  for (int i = 0; i < NUMPIXELS; i++) {
-    _leds[i] = CRGB::White;
-  }
+  fill_solid(_leds, NUMPIXELS, leds_on ? CRGB::White : CRGB::Black);
 }
 
 void leds_apply(CRGB* _leds) {
@@ -57,6 +52,7 @@ void leds_apply(CRGB* _leds) {
     }
   }
   if (changed) {
+    FastLED.setBrightness(40);
     FastLED.show();
   }
 }
@@ -65,22 +61,16 @@ void leds_apply(CRGB* _leds) {
 void config_time(float timezone_hours_offset, int daylightOffset_sec,
                  const char* server1, const char* server2, const char* server3) {
   configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
-  INFO("Waiting for time");
+  INFO("Timezone: %f; daylightOffset: %d", timezone_hours_offset, daylightOffset_sec);
 }
 
-int oneWireRes = 5;
-
-void config_narodmon(String apiKey,
-                     uint8_t use_latlng, double  lat, double lng,
-                     uint8_t radius) {
+void config_narodmon(String apiKey, uint8_t use_latlng, double lat, double lng, uint8_t radius) {
   nm->setApiKey(apiKey);
-
   if (use_latlng) {
     nm->setConfigLatLng(lat, lng);
   } else {
     nm->setConfigUseLatLng(0);
   }
-
   nm->setConfigRadius(radius);
 }
 
@@ -96,15 +86,22 @@ uint8_t available_clock() {
   return this_second;
 }
 
-void exec_clock() {
+void _clock(){
   time_t this_second;
   time(&this_second);
-  int h = (this_second / 3600) % 24;
-  int m = (this_second / 60) % 60;
-  int s = (this_second % 60);
-  char p = this_second % 2;
-  nixie_set(digit_code(h / 10, 1, 0), digit_code(h % 10, 1, p), digit_code(m / 10, 1, 0), digit_code(m % 10, 1, p), digit_code(s / 10, 1, 0), digit_code(s % 10, 1, p));
+  if (this_second){
+    int h = (this_second / 3600) % 24;
+    int m = (this_second / 60) % 60;
+    int s = (this_second % 60);
+    char p = this_second % 2;
+    nixie_set(digit_code(h / 10, 1, 0), digit_code(h % 10, 1, p), digit_code(m / 10, 1, 0), digit_code(m % 10, 1, p), digit_code(s / 10, 1, 0), digit_code(s % 10, 1, p));
+  }else{
+    nixie_clear();
+  }
+}
 
+void exec_clock() {
+  _clock();
   leds_clear(_leds);
   leds_apply(_leds);
 }
@@ -163,18 +160,25 @@ void exec_t_inside() {
 }
 
 
-void config_modes(uint32_t clock_duration, uint32_t t_duration, uint32_t p_duration, uint32_t h_duration) {
+void config_modes(uint32_t clock_duration, 
+  uint32_t t_duration, uint32_t p_duration, uint32_t h_duration,
+  uint32_t t_inside_duration) {
   tw->reset();
-
   tw->addContinuousTask(clock_duration, available_clock, exec_clock);
   tw->addContinuousTask(t_duration, available_t, exec_t);
-  tw->addContinuousTask(clock_duration, available_clock, exec_clock);
-  tw->addContinuousTask(p_duration, available_p, exec_p);
-  //  tw->addTask(clock_duration, available_clock, exec_clock);
-  //  tw->addTask(h_duration, available_h, exec_h);
-  //  tw->addContinuousTask(t_inside_duration, available_t_inside, exec_t_inside);
-
-
+  if (p_duration){
+    tw->addContinuousTask(clock_duration, available_clock, exec_clock);
+    tw->addContinuousTask(p_duration, available_p, exec_p);
+  }
+  if (h_duration){
+    tw->addContinuousTask(clock_duration, available_clock, exec_clock);
+    tw->addContinuousTask(h_duration, available_h, exec_h);
+  }
+  if (t_inside_duration){
+    tw->addContinuousTask(clock_duration, available_clock, exec_clock);
+    tw->addContinuousTask(t_inside_duration, available_t_inside, exec_t_inside);
+  }
+  
   //  tw->addPeriodicalTask(1000, 60000, []() {
   //    insideTermometerRequest();
   //  });
@@ -187,36 +191,37 @@ void config_modes(uint32_t clock_duration, uint32_t t_duration, uint32_t p_durat
 
 uint8_t ota_progress;
 
-void setup() {
-#if DEBUG
-  Serial.begin(115200);
-  Serial.println("\nBooting");
-#endif
+/*void rainbow_beat() {
+  uint8_t beatA = beatsin8(17, 0, 255);                        // Starting hue
+  uint8_t beatB = beatsin8(13, 0, 255);
+  fill_rainbow(leds, NUMPIXELS, (beatA+beatB)/2, 8);            // Use FastLED's fill_rainbow routine.
+}*/
 
+#define BPM       60
+#define DIMMEST   0
+#define BRIGHTEST 255
+
+void setup() {
+  DEBUG("Booting");
   nixie_init();
 
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUMPIXELS).setCorrection(TypicalPixelString);
-  FastLED.setBrightness(40);
-
-  leds_clear(leds);
-  FastLED.show();
+  leds_clear(_leds);
+  leds_apply(_leds);
 
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(AP_SSID, AP_PASSWORD);
   WiFi.config(ip, gateway, subnet);
 
-  //Wifi connection
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
+    delay(1000);
     ESP.restart();
   }
+  
+  INFO("IP address: %s", WiFi.localIP().toString().c_str());
 
-#if DEBUG
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-#endif
+  //insideTermometerInit();
 
   //server.on("/", handleRoot);
 
@@ -240,6 +245,11 @@ void setup() {
     ESP.restart();
   });
 
+  server.on("/clock", HTTP_GET, [](AsyncWebServerRequest * request) {
+    tw->callContinuousTask(10000, available_clock, exec_clock);
+    request->send(200);
+  });
+
   server.on("/t", HTTP_GET, [](AsyncWebServerRequest * request) {
     tw->callContinuousTask(10000, available_t, exec_t);
     request->send(200);
@@ -255,15 +265,31 @@ void setup() {
     request->send(200);
   });
 
-
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest * request) {
     tw->callContinuousTask(ALARM_TIME, NULL, []() {
-      nixie_clear();
-      for (int i = 0; i < NUMPIXELS; i++) {
+      _clock();
+    /*  for (int i = 0; i < NUMPIXELS; i++) {
         _leds[i] = CRGB::Red;
       }
-      leds_apply(_leds);
+      leds_apply(_leds);*/
+      
+  static uint16_t hue16 = 0;
+  hue16 += 9;
+  fill_rainbow( leds, NUMPIXELS, hue16 / 256, 0);
+
+  // set the brightness to a sine wave that moves with a beat
+  uint8_t bright = beatsin8( BPM, DIMMEST, BRIGHTEST);
+  FastLED.setBrightness( bright );
+  FastLED.show();
+
+
     });
+    
+    request->send(200);
+  });
+
+  server.on("/led", HTTP_GET, [](AsyncWebServerRequest * request) {
+    leds_on = !leds_on;
     request->send(200);
   });
 
@@ -310,14 +336,9 @@ void setup() {
 
   config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
   config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 8);
-
-  //insideTermometerInit();
-
-  config_modes(10000, 5000, 5000, 0);
-
-#if DEBUG
-  Serial.println("Setup done");
-#endif
+  config_modes(10000, 5000, 5000, 0, 0);
+  
+  INFO("Setup done");
 }
 
 #define UPDATE_TIME 50

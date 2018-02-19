@@ -25,29 +25,28 @@ class TaskWrapper {
     uint8_t _task_index;
     uint32_t _task_start_t;
 
-    void (*default_execute)();
-
     periodical_task task_list[TASK_LIST_MAX_LENGTH];
     uint8_t task_list_length;
 
   public:
     void reset() {
       task_queue_length = 0;
-      _task.duration = 0;
+      _task.execute = NULL;
       _task_start_t = 0;
       task_list_length = 0;
       update();
     }
 
-    TaskWrapper(void (*default_execute)()) {
-      this->default_execute = default_execute;
+    TaskWrapper() {
       reset();
     }
 
     void update() {
       uint32_t t = millis();
 
-      if (t >= _task_start_t + _task.duration || (_task.available && !_task.available())) { //метод назначен и возвращает false
+      if ((!_task.execute)                                            //не назначен метод выполнения (reset)
+      || (_task.duration && t >= _task_start_t + _task.duration)      //не бесконечная задача, время выполнения завершено
+      || (_task.available && !_task.available())) {                   //метод проверки назначен и возвращает false(невозможно дальше выполнять)
         //смена задачи
         uint8_t _index = _task_index;
         while (1) {
@@ -56,7 +55,6 @@ class TaskWrapper {
           }
 
           if (_index == _task_index) { //цикл замкнулся, нет задач к выполнению
-            _task.duration = 0;
             _task.available = NULL;
             _task.execute = NULL;
             break;
@@ -88,7 +86,7 @@ class TaskWrapper {
     }
 
     int8_t callContinuousTask(uint32_t duration, uint8_t (*available)(), void (*execute)()) {
-      if (duration && execute) {
+      if (execute) {
         _task.duration = duration;
         _task.available = available;
         _task.execute = execute;
@@ -99,7 +97,7 @@ class TaskWrapper {
     }
 
     int8_t callContinuousTask(void (*execute)()) {
-      callContinuousTask(UINT32_MAX, NULL, execute);
+      callContinuousTask(0, NULL, execute);
     }
 
     int8_t addContinuousTask(uint32_t duration, uint8_t (*available)(), void (*execute)()) {
