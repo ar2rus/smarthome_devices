@@ -12,6 +12,9 @@ signed char door_state = -1;
 // храним состояние кнопки (-1 - не инициализирована)
 signed char button_state = -1;
 
+//дополнительно храним биты триггеров включения света
+//закрытая дверь шкафчика не должна выключать свет, включенный кнопкой
+char light_state = 0;
 
 void (*timer_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
 
@@ -140,6 +143,7 @@ void cmd(clunet_msg* m){
 							switchResponse(m->src_address);
 							break;
 					}
+					light_state = MIRRORED_BOX_LIGHT_STATE;
 					break;
 			}
 			break;
@@ -169,8 +173,10 @@ void cmd(clunet_msg* m){
 		case CLUNET_COMMAND_DOOR_INFO:
 			if (m->src_address == DOORS_MIRRORED_BOX_DEVICE_ID && m->size==1){
 				door_state = m->data[0];
-				switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, door_state > 0);
-				switchResponse(CLUNET_BROADCAST_ADDRESS);
+				if (!light_state){	//->свет не был включен принудительно
+					switchExecute(MIRRORED_BOX_LIGHT_RELAY_ID, door_state > 0);
+					switchResponse(CLUNET_BROADCAST_ADDRESS);
+				}
 			}
 			break;
 			
