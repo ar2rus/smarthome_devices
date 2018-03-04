@@ -1,11 +1,9 @@
 #include "Nixie.h"
 
-#include "Arduino.h"
+//#include "Arduino.h"
 
 #include <SPI.h>
 #include <Ticker.h>
-
-//#include "SerialDebug.h"
 
 volatile char nixie_cnt;
 volatile char nixie_digits[DIGITS_COUNT];
@@ -28,15 +26,10 @@ void nixie_update() {
 }
 
 void nixie_init(){
-  #if DEBUG
-  Serial.println("Nixie initialization");
-  #endif
-  
   pinMode(SPI_PIN_SS, OUTPUT);
   SPI.begin();
   
   nixie_clear();
-  
   esp_ticker.attach_ms(NIXIE_UPDATE_PERIOD, nixie_update);
 }
 
@@ -55,12 +48,6 @@ void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5){
     nixie_digits[3]=d3;
     nixie_digits[4]=d4;
     nixie_digits[5]=d5;
-
-    //for (int i=0; i<DIGITS_COUNT; i++){
-    //  Serial.print(digitToString(nixie_digits[i]));
-    // Serial.print(";");
-    //}
-    //Serial.println();
 }
 
 void nixie_clear(){
