@@ -269,6 +269,7 @@ void Narodmon::endObject() {
 
 int16_t resolve_value(sensor_value* values, int values_cnt, int type, RESOLVE_MODE resolve_mode){
   int32_t value = 0;
+  int32_t value_t = 0; //выбрасывыем из выборки экстремумы
 
   int cnt = 0;
   for (int i=0; i < values_cnt; i++){
@@ -280,12 +281,24 @@ int16_t resolve_value(sensor_value* values, int values_cnt, int type, RESOLVE_MO
           }
           break;
         case MIN:
-          if (cnt==0 || values[i].value < value){
+          if (cnt==0){
+            value_t = values[i].value;
+            value = values[i].value;
+          }else if (values[i].value <= value_t){
+            value = value_t;
+            value_t = values[i].value;
+          }else if (values[i].value < value){
             value = values[i].value;
           }
           break;
         case MAX:
-          if (cnt==0 || values[i].value > value){
+          if (cnt==0){
+            value_t = values[i].value;
+            value = values[i].value;
+          }else if (values[i].value >= value_t){
+            value = value_t;
+            value_t = values[i].value;
+          }else if (values[i].value > value){
             value = values[i].value;
           }
           break;

@@ -22,7 +22,7 @@
 #include "Credentials.h"
 #include "Tasks.h"
 
-#define ALARM_TIME 10000
+#define ALARM_TIME 15000
 
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
