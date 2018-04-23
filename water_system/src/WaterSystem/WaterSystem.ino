@@ -3,6 +3,9 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#include <Servo.h>
+#include "WaterSystem.h"
+
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
 
@@ -19,17 +22,18 @@ IPAddress subnet(255, 255, 255, 0);
 AsyncWebServer server(80);
 
 
-const int SERVO_PIN = 13;
-const int PUMP_PIN = 5;
-
+Servo servo;
 int pump_state = LOW;
+
+long fill_time[POT_COUNT] = {0};
+
 
 void setup() {
   pinMode(PUMP_PIN, OUTPUT);
   digitalWrite(PUMP_PIN, pump_state);
   
-  pinMode(SERVO_PIN, OUTPUT);
-  
+  servo.attach(SERVO_PIN);
+
   Serial.begin(115200);
 
   Serial.println("Booting");
@@ -85,11 +89,44 @@ void setup() {
   //  server_response(request, r);
   //});
 
+  server.on("/water", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    int r = 404;
+    if (request->args() == 1) {
+      if(request->hasArg("pot")){
+            String arg = request->arg("pot");
+            
+            //check digits in arg value
+            char all_digits = 1;
+            for (byte i = 0; i < arg.length(); i++) {
+              if (!isDigit(arg.charAt(i))) {
+                all_digits = 0;
+              }
+            }
+
+            if (all_digits) {
+              int pot = arg.toInt();
+              if (has_pot(pot)){
+                if (pot_exec(pot)) {
+                  r = 200;
+                }else{
+                  r = 403;  //горшок есть, но поливать еще пока нельзя -> ждем пока утечет вода
+                }
+              }
+            }
+        }else if (request->hasArg("all")){
+          if (pot_exec_all()){
+             r = 200;
+          }
+        }
+    }
+    server_response(request, r);
+  });
+
   server.on("/pump_on", HTTP_GET, [](AsyncWebServerRequest *request){  //on and dimmer
-    char r = 404;
+    int r = 404;
       switch (request->args()) {
         case 0:
-          if (switch_on(true)){
+          if (pump_on(true)){
             r = 200;
           }
           break;
@@ -98,9 +135,9 @@ void setup() {
   });
 
   server.on("/pump_off", HTTP_GET, [](AsyncWebServerRequest *request){  //off
-    char r = 404;
+    int r = 404;
     if (request->args() == 0) {
-      if (switch_off(true)){
+      if (pump_off(true)){
         r = 200;
       }
     }
@@ -123,6 +160,9 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
     case 200:
       request->send(200);
       break;
+    case 403:
+      request->send(403, "text/plain", "Too frequent period\n\n");
+      break;
     default:
       //case 404:
       request->send(404, "text/plain", "File Not Found\n\n");
@@ -133,12 +173,12 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
 
 const char RELAY_0_ID = 1;
 
-void switchResponse(unsigned char address) {
+void pumpResponse(unsigned char address) {
   char info = (pump_state << (RELAY_0_ID - 1));
   clunetMulticastSend(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-boolean switchExecute(char command) {
+boolean pumpExecute(char command) {
   switch (command) {
     case 0x00:  //откл
       pump_state = LOW;
@@ -158,28 +198,69 @@ boolean switchExecute(char command) {
   return true;
 }
 
-boolean switch_exec(char command, boolean send_response) {
-  boolean r = switchExecute(command);
+boolean pump_exec(char command, boolean send_response) {
+  boolean r = pumpExecute(command);
   if (r) {
     if (send_response) {
-      switchResponse(CLUNET_BROADCAST_ADDRESS);
+      pumpResponse(CLUNET_BROADCAST_ADDRESS);
     }
   }
   return r;
 }
 
-boolean switch_on(boolean send_response) {
-  return switch_exec(0x01, send_response);
+boolean pump_on(boolean send_response) {
+  return pump_exec(0x01, send_response);
 }
 
-boolean switch_off(boolean send_response) {
-  return switch_exec(0x00, send_response);
+boolean pump_off(boolean send_response) {
+  return pump_exec(0x00, send_response);
 }
 
-boolean switch_toggle(boolean send_response) {
-  return switch_exec(0x02, send_response);
+boolean pump_toggle(boolean send_response) {
+  return pump_exec(0x02, send_response);
 }
 
+boolean has_pot(int i){
+  return i >=0 && i<POT_COUNT;
+}
+
+boolean pot_pos(int i){
+  if (has_pot(i)){
+    servo.write(pot_angle[i]);
+    delay(100); //TODO: killme
+    return true;
+  }
+  return false;
+}
+
+boolean can_pot_fill(int i){
+  return  has_pot(i) && ((fill_time[i] == 0) || (millis() - fill_time[i] > POT_FILL_PERIOD));
+}
+
+boolean pot_fill(int i){
+  if (can_pot_fill(i)){
+    
+    pump_on(i);
+    delay(POT_FILL_TIME);
+    pump_off(i);
+    fill_time[i] = millis();
+    
+    return true;
+  }
+  return false;
+}
+
+boolean pot_exec(int i){
+  return can_pot_fill(i) && pot_pos(i) && pot_fill(i);
+}
+
+boolean pot_exec_all(){
+  for (int i=0; i<POT_COUNT; i++){
+    pot_exec(i);
+  }
+  
+    return true;
+}
 
 
 
@@ -190,23 +271,7 @@ void loop() {
       case CLUNET_COMMAND_SWITCH:
         if (msg.data[0] == 0xFF) { //info request
           if (msg.size == 1) {
-            switchResponse(msg.src_address);
-          }
-        } else {
-          if (msg.size == 2) {
-            switch (msg.data[0]) {
-              case 0x00:
-              case 0x01:
-              case 0x02:
-                if (msg.data[1] == RELAY_0_ID) {
-                  switch_exec(msg.data[0], false);
-                }
-                break;
-              case 0x03:
-                switch_exec((msg.data[1] >> (RELAY_0_ID - 1)) & 0x01, false);
-                break;
-            }
-            switchResponse(msg.src_address);
+            pumpResponse(msg.src_address);
           }
         }
         break;
