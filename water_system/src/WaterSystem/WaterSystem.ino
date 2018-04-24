@@ -27,6 +27,7 @@ int pump_state = LOW;
 
 long fill_time[POT_COUNT] = {0};
 
+int c_mode, n_mode = -1;
 
 void setup() {
   pinMode(PUMP_PIN, OUTPUT);
@@ -98,17 +99,22 @@ void setup() {
           if (checkUintArg(arg)) {
             int pot = arg.toInt();
             if (has_pot(pot)){
-              if (pot_exec(pot)) {
-                r = 200;
-              }else{
-                r = 403;  //горшок есть, но поливать еще пока нельзя -> ждем пока утечет вода
-              }
+
+              n_mode = pot;
+              r = 200;
+              
+              //if (pot_exec(pot)) {
+              //  r = 200;
+              //}else{
+              //  r = 403;  //горшок есть, но поливать еще пока нельзя -> ждем пока утечет вода
+              //}
             }
           }
        }else if (request->hasArg("all")){
-          if (pot_exec_all()){
+          n_mode = POT_COUNT;
+          //if (pot_exec_all()){
              r = 200;
-          }
+          //}
         }
     }
     server_response(request, r);
@@ -250,7 +256,7 @@ boolean has_pot(int i){
 boolean pot_pos(int i){
   if (has_pot(i)){
     servo.write(pot_angle[i]);
-    delay(100); //TODO: killme
+    delay(1000); //TODO: killme
     return true;
   }
   return false;
@@ -286,6 +292,15 @@ boolean pot_exec_all(){
 }
 
 
+//boolean setMode(int new_mode){
+//  if (c_mode != new_mode){
+//    switch (mode){
+//      case 0...POT_COUNT-1:
+//    }
+//  }
+//  return true;
+//}
+
 
 void loop() {
  clunet_msg msg;
@@ -299,6 +314,23 @@ void loop() {
         }
         break;
     }
+  }
+
+  if (n_mode >= 0){
+    pump_off(true);
+    
+
+    switch (n_mode){
+      case 0 ... POT_COUNT-1:
+        pot_exec(n_mode);
+        break;
+      case POT_COUNT:
+        pot_exec_all();
+        break;
+    }
+
+    c_mode = n_mode;
+    n_mode = -1;
   }
 
   ArduinoOTA.handle();
