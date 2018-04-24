@@ -93,31 +93,45 @@ void setup() {
     int r = 404;
     if (request->args() == 1) {
       if(request->hasArg("pot")){
-            String arg = request->arg("pot");
-            
-            //check digits in arg value
-            char all_digits = 1;
-            for (byte i = 0; i < arg.length(); i++) {
-              if (!isDigit(arg.charAt(i))) {
-                all_digits = 0;
-              }
-            }
+          String arg = request->arg("pot");
 
-            if (all_digits) {
-              int pot = arg.toInt();
-              if (has_pot(pot)){
-                if (pot_exec(pot)) {
-                  r = 200;
-                }else{
-                  r = 403;  //горшок есть, но поливать еще пока нельзя -> ждем пока утечет вода
-                }
+          if (checkUintArg(arg)) {
+            int pot = arg.toInt();
+            if (has_pot(pot)){
+              if (pot_exec(pot)) {
+                r = 200;
+              }else{
+                r = 403;  //горшок есть, но поливать еще пока нельзя -> ждем пока утечет вода
               }
             }
-        }else if (request->hasArg("all")){
+          }
+       }else if (request->hasArg("all")){
           if (pot_exec_all()){
              r = 200;
           }
         }
+    }
+    server_response(request, r);
+  });
+
+  server.on("/servo", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    int r = 404;
+    if (request->args() == 1) {
+      if(request->hasArg("pot")){
+          String arg = request->arg("pot");
+  
+          if (checkUintArg(arg)) {
+            int pot = arg.toInt();
+            if (pot_pos(pot)){
+                r = 200;
+              }
+          }
+      }else if (request->hasArg("test")){
+          for (int i=0; i<20; i++){
+            pot_pos(random(POT_COUNT));
+            delay(1000);
+          }
+      }
     }
     server_response(request, r);
   });
@@ -153,6 +167,15 @@ void setup() {
   });
 
   server.begin();
+}
+
+boolean checkUintArg(String argument){
+   for (byte i = 0; i < argument.length(); i++) {
+      if (!isDigit(argument.charAt(i))) {
+        return false;
+      }
+   }
+   return argument.length() > 0;
 }
 
 void server_response(AsyncWebServerRequest *request, unsigned int response) {
