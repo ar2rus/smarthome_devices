@@ -8,7 +8,7 @@
 
 static int pot_angle[POT_COUNT] = {0, 60, 120, 180};
 
-#define POT_FILL_TIME 20000
+#define POT_FILL_TIME 12000
 #define POT_FILL_PERIOD 60000
 
 #endif
