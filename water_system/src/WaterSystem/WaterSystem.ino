@@ -27,7 +27,11 @@ int pump_state = LOW;
 
 long fill_time[POT_COUNT] = {0};
 
-int c_mode, n_mode = -1;
+int c_mode,n_mode;
+
+struct TaskEx task_queue[TASK_QUEUE_MAX_LENGTH];
+int task_queue_count = 0;
+
 
 void setup() {
   pinMode(PUMP_PIN, OUTPUT);
@@ -292,15 +296,51 @@ boolean pot_exec_all(){
 }
 
 
-//boolean setMode(int new_mode){
-//  if (c_mode != new_mode){
-//    switch (mode){
-//      case 0...POT_COUNT-1:
-//    }
-//  }
-//  return true;
-//}
+void stop_all(){
+  pump_off(true);
+}
 
+void reset_task(){
+  if (task_queue_count > 0){
+    stop_all();
+    task_queue_count = 0;
+  }
+}
+
+void set_task(struct Task task_queue[]){
+  
+}
+
+void update_task(){
+  if (task_queue_count > 0){
+    boolean next = false;
+    long t = millis();
+    if (task_queue[0].start_time == 0){
+      task_queue[0].start_time = t;
+    }
+    switch (task_queue[0].id){
+      case TASK_SERVO:
+        pot_pos(task_queue[0].param);
+        next = true;
+        break;
+      case TASK_PUMP:
+        pump_exec(task_queue[0].param, true);
+        next = true;
+        break;
+      case TASK_DELAY:
+        next = (t - task_queue[0].start_time) >= task_queue[0].param;
+        break;
+    }
+    if (next){
+      --task_queue_count;
+      for (int i=0; i<task_queue_count; i++){
+        task_queue[i].start_time = 0;
+        task_queue[i].id = task_queue[i+1].id;
+        task_queue[i].param = task_queue[i+1].param;
+       }
+    }
+  }
+}
 
 void loop() {
  clunet_msg msg;
