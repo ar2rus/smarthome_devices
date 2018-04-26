@@ -8,15 +8,17 @@
 
 static int pot_angle[POT_COUNT] = {0, 60, 120, 180};
 
+#define SERVO_POS_TIME 1000
 #define POT_FILL_TIME 12000
 #define POT_FILL_PERIOD 60000
 
-long fill_time[POT_COUNT] = {0};
+extern long fill_time[POT_COUNT];
 
 //TASKS
 #define TASK_SERVO 1
 #define TASK_PUMP 2
 #define TASK_DELAY 3
+#define TASK_WATER_HISTORY 10
 
 #define TASK_QUEUE_MAX_LENGTH 50
 
@@ -63,14 +65,23 @@ int get_servo_test_task(Task* task, int count, int _delay){
   return i;
 }
 
+int get_water_history_task(Task* task, int pot){
+  task->id = TASK_WATER_HISTORY;
+  task->param = pot;
+  return 1;
+}
+
 int get_water_task(Task* task, int pot){
   int i=0;
   if (get_servo_task(&task[i++], pot)){
-    if ((fill_time[i] == 0) || (millis() - fill_time[i] > POT_FILL_PERIOD)){
-      get_delay_task(&task[i++], 1000);
+    long t = millis();
+    if ((fill_time[i] == 0) || (t - fill_time[i] > POT_FILL_PERIOD)){
+      get_delay_task(&task[i++], SERVO_POS_TIME);
+      get_water_history_task(&task[i++], pot); //сохраняем время запуска помпы
       get_pump_task(&task[i++], 1);
       get_delay_task(&task[i++], POT_FILL_TIME);
       get_pump_task(&task[i++], 0);
+      get_water_history_task(&task[i++], pot); //сохраняем время остановки помпы (если доработали до конца)
       return i;
     }else{
       return -1;  //forbidden
