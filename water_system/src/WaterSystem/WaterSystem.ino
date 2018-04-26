@@ -25,9 +25,11 @@ Servo servo;
 int pump_state = LOW;
 
 TaskExt task_queue[TASK_QUEUE_MAX_LENGTH];
-int task_queue_count = 0;
+volatile int task_queue_count = 0;
 
 Task task_queue_tmp[TASK_QUEUE_MAX_LENGTH];
+
+long fill_time[POT_COUNT];
 
 void setup() {
   Serial.begin(115200);
@@ -78,7 +80,7 @@ void setup() {
 
   clunetMulticastBegin();
 
-  //server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
   //  char r = 404;
   //  if (request->args() == 0) {
   //    if (switch_toggle(true)){
@@ -86,7 +88,9 @@ void setup() {
   //    }
   //  }
   //  server_response(request, r);
-  //});
+
+   request->send(200, "text/plain", String(task_queue_count) + " : " + String(task_queue[0].id) + ":" + String(task_queue[0].start_time) + ":" + String(task_queue[0].param) + ":" + String(fill_time[2]));
+  });
 
   server.on("/water", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     int r = 404;
@@ -120,7 +124,7 @@ void setup() {
   
           if (checkUintArg(arg)) {
             int pot = arg.toInt();
-            if (set_task(get_water_task(task_queue_tmp, pot))){
+            if (set_task(get_servo_task(task_queue_tmp, pot))){
               r = 200;
             }
           }
@@ -257,25 +261,29 @@ void update_task_queue(){
     boolean next = false;
     long t = millis();
     
-    TaskExt task = task_queue[0];
-    if (task.start_time == 0){
-      task.start_time = t;
+    TaskExt* task = &task_queue[0];
+    if (task->start_time == 0){
+      task->start_time = t;
     }
-    switch (task.id){
+    switch (task->id){
       case TASK_SERVO:
-        servo.write(task.param);
+        servo.write(task->param);
         next = true;
         break;
       case TASK_PUMP:
-        pump_exec(task.param);
+        pump_exec(task->param);
         next = true;
         break;
       case TASK_DELAY:
-        next = (t - task.start_time) >= task.param;
+        next = (t - task->start_time) >= task->param;
+        break;
+      case TASK_WATER_HISTORY:
+        fill_time[task->param] = t;
+        next = true;
         break;
     }
     if (next){
-      --task_queue_count;
+      task_queue_count--;
       //shift queue
       for (int i=0; i<task_queue_count; i++){
         copy_task(&task_queue[i], &task_queue[i+1]);
