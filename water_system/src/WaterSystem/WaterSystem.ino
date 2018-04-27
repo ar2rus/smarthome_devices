@@ -201,7 +201,6 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
   }
 }
 
-
 const char RELAY_0_ID = 1;
 
 void pumpResponse(unsigned char address) {
@@ -209,7 +208,12 @@ void pumpResponse(unsigned char address) {
   clunetMulticastSend(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-boolean pumpExecute(char command) {
+void servoResponse(unsigned char address, int16_t angle){
+  clunetMulticastSend(address, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, sizeof(angle));
+}
+
+boolean pump_exec(char command) {
+  boolean send_response = pump_state != command;
   switch (command) {
     case 0x00:  //откл
       pump_state = LOW;
@@ -226,18 +230,16 @@ boolean pumpExecute(char command) {
 
   //set value
   digitalWrite(PUMP_PIN, pump_state);
+  
+  if (send_response) {
+    pumpResponse(CLUNET_BROADCAST_ADDRESS);
+  }
   return true;
 }
 
-boolean pump_exec(char command) {
-  boolean send_response = pump_state != command;
-  boolean r = pumpExecute(command);
-  if (r) {
-    if (send_response) {
-      pumpResponse(CLUNET_BROADCAST_ADDRESS);
-    }
-  }
-  return r;
+void servo_exec(int angle){
+  servo.write(angle);
+  servoResponse(CLUNET_BROADCAST_ADDRESS, angle);
 }
 
 void stop_all(){
@@ -282,7 +284,7 @@ void update_task_queue(){
     
     switch (task->id){
       case TASK_SERVO:
-        servo.write(task->param);
+        servo_exec(task->param);
         break;
       case TASK_PUMP:
         pump_exec(task->param);
@@ -318,6 +320,13 @@ void loop() {
         if (msg.data[0] == 0xFF) { //info request
           if (msg.size == 1) {
             pumpResponse(msg.src_address);
+          }
+        }
+        break;
+      case CLUNET_COMMAND_SERVO:
+        if (msg.data[0] == 0xFF) { //info request
+          if (msg.size == 1) {
+            servoResponse(msg.src_address, servo.read());
           }
         }
         break;
