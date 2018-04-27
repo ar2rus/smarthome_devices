@@ -89,30 +89,34 @@ void setup() {
   //  }
   //  server_response(request, r);
 
-   request->send(200, "text/plain", String(task_queue_count) + " : " + String(task_queue[0].id) + ":" + String(task_queue[0].start_time) + ":" + String(task_queue[0].param) + ":" + String(fill_time[2]));
+   //request->send(200, "text/plain", String(task_queue_count) + " : " + String(task_queue[0].id) + ":" + String(task_queue[0].start_time) + ":" + String(task_queue[0].param) + ":" + String(fill_time[2]));
+   //request->send(SPIFFS, "/index.html");
+
+   request->send_P(200, "text/html", index_html);
+   
   });
 
   server.on("/water", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     int r = 404;
+    int n = 0;
+    
     if (request->args() == 1) {
       if(request->hasArg("pot")){
-          String arg = request->arg("pot");
-
-          if (checkUintArg(arg)) {
-            int pot = arg.toInt();
-            int n = set_task(get_water_task(task_queue_tmp, pot));
-            if (n > 0){
-              r = 200;
-            }else if (n < 0){
-              r = 403; //запрещенное действие
-            }
-          }
-      }else if (request->hasArg("all")){
-        if (set_task(get_water_all_task(task_queue_tmp))){
-          r = 200;
+        String arg = request->arg("pot");
+        if (checkUintArg(arg)) {
+          n = set_task(get_water_task(task_queue_tmp, fill_time, arg.toInt()));
         }
+      }else if (request->hasArg("all")){
+        n = set_task(get_water_all_task(task_queue_tmp, fill_time));
       }
     }
+
+    if (n > 0){
+      r = 200;
+    }else if (n < 0){
+      r = 403; //запрещенное действие 
+    }
+    
     server_response(request, r);
   });
 
@@ -155,6 +159,11 @@ void setup() {
           }
     }
     server_response(request, r);
+  });
+
+  server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request){
+    reset_task_queue();
+    server_response(request, 200);
   });
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -241,13 +250,15 @@ void copy_task(TaskExt* dst, Task* src){
   dst->start_time = 0;
 }
 
-int set_task(int n){
-  if (n){
-    if (task_queue_count > 0){
-      task_queue_count = 0;
-      stop_all();
-    }
+void reset_task_queue(){
+  stop_all();
+  task_queue_count = 0;
+}
 
+int set_task(int n){
+  if (n > 0){
+    reset_task_queue();
+    
     for (int i=0; i<n; i++){
       copy_task(&task_queue[i], &task_queue_tmp[i]);
     }
@@ -258,36 +269,43 @@ int set_task(int n){
 
 void update_task_queue(){
   if (task_queue_count > 0){
-    boolean next = false;
+    
+    boolean interrupt = false;  //прервать выполнение очереди задач
+    boolean next = true;        //перейти к слудующему элементу очереди
+    
     long t = millis();
     
     TaskExt* task = &task_queue[0];
     if (task->start_time == 0){
-      task->start_time = t;
+      task->start_time = t;   //save starttime for a new task
     }
+    
     switch (task->id){
       case TASK_SERVO:
         servo.write(task->param);
-        next = true;
         break;
       case TASK_PUMP:
         pump_exec(task->param);
-        next = true;
         break;
       case TASK_DELAY:
         next = (t - task->start_time) >= task->param;
         break;
-      case TASK_WATER_HISTORY:
+      case TASK_WATER_TIME_CHECK:
+        interrupt = !can_water_pot(fill_time, task->param);
+        break;
+      case TASK_WATER_TIME_SAVE:
         fill_time[task->param] = t;
-        next = true;
         break;
     }
-    if (next){
+
+    if (interrupt){
+      reset_task_queue();
+    }else if (next){
       task_queue_count--;
       //shift queue
       for (int i=0; i<task_queue_count; i++){
         copy_task(&task_queue[i], &task_queue[i+1]);
-       }
+      }
     }
   }
 }
