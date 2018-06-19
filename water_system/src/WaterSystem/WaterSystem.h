@@ -7,6 +7,7 @@ const char index_html[] PROGMEM = "<!DOCTYPE html><html lang='ru'><head><meta ch
 //PINS
 #define SERVO_PIN 13
 #define PUMP_PIN 5
+#define SENSOR_PIN 4
 
 //POTS
 #define POT_COUNT 4
@@ -14,7 +15,7 @@ static const int pot_angle[POT_COUNT] = {0, 60, 120, 180};
 
 //DELAYS
 #define SERVO_POS_TIME 1000
-#define POT_FILL_TIME 12000
+#define POT_FILL_TIME 10000
 #define POT_FILL_PERIOD 60000
 
 //TASKS
