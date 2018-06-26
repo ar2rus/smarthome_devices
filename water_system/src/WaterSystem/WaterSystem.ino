@@ -6,46 +6,41 @@
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
 
+#include "WaterSystem.h"
+#include <Servo.h>
+
 #include "ClunetMulticast.h"
 #include "Credentials.h"
 
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
-IPAddress ip(192, 168, 1, 122); //Node static IP
+IPAddress ip(192, 168, 1, 123); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 AsyncWebServer server(80);
 
+Servo servo;
+int pump_state = LOW;
 
-const int BUTTON_PIN = 12;
-const int LIGHT_PIN = 14;
+TaskExt task_queue[TASK_QUEUE_MAX_LENGTH];
+volatile int task_queue_count = 0;
 
-int button_state;
-int light_state = LOW;
+Task task_queue_tmp[TASK_QUEUE_MAX_LENGTH];
 
-const unsigned char pwmrange = 255;  //0 - 100
-int dimmer_value = 0;
-
-//fade-in
-unsigned long fade_in_start_time = 0;
+long fill_time[POT_COUNT];
 
 void setup() {
-  pinMode(BUTTON_PIN, INPUT);
-
-  pinMode(LIGHT_PIN, OUTPUT);
-  digitalWrite(LIGHT_PIN, !light_state);
-
-  button_state = digitalRead(BUTTON_PIN);
-
-  analogWriteRange(pwmrange);
-  analogWriteFreq(100);
-
-
   Serial.begin(115200);
-
   Serial.println("Booting");
+  
+  
+  pinMode(PUMP_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, pump_state);
+  
+  servo.attach(SERVO_PIN);
+
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(ssid, pass);
@@ -58,7 +53,7 @@ void setup() {
     ESP.restart();
   }
 
-  ArduinoOTA.setHostname("kitchen-light");
+  ArduinoOTA.setHostname("water-system");
 
   ArduinoOTA.onStart([]() {
     Serial.println("OTA started");
@@ -83,70 +78,92 @@ void setup() {
 
   ArduinoOTA.begin();
 
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
   clunetMulticastBegin();
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
-    char r = 404;
-    if (request->args() == 0) {
-      if (switch_toggle(true)){
-        r = 200;
+  //  char r = 404;
+  //  if (request->args() == 0) {
+  //    if (switch_toggle(true)){
+  //      r = 200;
+  //    }
+  //  }
+  //  server_response(request, r);
+
+   //request->send(200, "text/plain", String(task_queue_count) + " : " + String(task_queue[0].id) + ":" + String(task_queue[0].start_time) + ":" + String(task_queue[0].param) + ":" + String(fill_time[2]));
+   //request->send(SPIFFS, "/index.html");
+
+   request->send_P(200, "text/html", index_html);
+   
+  });
+
+  server.on("/water", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    int r = 404;
+    int n = 0;
+    
+    if (request->args() == 1) {
+      if(request->hasArg("pot")){
+        String arg = request->arg("pot");
+        if (checkUintArg(arg)) {
+          n = set_task(get_water_task(task_queue_tmp, fill_time, arg.toInt()));
+        }
+      }else if (request->hasArg("all")){
+        n = set_task(get_water_all_task(task_queue_tmp, fill_time));
       }
     }
+
+    if (n > 0){
+      r = 200;
+    }else if (n < 0){
+      r = 403; //запрещенное действие 
+    }
+    
     server_response(request, r);
   });
 
-  server.on("/on", HTTP_GET, [](AsyncWebServerRequest *request){  //on and dimmer
-    char r = 404;
-      switch (request->args()) {
-        case 0:
-          if (switch_on(true)){
-            r = 200;
-          }
-          break;
-        case 1:
-          if(request->hasArg("d")){//dimmer: 0 - 100
-            String arg = request->arg("d");
-            
-            //check digits in arg value
-            char all_digits = 1;
-            for (byte i = 0; i < arg.length(); i++) {
-              if (!isDigit(arg.charAt(i))) {
-                all_digits = 0;
-              }
+  server.on("/servo", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    int r = 404;
+    if (request->args() == 1) {
+      if(request->hasArg("pot")){
+          String arg = request->arg("pot");
+  
+          if (checkUintArg(arg)) {
+            int pot = arg.toInt();
+            if (set_task(get_servo_task(task_queue_tmp, pot))){
+              r = 200;
             }
-
-            if (all_digits) {
-              if (dimmer_exec(arg.toInt(), true)) {
-                r = 200;
-              }
-            }
           }
-          break;
-      }
-    server_response(request, r);
-  });
-
-  server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request){  //off
-    char r = 404;
-    if (request->args() == 0) {
-      if (switch_off(true)){
-        r = 200;
+      }else if (request->hasArg("test")){
+          if (set_task(get_servo_test_task(task_queue_tmp, 10, 1000))){
+             r = 200;
+          }
       }
     }
     server_response(request, r);
   });
 
-  server.on("/fadein", HTTP_GET, [](AsyncWebServerRequest *request){ //fade-in
-    char r = 404;
+  server.on("/pump_on", HTTP_GET, [](AsyncWebServerRequest *request){
+    int r = 404;
     if (request->args() == 0) {
-      if (fade_in_start()){
-        r = 200;
-      }
+          if (set_task(get_pump_task(task_queue_tmp, 1))){
+             r = 200;
+          }
     }
     server_response(request, r);
+  });
+
+  server.on("/pump_off", HTTP_GET, [](AsyncWebServerRequest *request){
+    int r = 404;
+    if (request->args() == 0) {
+          if (set_task(get_pump_task(task_queue_tmp, 0))){
+             r = 200;
+          }
+    }
+    server_response(request, r);
+  });
+
+  server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request){
+    reset_task_queue();
+    server_response(request, 200);
   });
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -160,10 +177,22 @@ void setup() {
   server.begin();
 }
 
+boolean checkUintArg(String argument){
+   for (byte i = 0; i < argument.length(); i++) {
+      if (!isDigit(argument.charAt(i))) {
+        return false;
+      }
+   }
+   return argument.length() > 0;
+}
+
 void server_response(AsyncWebServerRequest *request, unsigned int response) {
   switch (response) {
     case 200:
       request->send(200);
+      break;
+    case 403:
+      request->send(403, "text/plain", "Too frequent request\n\n");
       break;
     default:
       //case 404:
@@ -172,210 +201,139 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
   }
 }
 
-
 const char RELAY_0_ID = 1;
 
-void switchResponse(unsigned char address) {
-  char info = (light_state << (RELAY_0_ID - 1));
+void pumpResponse(unsigned char address) {
+  char info = (pump_state << (RELAY_0_ID - 1));
   clunetMulticastSend(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-boolean switchExecute(char command) {
+void servoResponse(unsigned char address, int16_t angle){
+  clunetMulticastSend(address, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, sizeof(angle));
+}
+
+boolean pump_exec(char command) {
+  boolean send_response = pump_state != command;
   switch (command) {
     case 0x00:  //откл
-      light_state = LOW;
+      pump_state = LOW;
       break;
     case 0x01: //вкл
-      light_state = HIGH;
+      pump_state = HIGH;
       break;
     case 0x02: //перекл
-      light_state = !light_state;
+      pump_state = !pump_state;
       break;
     default:
         return false;
   }
 
-  //disable pwm
-  dimmer_value = 0;
-  analogWrite(LIGHT_PIN, dimmer_value);
   //set value
-  digitalWrite(LIGHT_PIN, !light_state);
+  digitalWrite(PUMP_PIN, pump_state);
+  
+  if (send_response) {
+    pumpResponse(CLUNET_BROADCAST_ADDRESS);
+  }
   return true;
 }
 
-boolean switch_exec(char command, boolean send_response) {
-  boolean r = switchExecute(command);
-  if (r) {
-    if (send_response) {
-      switchResponse(CLUNET_BROADCAST_ADDRESS);
+void servo_exec(int angle){
+  servo.write(angle);
+  servoResponse(CLUNET_BROADCAST_ADDRESS, angle);
+}
+
+void stop_all(){
+  pump_exec(0);
+}
+
+void copy_task(TaskExt* dst, Task* src){
+  dst->id = src->id;
+  dst->param = src->param;
+  dst->start_time = 0;
+}
+
+void reset_task_queue(){
+  stop_all();
+  task_queue_count = 0;
+}
+
+int set_task(int n){
+  if (n > 0){
+    reset_task_queue();
+    
+    for (int i=0; i<n; i++){
+      copy_task(&task_queue[i], &task_queue_tmp[i]);
     }
-    fade_in_stop(false);
+    task_queue_count = n;
   }
-  return r;
+  return n;
 }
 
-boolean switch_on(boolean send_response) {
-  return switch_exec(0x01, send_response);
-}
-
-boolean switch_off(boolean send_response) {
-  return switch_exec(0x00, send_response);
-}
-
-boolean switch_toggle(boolean send_response) {
-  return switch_exec(0x02, send_response);
-}
-
-void dimmerResponse(unsigned char address) {
-  char data[] = {1, RELAY_0_ID, dimmer_value};
-  clunetMulticastSend(address, CLUNET_COMMAND_DIMMER_INFO, data, sizeof(data));
-}
-
-boolean dimmerExecute(unsigned char value) {
-  if (value >= 0 && value <= pwmrange) {
-    dimmer_value = value;
-    light_state = value > 0;
-    analogWrite(LIGHT_PIN, pwmrange - dimmer_value);
-    return true;
-  }
-  return false;
-}
-
-boolean dimmer_exec(unsigned char value, boolean send_response) {
-  boolean r = dimmerExecute(value);
-  if (r && send_response) {
-    dimmerResponse(CLUNET_BROADCAST_ADDRESS);
-  }
-  return r;
-}
-
-boolean fade_in_start() {
-  if (!fade_in_start_time) {
-    fade_in_start_time = millis();
-    return true;
-  }
-  return false;
-}
-
-boolean fade_in_stop(char send_response) {
-  if (fade_in_start_time) {
-    fade_in_start_time = 0;
-    if (send_response) {
-      dimmerResponse(CLUNET_BROADCAST_ADDRESS);
+void update_task_queue(){
+  if (task_queue_count > 0){
+    
+    boolean interrupt = false;  //прервать выполнение очереди задач
+    boolean next = true;        //перейти к слудующему элементу очереди
+    
+    long t = millis();
+    
+    TaskExt* task = &task_queue[0];
+    if (task->start_time == 0){
+      task->start_time = t;   //save starttime for a new task
     }
-    return true;
+    
+    switch (task->id){
+      case TASK_SERVO:
+        servo_exec(task->param);
+        break;
+      case TASK_PUMP:
+        pump_exec(task->param);
+        break;
+      case TASK_DELAY:
+        next = (t - task->start_time) >= task->param;
+        break;
+      case TASK_WATER_TIME_CHECK:
+        interrupt = !can_water_pot(fill_time, task->param);
+        break;
+      case TASK_WATER_TIME_SAVE:
+        fill_time[task->param] = t;
+        break;
+    }
+
+    if (interrupt){
+      reset_task_queue();
+    }else if (next){
+      task_queue_count--;
+      //shift queue
+      for (int i=0; i<task_queue_count; i++){
+        copy_task(&task_queue[i], &task_queue[i+1]);
+      }
+    }
   }
-  return false;
 }
-
-
-const char BUTTON_ID = 3;
-
-void buttonResponse(unsigned char address) {
-  char data[] = {BUTTON_ID, !button_state};
-  clunetMulticastSend(address, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
-}
-
-unsigned long button_pressed_time = 0;
-
-const int delay_before_toggle = 25;
-const int delay_before_pwm = 500;
-const int pwm_down_up_cycle_time = 4000;
-const int pwm_down_up_cycle_time_2 = pwm_down_up_cycle_time / 2;
 
 void loop() {
-
-  int button_tmp = digitalRead(BUTTON_PIN);
-  unsigned long m = millis();
-
-  if (button_state != button_tmp) {
-    if (button_tmp == LOW) { //pressed
-
-      if (!button_pressed_time) {
-        button_pressed_time = m;
-      }
-      if (m - button_pressed_time >= delay_before_toggle) { //HIGH->LOW
-        button_state = button_tmp;  //LOW
-        buttonResponse(CLUNET_BROADCAST_ADDRESS);
-        switch_toggle(true);
-        if (!light_state) { //погасили
-          button_pressed_time = 0;  //таймер и диммер не нужны
-        }
-      }
-    } else { //LOW->HIGH
-      button_state = button_tmp; //HIGH
-      buttonResponse(CLUNET_BROADCAST_ADDRESS);
-
-      if (button_pressed_time) {
-        fade_in_stop(true);
-      }
-    }
-  }
-
-  if (button_tmp == HIGH) {
-    button_pressed_time = 0;
-  }
-
-  if (button_pressed_time) {
-    if (m - button_pressed_time >= delay_before_pwm) {
-      fade_in_start();
-    }
-  }
-
-  //fade_in_update
-  if (fade_in_start_time) {
-    int v0 = (m - fade_in_start_time) % pwm_down_up_cycle_time;
-    int v1 = v0 % pwm_down_up_cycle_time_2;
-    if (v0 >= pwm_down_up_cycle_time_2) { //up
-      dimmer_exec(pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
-    } else { //down
-      dimmer_exec(pwmrange - pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
-    }
-  }
-
   clunet_msg msg;
   if (clunetMulticastHandleMessages(&msg)) {
     switch (msg.command) {
       case CLUNET_COMMAND_SWITCH:
         if (msg.data[0] == 0xFF) { //info request
           if (msg.size == 1) {
-            switchResponse(msg.src_address);
-          }
-        } else {
-          if (msg.size == 2) {
-            switch (msg.data[0]) {
-              case 0x00:
-              case 0x01:
-              case 0x02:
-                if (msg.data[1] == RELAY_0_ID) {
-                  switch_exec(msg.data[0], false);
-                }
-                break;
-              case 0x03:
-                switch_exec((msg.data[1] >> (RELAY_0_ID - 1)) & 0x01, false);
-                break;
-            }
-            switchResponse(msg.src_address);
+            pumpResponse(msg.src_address);
           }
         }
         break;
-      case CLUNET_COMMAND_BUTTON:
-        if (msg.size == 0) {
-          buttonResponse(msg.src_address);
-        }
-        break;
-      case CLUNET_COMMAND_DIMMER:
-        if (msg.size == 1 && msg.data[0] == 0xFF) {
-          dimmerResponse(msg.src_address);
-        } else if (msg.size == 2) {
-          //у нас только один канал. Проверяем, что команда для него
-          if ((msg.data[0] >> (RELAY_0_ID - 1)) & 0x01) {
-            dimmer_exec(msg.data[1], false);
-            dimmerResponse(msg.src_address);
+      case CLUNET_COMMAND_SERVO:
+        if (msg.data[0] == 0xFF) { //info request
+          if (msg.size == 1) {
+            servoResponse(msg.src_address, servo.read());
           }
         }
+        break;
     }
   }
+
+  update_task_queue();
 
   ArduinoOTA.handle();
   yield();
