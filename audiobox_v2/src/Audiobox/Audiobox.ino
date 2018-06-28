@@ -29,7 +29,8 @@ void setup() {
   Serial.println("Booting");
 
   audio.init();
-
+  audio.volume_percent(50);
+  audio.input(2);
   
   WiFi.mode(WIFI_STA);
 
@@ -117,6 +118,7 @@ void loop() {
     switch (msg.command) {
     }
   }
+    
 
   ArduinoOTA.handle();
   yield();
