@@ -7,8 +7,8 @@
  *        Constructor         *
  *  just set class variables  *
 \******************************/
-lc75341::lc75341(uint8_t di_pin, uint8_t cl_pin, uint8_t ce_pin) {
-   ccb = new SanyoCCB(0, cl_pin, di_pin, ce_pin);
+lc75341::lc75341(uint8_t do_pin, uint8_t cl_pin, uint8_t ce_pin) {
+   ccb = new SanyoCCB(do_pin, cl_pin, ce_pin);
 }
 
 /******************************************\
