@@ -29,7 +29,7 @@ void setup() {
   Serial.println("Booting");
 
   audio.init();
-  audio.volume_percent(50);
+  audio.volume_percent(90);
   audio.input(2);
   
   WiFi.mode(WIFI_STA);
@@ -82,6 +82,27 @@ void setup() {
 
    //request->send_P(200, "text/html", index_html);
    
+  });
+
+  
+  server.on("/next", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    audio.input_next();
+    server_response(request, 200); 
+  });
+
+  server.on("/prev", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    audio.input_prev();
+    server_response(request, 200); 
+  });
+
+   server.on("/vup", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    audio.volume_up(10);
+    server_response(request, 200); 
+  });
+
+  server.on("/vdn", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    audio.volume_down(10);
+    server_response(request, 200); 
   });
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
