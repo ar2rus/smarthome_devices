@@ -49,12 +49,12 @@ char lc75341::input_next(){
 }
 
 char lc75341::input_prev(){
-	signed char input = registry[0] & 0x0F;
-	input--;
-	if (input < LC75341_INPUT_1){
-		input = LC75341_INPUT_4;
+	signed char i = registry[0] & 0x0F;
+	i--;
+	if (i < LC75341_INPUT_1){
+		i = LC75341_INPUT_4;
 	}
-	return input(input);
+	return input(i);
 }
 
 
