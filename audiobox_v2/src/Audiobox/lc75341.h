@@ -28,6 +28,20 @@
 static const char exp_koeff[9]= {1, 1, 1, 1, 2, 2, 4, 4, 8};
 
 class lc75341 {
+  private:
+    SanyoCCB* ccb;
+    char muted_volume = LC75341_VOLUME_MIN;
+    unsigned char registry[4] = {0x00, 0x00, 0x00, 0x0C};
+    
+    void write();
+    unsigned char volume_value();
+    char volume(char v);
+    unsigned char gain_value();
+    char gain(char g);
+    signed char treble_value();
+    char treble(signed char t);
+    unsigned char bass_value();
+    char bass(unsigned char b);
 	public:
 		lc75341(uint8_t, uint8_t, uint8_t);
     void init();
@@ -69,11 +83,6 @@ class lc75341 {
 		unsigned char bass_dB_value();
 
 		void equalizer_reset();
-	private:
-		void write();
-		SanyoCCB* ccb;
-		char muted_volume = LC75341_VOLUME_MIN;
-		unsigned char registry[4] = {0x00, 0x00, 0x00, 0x0C};
 };
 
 #endif

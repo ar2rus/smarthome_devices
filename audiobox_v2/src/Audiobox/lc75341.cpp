@@ -40,12 +40,12 @@ char lc75341::input(unsigned char input){
 }
 
 char lc75341::input_next(){
-	char input = registry[0] & 0x0F;
-	input++;
-	if (input > LC75341_INPUT_4){
-		input = LC75341_INPUT_1;
+	char i = registry[0] & 0x0F;
+	i++;
+	if (i > LC75341_INPUT_4){
+		i = LC75341_INPUT_1;
 	}
-	return input(input);
+	return input(i);
 }
 
 char lc75341::input_prev(){
@@ -70,10 +70,10 @@ unsigned char lc75341::volume_percent_value(){
 	return 100 - 100 * volume_value() / LC75341_VOLUME_MIN;
 }
 
-char lc75341::volume(char volume){
-	if (volume >= LC75341_VOLUME_MAX && volume <= LC75341_VOLUME_MIN){
-		if (volume_value() != volume){
-			registry[1] = volume;
+char lc75341::volume(char v){
+	if (v >= LC75341_VOLUME_MAX && v <= LC75341_VOLUME_MIN){
+		if (volume_value() != v){
+			registry[1] = v;
 			write();
 		}
 		return 1;
@@ -82,73 +82,57 @@ char lc75341::volume(char volume){
 }
 
 
-
-/*
-*	������������� ������� ��������� �� �������� � ��������� (0 dB ... -80 dB)
-*/
-char lc75341::volume_dB(signed char volume){
-	return volume(-volume);
+char lc75341::volume_dB(signed char v){
+	return volume(-v);
 }
 
-/*
-*	������������� ������� ��������� �� �������� � ��������� �� ������������(0-100 %)
-*/
-char lc75341::volume_percent(unsigned char volume){
-	if (volume <= 100){
-		volume = LC75341_VOLUME_MIN - LC75341_VOLUME_MIN * volume / 100;
-		return volume(volume);
+char lc75341::volume_percent(unsigned char v){
+	if (v <= 100){
+		v = LC75341_VOLUME_MIN - LC75341_VOLUME_MIN * v / 100;
+		return volume(v);
 	}
 	return 0;
 }
 
-/*
-*	����������� ������� ���������� �� step dB
-*/
 char lc75341::volume_up(char step){
-	unsigned char volume = volume_value();
+	unsigned char v = volume_value();
 	
 	/* try to UNMUTE at first*/
 	if (unmute()){
 		return 1;
 	}else{
-		if (volume > LC75341_VOLUME_MAX){
-			if ((volume - step) > LC75341_VOLUME_MAX){
-				volume -= step;
+		if (v > LC75341_VOLUME_MAX){
+			if ((v - step) > LC75341_VOLUME_MAX){
+				v -= step;
 			}else{
-				volume = LC75341_VOLUME_MAX;
+				v = LC75341_VOLUME_MAX;
 			}
-			return volume(volume);
+			return volume(v);
 		}
 	}
 	return 0;
 }
 
-/*
-*	��������� ������� ���������� �� step dB
-*/
 char lc75341::volume_down(char step){
-	unsigned char volume = volume_value();
+	unsigned char v = volume_value();
 	
 	/* try to UNMUTE at first*/
 	if (unmute()){
 		return 1;
 	}else{
-		if (volume < LC75341_VOLUME_MIN){
-			if ((volume + step) < LC75341_VOLUME_MIN){
-				volume += step;
+		if (v < LC75341_VOLUME_MIN){
+			if ((v + step) < LC75341_VOLUME_MIN){
+				v += step;
 			}else{
-				volume = LC75341_VOLUME_MIN;
+				v = LC75341_VOLUME_MIN;
 			}
-			return volume(volume);
+			return volume(v);
 		}
 	}
 	return 0;
 }
 
 
-/*
-*	��������������� ����������� ������� ���������� �� step dB
-*/
 char lc75341::volume_up_exp(unsigned char step){
 	unsigned char v = volume_value();
 	v /= 10;
@@ -156,9 +140,6 @@ char lc75341::volume_up_exp(unsigned char step){
 	return volume_up(exp_koeff[v]*step);
 }
 
-/*
-*	��������������� ��������� ������� ���������� �� step dB
-*/
 char lc75341::volume_down_exp(unsigned char step){
 	unsigned char v = volume_value();
 	v /= 10;
@@ -167,21 +148,15 @@ char lc75341::volume_down_exp(unsigned char step){
 }
 
 
-/*
-*	��������� ����
-*/
 char lc75341::mute(){
-	unsigned char volume = volume_value();
-	if (volume < LC75341_VOLUME_MIN){
-		muted_volume = volume;
+	unsigned char v = volume_value();
+	if (v < LC75341_VOLUME_MIN){
+		muted_volume = v;
 		return volume(LC75341_VOLUME_MIN);
 	}
 	return 0;
 }
 
-/*
-*	�������� ����, ���� �� ����� �� ��� �������� �������� lc75341_mute
-*/
 char lc75341::unmute(){
 	if (muted_volume < LC75341_VOLUME_MIN){
 		if (volume(muted_volume)){
@@ -193,9 +168,6 @@ char lc75341::unmute(){
 }
 
 
-/*
-*	������������ ����� lc75341_mute � lc75341_unmute
-*/
 void lc75341::mute_toggle(){
 	if (!unmute()){
 		mute();
@@ -210,10 +182,10 @@ unsigned char lc75341::gain_dB_value(){
 	return gain_value() * 2;
 }
 
-char lc75341::gain(char gain){
-	if (gain >= LC75341_GAIN_MIN && gain <= LC75341_GAIN_MAX){
-		if (gain != gain_value()){
-			registry[0] = (registry[0] & 0x0F) | (gain<<4);
+char lc75341::gain(char g){
+	if (g >= LC75341_GAIN_MIN && g <= LC75341_GAIN_MAX){
+		if (g != gain_value()){
+			registry[0] = (registry[0] & 0x0F) | (g<<4);
 			write();
 		}
 		return 1;
@@ -222,46 +194,37 @@ char lc75341::gain(char gain){
 }
 
 
-/*
-*	�������� �������� ������� �� gain dB
-*/
-char lc75341::gain_dB(unsigned char gain){
-	return gain(gain / 2);
+char lc75341::gain_dB(unsigned char g){
+	return gain(g / 2);
 }
 
-/*
-*	���������� �������� �������� ������� �� 2 dB
-*/
 char lc75341::gain_up(){
 	return gain_dB(gain_dB_value() + 2);
 }
 
-/*
-*	���������� �������� �������� ������� �� 2 dB
-*/
 char lc75341::gain_down(){
 	return gain_dB(gain_dB_value() - 2);
 }
 
 signed char lc75341::treble_value(){
-	signed char treble = registry[2] & 0x0F;
-	if (treble & 0x08){ //minus dB treble
-		treble = -(treble & 0x07);
+	signed char t = registry[2] & 0x0F;
+	if (t & 0x08){ //minus dB treble
+		t = -(t & 0x07);
 	}
-	return treble;
+	return t;
 }
 
 signed char lc75341::treble_dB_value(){
 	return treble_value() * 2;
 }
 
-char lc75341::treble(signed char treble){
-	if (treble >= LC75341_TREBLE_MIN && treble <= LC75341_TREBLE_MAX){
-		if (treble != treble_value()){
-			if (treble < 0){
-				treble = (-treble) | 0x08;
+char lc75341::treble(signed char t){
+	if (t >= LC75341_TREBLE_MIN && t <= LC75341_TREBLE_MAX){
+		if (t != treble_value()){
+			if (t < 0){
+				t = (-t) | 0x08;
 			}
-			registry[2] = (registry[2] & 0xF0) | treble;
+			registry[2] = (registry[2] & 0xF0) | t;
 			write();
 		}
 		return 1;
@@ -270,24 +233,14 @@ char lc75341::treble(signed char treble){
 }
 
 
-
-/*
-*	������������� �������� ����������� ������� ������ � �� (-10 �� ... +10��)
-*/
-char lc75341::treble_dB(signed char treble){
-	return treble(treble / 2);
+char lc75341::treble_dB(signed char t){
+	return treble(t / 2);
 }
 
-/*
-*	����������� �������� ����������� ������� ������ �� 2 ��
-*/
 char lc75341::treble_up(){
 	return treble_dB(treble_dB_value() + 2);
 }
 
-/*
-*	��������� �������� ����������� ������� ������ �� 2 ��
-*/
 char lc75341::treble_down(){
 	return treble_dB(treble_dB_value() - 2);
 }
@@ -301,10 +254,10 @@ unsigned char lc75341::bass_dB_value(){
 	return bass_value() * 2;
 }
 
-char lc75341::bass(unsigned char bass){
-	if (bass >= LC75341_BASS_MIN && bass <= LC75341_BASS_MAX){
-		if (bass != bass_value()){
-			registry[2] = (registry[2] & 0x0F) | (bass<<4);
+char lc75341::bass(unsigned char b){
+	if (b >= LC75341_BASS_MIN && b <= LC75341_BASS_MAX){
+		if (b!= bass_value()){
+			registry[2] = (registry[2] & 0x0F) | (b<<4);
 			write();
 		}
 		return 1;
@@ -312,30 +265,18 @@ char lc75341::bass(unsigned char bass){
 	return 0;
 }
 
-/*
-*	������������� �������� ����������� ������ ������ � �� (0 �� ... +20��)
-*/
-char lc75341::bass_dB(unsigned char bass){
-	return bass(bass / 2);
+char lc75341::bass_dB(unsigned char b){
+	return bass(b / 2);
 }
 
-/*
-*	����������� �������� ����������� ������ ������ �� 2 ��
-*/
 char lc75341::bass_up(){
 	return bass_dB(bass_dB_value() + 2);
 }
 
-/*
-*	��������� �������� ����������� ������ ������ �� 2 ��
-*/
 char lc75341::bass_down(){
 		return bass_dB(bass_dB_value() - 2);
 }
 
-/*
-*	���������� �������� ����������� (���.�������, ���.�������, ��������)
-*/
 void lc75341::equalizer_reset(){
 		registry[0] = registry[0] & 0x0F;
 		registry[2] = 0x00;
