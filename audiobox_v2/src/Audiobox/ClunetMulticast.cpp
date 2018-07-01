@@ -27,7 +27,7 @@ char clunetMulticastHandleMessages(clunet_msg* msg){
     int len = clunetUDP.read(udp_buffer, CLUNET_BUFFER_SIZE);
     if (len >= CLUNET_OFFSET_DATA) {
         clunet_msg* m = (clunet_msg*)&udp_buffer;
-        
+        if (m->src_address != CLUNET_DEVICE_ID){  //свои не слушаем
         switch(m->dst_address){
             case CLUNET_DEVICE_ID:
             case CLUNET_BROADCAST_ADDRESS:
@@ -52,6 +52,7 @@ char clunetMulticastHandleMessages(clunet_msg* msg){
               }
             break;
         }
+      }
     }
   }
   return 0;
