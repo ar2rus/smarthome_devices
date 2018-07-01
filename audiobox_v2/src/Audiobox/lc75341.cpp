@@ -1,5 +1,6 @@
 #include <inttypes.h>
 #include "lc75341.h"
+#include "lc75341_config.h"
 
 
 
@@ -29,7 +30,7 @@ unsigned char lc75341::input_value(){
 
 
 char lc75341::input(unsigned char input){
-	if (input >= LC75341_INPUT_1 && input <= LC75341_INPUT_4){
+	if (input >= LC75341_INPUT_MIN && input <= LC75341_INPUT_MAX){
 		if (input_value() != input){	//call write if need to set a new value only
 			registry[0] = (registry[0] & 0xF0) | input;
 			write();
@@ -42,8 +43,8 @@ char lc75341::input(unsigned char input){
 char lc75341::input_next(){
 	char i = registry[0] & 0x0F;
 	i++;
-	if (i > LC75341_INPUT_4){
-		i = LC75341_INPUT_1;
+	if (i > LC75341_INPUT_MAX){
+		i = LC75341_INPUT_MIN;
 	}
 	return input(i);
 }
@@ -51,8 +52,8 @@ char lc75341::input_next(){
 char lc75341::input_prev(){
 	signed char i = registry[0] & 0x0F;
 	i--;
-	if (i < LC75341_INPUT_1){
-		i = LC75341_INPUT_4;
+	if (i < LC75341_INPUT_MIN){
+		i = LC75341_INPUT_MAX;
 	}
 	return input(i);
 }
