@@ -47,9 +47,6 @@ uint32_t delayedResponseCounterValue = 0;
 #include <RDSParser.h>
 
 
-#define FIX_STATION  10430            ///< The station that will be tuned by this sketch is 89.30 MHz.
-#define FIX_VOLUME   15               ///< The volume that will be set by this sketch is level 4.
-
 RDA5807M radio;    // Create an instance of Class for RDA5807M Chip
 RDSParser rds;
 
@@ -220,14 +217,13 @@ void setup() {
   audio.volume_percent(0);
 
   radio.init();
-
-  radio.setFrequency(FIX_STATION);
   radio.setMono(false);
   radio.setMute(false);
-  radio.setVolume(FIX_VOLUME);
+  radio.setVolume(radio.MAXVOLUME);
 
-  radio.attachReceiveRDS(RDS_process);
-  rds.attachServicenNameCallback(DisplayServiceName);
+  //RDS
+  //radio.attachReceiveRDS(RDS_process);
+  //rds.attachServicenNameCallback(DisplayServiceName);
 
   EEPROM.begin(512);
 
@@ -237,7 +233,7 @@ void setup() {
   }
   
   if (!audio.input(c.input)){
-    channel(1);
+    channel(LC75341_INPUT_2);
   }
 
   audio.gain_dB(c.eq_gain);
@@ -453,11 +449,11 @@ void check_fm_channel(){
   }
 }
 
-void channel(uint8_t button){
+void channel(uint8_t ch){
   char data[2];
   
   data[0] = 0;
-  data[1] = button;
+  data[1] = ch;
   b_cmd(CLUNET_COMMAND_CHANNEL, data, 2);
 }
 
