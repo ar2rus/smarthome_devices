@@ -113,6 +113,7 @@ uint8_t FM_select_channel(uint8_t num_channel){
   if (freq){
     cur_channel = num_channel;
     radio.setFrequency(freq);
+
     return 1;
   }
   return 0;
@@ -137,12 +138,13 @@ uint8_t FM_select_next_channel(uint8_t up){
   return 0;
 }
 
-uint8_t FM_select_frequency(uint16_t frequency){
-  radio.setFrequency(frequency);
-  cur_channel = -1;
-  return 1;
-  //}
-  //return 0;
+uint8_t FM_select_frequency(uint16_t freq){
+  if (freq){
+    radio.setFrequency(freq);
+    cur_channel = -1;
+    return 1;
+  }
+  return 0;
 }
 
 uint8_t FM_control(uint8_t control, uint8_t on){
@@ -217,8 +219,6 @@ void setup() {
   audio.volume_percent(0);
 
   radio.init();
-  radio.setMono(false);
-  radio.setMute(false);
   radio.setVolume(radio.MAXVOLUME);
 
   //RDS
@@ -246,6 +246,8 @@ void setup() {
     FM_select_frequency(c.fm_freq);
   }
 
+  //radio.setMono(false);
+  //radio.setMute(false);
   for (int i=0; i<4; i++){
     FM_control(i, bitRead(c.fm_controls, i));
   }
@@ -355,16 +357,6 @@ void setup() {
     server_response(request, 404);
   });
 
-   server.on("/sdn", HTTP_GET, [](AsyncWebServerRequest *request){
-    radio.seekDown(true);
-    server_response(request, 200); 
-  });
-
-  server.on("/sup", HTTP_GET, [](AsyncWebServerRequest *request){
-    radio.seekUp(true);
-    server_response(request, 200); 
-  });
-
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_response(request, 404);
   });
@@ -412,8 +404,8 @@ void saveEqualizer(uint8_t gain_db, int8_t treble_db, uint8_t bass_db){
 
 void saveFMChannel(fm_channel_info* channel_info){
   EEPROM.write(EEPROM_CONFIG_ADDRESS + offsetof(config, fm_channel), channel_info->channel);
-  EEPROM.write(EEPROM_CONFIG_ADDRESS + offsetof(config, fm_freq), (channel_info->frequency >> 8) & 0xFF);
-  EEPROM.write(EEPROM_CONFIG_ADDRESS + offsetof(config, fm_freq) + 1, channel_info->frequency & 0xFF);
+  EEPROM.write(EEPROM_CONFIG_ADDRESS + offsetof(config, fm_freq) + 1, (channel_info->frequency >> 8) & 0xFF);
+  EEPROM.write(EEPROM_CONFIG_ADDRESS + offsetof(config, fm_freq) + 0, channel_info->frequency & 0xFF);
   EEPROM.commit();
 }
 
@@ -445,7 +437,7 @@ uint8_t check_power(){
 
 void check_fm_channel(){
   if (power_state){
-    FM_control(FM_CONTROL_MUTE, audio.input_value() != LC75341_INPUT_2);
+    /*FM_control(FM_CONTROL_MUTE, audio.input_value() != LC75341_INPUT_2);*/
   }
 }
 
@@ -717,8 +709,7 @@ void cmd(clunet_msg* m){
           break;
         case 0x00:  //freq
           if (m->size == 3){
-            uint16_t* f = (uint16_t*)&m->data[1];
-            if (FM_select_frequency(*f)){ //check band limit
+            if (FM_select_frequency((m->data[2]<<8) | (m->data[1]))){ //check band limit
               response = 10;
             }
           }
@@ -739,8 +730,18 @@ void cmd(clunet_msg* m){
         }
         break;
         
-        case 0x05:  //search
-          response = 12;
+        case 0x05:  //search up
+          radio.seekUp(true);
+          //if (FM_select_frequency(radio.getFrequency())){
+          //  response = 10;
+          //}
+          break;
+          
+        case 0x06:  //search down
+          radio.seekDown(true);
+          //if (FM_select_frequency(radio.getFrequency())){
+          //  response = 10;
+          //}
           break;
         
         case 0x0A:
