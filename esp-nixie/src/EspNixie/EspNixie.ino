@@ -22,7 +22,7 @@
 #include "Credentials.h"
 #include "Tasks.h"
 
-#define ALARM_TIME 15000
+#define ALARM_DURATION 15000
 
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
@@ -266,7 +266,7 @@ void setup() {
   });
 
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(ALARM_TIME, NULL, []() {
+    tw->callContinuousTask(ALARM_DURATION, NULL, []() {
       _clock();
     /*  for (int i = 0; i < NUMPIXELS; i++) {
         _leds[i] = CRGB::Red;

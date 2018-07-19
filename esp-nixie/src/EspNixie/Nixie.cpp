@@ -1,7 +1,5 @@
 #include "Nixie.h"
 
-//#include "Arduino.h"
-
 #include <SPI.h>
 #include <Ticker.h>
 
