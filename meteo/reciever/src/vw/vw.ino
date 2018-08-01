@@ -239,6 +239,10 @@ void setup() {
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
+
+  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
+    ESP.restart();
+  });
   
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_404(request);
