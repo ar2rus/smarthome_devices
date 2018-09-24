@@ -17,7 +17,7 @@ void LoggingClass::log(LoggingLevel level, const char *fmt, ...){
 
   //_stream.print(logLevelPrefixes[level]);
   //_stream.print(" ");
-
+/*
   String* s = NULL;
   switch (level){
     case LoggingLevelError:
@@ -38,7 +38,7 @@ void LoggingClass::log(LoggingLevel level, const char *fmt, ...){
     va_end(fmtargs);
     *s += tmp;
     *s += "\r\n";
-  }
+  }*/
 }
 
 
