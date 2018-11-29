@@ -1,7 +1,7 @@
 cradle:
-	terminals: 2 - 5,6,7
-	resistence: normal -> 2K7; pushed -> 0
-	scheme: 2 -> GND; 6 -> PIN, pulled up (internal 50K)
+	terminals: 2 - 8
+	resistence: normal -> inf; pushed -> 0
+	scheme: 2 -> GND; 8 -> PIN, pulled up (internal 50K)
 	debounce: 100ms
 	levels: HIGH -> put down; LOW -> picked up
 	
@@ -29,4 +29,4 @@ dial impulses:
 		120: "GPIO 3" <GPIO 3> = HIGH
 
 	
-max.delay between dial of digits = 1500 ms (dial inactivated -> dial activated)
+max delay between dial of digits = 2000 ms (dial inactivated -> dial activated)
