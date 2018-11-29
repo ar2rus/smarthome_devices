@@ -22,8 +22,6 @@ import java.util.logging.Logger;
  */
 public class RotaryDial {
     
-    private static final int CRADLE_DEBOUNCE = 100; //ms
-    
     private static final int MAX_DELAY_BETWEEN_DIGITS = 2000;   //ms
     
     private static final int IMPULSE_MIN_DURATION = 5;   //ms, 60 ms in fact
@@ -31,6 +29,8 @@ public class RotaryDial {
     
     private static final int IMPULSE_INTERSPACE_MIN_DURATION = 5;   //ms, 40 ms in fact
     private static final int IMPULSE_INTERSPACE_MAX_DURATION = 250;   //ms
+    
+    private static final int CRADLE_DEBOUNCE = 100; //ms
     
     private static final boolean RESET_DIAL_BY_PICK_UP  = false; //сбрасывать текущий набор, если трубку подняли
     private static final boolean RESET_DIAL_BY_PUT_DOWN = true;  //сбрасывать теуший набор, если трубку положили 
