@@ -11,7 +11,7 @@ import java.util.Arrays;
 public class RotaryDialTest {
     
     public static void main(String[] args) throws InterruptedException{
-        RotaryDial dial = new RotaryDial(0, 3, 2);
+        RotaryDial dial = new RotaryDial(14, 13, 12);
         
         dial.addListener(new RotaryDialListener() {
             @Override
