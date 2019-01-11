@@ -43,7 +43,7 @@ public class RotaryDial {
         DIGIT_DIALED,        //набрана цифра (в аргументе (тип byte): цифра от 0 до 9 или -1, если цифра не была набрана)
         NUMBER_DIAL_STARTED, //начат набор номера
         NUMBER_DIALED,       //набран номер (в аргументе (тип byte[]): массив цифр от 0 до 9 
-                             //или null, если набор номера не был удачно завершен или был прерван например положенной трубкой)
+                             //или null, если набор номера не был удачно завершен или был прерван, например, положенной трубкой)
     }
     
     //Последовательность выдачи событий при классическом наборе номера, например "02":
@@ -133,7 +133,11 @@ public class RotaryDial {
                                         public void run() {
                                             synchronized (numberLock) {
                                                 if (number != null) {
-                                                    sendEvent(EVENT.NUMBER_DIALED, number.toArray(new Object[0]));
+                                                    byte[] byte_array = new byte[number.size()];
+                                                    for (int i=0; i<number.size(); i++){
+                                                        byte_array[i] = number.get(i);
+                                                    }
+                                                    sendEvent(EVENT.NUMBER_DIALED, byte_array);
                                                     number = null;
                                                     numberReadyTask = null;
                                                 }
@@ -259,7 +263,7 @@ public class RotaryDial {
         }
     }
 
-    private void sendEvent(EVENT event, Object... arg) {
+    private void sendEvent(EVENT event, byte... arg) {
         for (RotaryDialListener listener : listeners) {
             listener.handleRotaryDialEvent(event, arg);
         }

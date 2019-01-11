@@ -6,6 +6,6 @@ package com.gargon.smarthome.devices.dial;
  */
 public interface RotaryDialListener {
     
-    public void handleRotaryDialEvent(RotaryDial.EVENT event, Object... args);
+    public void handleRotaryDialEvent(RotaryDial.EVENT event, byte... args);
     
 }
