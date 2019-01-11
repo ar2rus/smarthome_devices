@@ -15,7 +15,7 @@ public class RotaryDialTest {
         
         dial.addListener(new RotaryDialListener() {
             @Override
-            public void handleRotaryDialEvent(RotaryDial.EVENT event, Object... args) {
+            public void handleRotaryDialEvent(RotaryDial.EVENT event, byte... args) {
                 System.out.print(System.currentTimeMillis() + ": " + event.toString());
                 if (args.length > 0){
                     System.out.print("; " + Arrays.toString(args));
