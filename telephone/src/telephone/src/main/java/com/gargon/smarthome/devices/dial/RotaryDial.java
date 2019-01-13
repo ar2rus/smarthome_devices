@@ -1,4 +1,4 @@
-package com.gargon.smarthome.devices;
+package com.gargon.smarthome.devices.dial;
 
 import com.pi4j.io.gpio.GpioController;
 import com.pi4j.io.gpio.GpioFactory;
@@ -30,22 +30,20 @@ public class RotaryDial {
     private static final int IMPULSE_INTERSPACE_MIN_DURATION = 5;   //ms, 40 ms in fact
     private static final int IMPULSE_INTERSPACE_MAX_DURATION = 250;   //ms
     
-    private static final int DIAL_ACTIVATE_DEBOUNCE = 5; //ms
-    private static final int DIAL_IMPULSE_DEBOUNCE = 5; //ms
     private static final int CRADLE_DEBOUNCE = 100; //ms
     
     private static final boolean RESET_DIAL_BY_PICK_UP  = false; //сбрасывать текущий набор, если трубку подняли
     private static final boolean RESET_DIAL_BY_PUT_DOWN = true;  //сбрасывать теуший набор, если трубку положили 
     
     public static enum EVENT{
-        PICKED_UP,           //трубка поднята, рычаг опущен
+        PICKED_UP,           //трубка поднята, рычаг отпущен
         PUT_DOWN,            //трубка лежит, рычаг нажат
         DIAL_ACTIVATED,      //начат набор цифры, диск повернут
         DIAL_INACTIVATED,    //набор цифры завершен, диск в исходном положении
         DIGIT_DIALED,        //набрана цифра (в аргументе (тип byte): цифра от 0 до 9 или -1, если цифра не была набрана)
         NUMBER_DIAL_STARTED, //начат набор номера
         NUMBER_DIALED,       //набран номер (в аргументе (тип byte[]): массив цифр от 0 до 9 
-                             //или пустой массив, если набор номера не был удачно завершен или был прерван, например, положенной трубкой)
+                             //или null, если набор номера не был удачно завершен или был прерван, например, положенной трубкой)
     }
     
     //Последовательность выдачи событий при классическом наборе номера, например "02":
@@ -87,11 +85,9 @@ public class RotaryDial {
 
         dialActivatePin = gpio.provisionDigitalInputPin(RaspiPin.getPinByAddress(dial_activate_pin), PinPullResistance.PULL_UP);
         dialActivatePin.setShutdownOptions(true);
-        //dialActivatePin.setDebounce(DIAL_ACTIVATE_DEBOUNCE);
 
         dialImpulsePin = gpio.provisionDigitalInputPin(RaspiPin.getPinByAddress(dial_impulse_pin), PinPullResistance.PULL_UP);
         dialImpulsePin.setShutdownOptions(true);
-        //dialImpulsePin.setDebounce(DIAL_IMPULSE_DEBOUNCE);
 
         dialCradlePin = gpio.provisionDigitalInputPin(RaspiPin.getPinByAddress(cradle_pin), PinPullResistance.PULL_UP);
         dialCradlePin.setShutdownOptions(true);
@@ -103,59 +99,59 @@ public class RotaryDial {
         dialActivatePin.addListener(new GpioPinListenerDigital() {
 
             Timer timer = new Timer();
-
+             
             @Override
             public void handleGpioPinDigitalStateChangeEvent(GpioPinDigitalStateChangeEvent event) {
                 if (enabled) {
-                    synchronized (numberLock) {
-                        if (numberReadyTask == null || numberReadyTask.cancel()) {
-                            numberReadyTask = null; // null it, if cancel
+                    synchronized (numberLock){
+                    if (numberReadyTask == null || numberReadyTask.cancel()) {
+                        numberReadyTask = null; // null it, if cancel
+                        
+                        dial_state = dial_state(event.getState());
+                        sendEvent(dial_state ? EVENT.DIAL_ACTIVATED : EVENT.DIAL_INACTIVATED);
 
-                            dial_state = dial_state(event.getState());
-                            sendEvent(dial_state ? EVENT.DIAL_ACTIVATED : EVENT.DIAL_INACTIVATED);
+                        if (dial_state) {    //начало набора цифры
+                            dial_impulse_count = 0; //обнуляем счетчик импульсов
 
-                            if (dial_state) {    //начало набора цифры
-                                dial_impulse_count = 0; //обнуляем счетчик импульсов
-
-                                if (number == null) {    //начало набора номера
-                                    number = new ArrayList();
-                                    sendEvent(EVENT.NUMBER_DIAL_STARTED);
-                                }
-                            } else {  //набор цифры завершен
-
+                            if (number == null) {    //начало набора номера
+                                number = new ArrayList();
+                                sendEvent(EVENT.NUMBER_DIAL_STARTED);
+                            }
+                        } else {  //набор цифры завершен
+                            
                                 byte digit_code = -1;   //вычисляем код набранной цифры по кол-ву импульсов
                                 if (dial_impulse_count > 0 && dial_impulse_count <= 10) {
                                     digit_code = (byte) (dial_impulse_count % 10);
                                 }
                                 sendEvent(EVENT.DIGIT_DIALED, digit_code);
                                 if (number != null) {   //был сделан сброс
-                                    if (digit_code >= 0) {   //набрана корректная цифра, добавляем в номер
-                                        number.add(digit_code);
+                                if (digit_code >= 0) {   //набрана корректная цифра, добавляем в номер
+                                    number.add(digit_code);
 
-                                        numberReadyTask = new TimerTask() {
-                                            @Override
-                                            public void run() {
-                                                synchronized (numberLock) {
-                                                    if (number != null) {
-                                                        byte[] byte_array = new byte[number.size()];
-                                                        for (int i = 0; i < number.size(); i++) {
-                                                            byte_array[i] = number.get(i);
-                                                        }
-                                                        sendEvent(EVENT.NUMBER_DIALED, byte_array);
-                                                        number = null;
-                                                        numberReadyTask = null;
+                                    numberReadyTask = new TimerTask() {
+                                        @Override
+                                        public void run() {
+                                            synchronized (numberLock) {
+                                                if (number != null) {
+                                                    byte[] byte_array = new byte[number.size()];
+                                                    for (int i=0; i<number.size(); i++){
+                                                        byte_array[i] = number.get(i);
                                                     }
+                                                    sendEvent(EVENT.NUMBER_DIALED, byte_array);
+                                                    number = null;
+                                                    numberReadyTask = null;
                                                 }
                                             }
-                                        };
-                                        timer.schedule(numberReadyTask, MAX_DELAY_BETWEEN_DIGITS);
+                                        }
+                                    };
+                                    timer.schedule(numberReadyTask, MAX_DELAY_BETWEEN_DIGITS);
 
-                                    } else {  //ошибка при наборе цифры -> сбрасываем весь номер
-                                        reset_dial();
-                                    }
+                                } else {  //ошибка при наборе цифры -> сбрасываем весь номер
+                                    reset_dial();
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
@@ -163,17 +159,17 @@ public class RotaryDial {
          
         dialImpulsePin.addListener(new GpioPinListenerDigital() {
 
-            long impulse_start_time = 0;
+            long impulse_start_time;
 
             @Override
             public void handleGpioPinDigitalStateChangeEvent(GpioPinDigitalStateChangeEvent event) {
                 if (enabled && dial_state) {
                     long t = System.currentTimeMillis();
+                    long dt = t - impulse_start_time;
 
                     boolean impulse = impulse(event.getState());
 
                     if (dial_impulse_count > 0) {
-                        long dt = t - impulse_start_time;
                         if (impulse) {
                             if (dt < IMPULSE_INTERSPACE_MIN_DURATION || dt > IMPULSE_INTERSPACE_MAX_DURATION) {
                                 LOG.log(Level.WARNING, "Wrong interspace impulse duration: {0} ms", dt);
@@ -187,7 +183,7 @@ public class RotaryDial {
                         }
                     }
 
-                    if (impulse_start_time > 0 && impulse) {
+                    if (impulse) {
                         dial_impulse_count++;
                     }
                     impulse_start_time = t;
