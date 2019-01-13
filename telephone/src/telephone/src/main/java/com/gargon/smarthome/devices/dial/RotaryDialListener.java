@@ -1,4 +1,4 @@
-package com.gargon.smarthome.devices;
+package com.gargon.smarthome.devices.dial;
 
 /**
  *
