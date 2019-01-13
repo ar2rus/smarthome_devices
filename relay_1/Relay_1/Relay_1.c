@@ -104,11 +104,11 @@ char oneWireSearch(OWI_device* devices){
 */
 char temperatureRequest(OWI_device* device, signed int* temperature){
 	
-// 	clunet_wait_sending();
-// 	
-// 	if (DS18B20_ReadDeviceCache(OWI_BUS, (*device).id, temperature) != READ_CRC_ERROR){
-// 		return 1;
-// 	}
+	clunet_wait_sending();
+	
+	if (DS18B20_ReadDeviceCache(OWI_BUS, (*device).id, temperature) != READ_CRC_ERROR){
+		return 1;
+	}
 	return 0;
 }
 
@@ -290,8 +290,8 @@ void cmd(clunet_msg* m){
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
 	switch(command){
 		case CLUNET_COMMAND_SWITCH:
-		//case CLUNET_COMMAND_ONEWIRE_SEARCH:
-		//case CLUNET_COMMAND_TEMPERATURE:
+		case CLUNET_COMMAND_ONEWIRE_SEARCH:
+		case CLUNET_COMMAND_TEMPERATURE:
 		//case CLUNET_COMMAND_DOOR_INFO:
 		case CLUNET_COMMAND_HEATFLOOR:
 		case CLUNET_COMMAND_TIME:
