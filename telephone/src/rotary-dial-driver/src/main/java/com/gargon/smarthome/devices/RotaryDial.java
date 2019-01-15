@@ -187,7 +187,7 @@ public class RotaryDial {
                         }
                     }
 
-                    if (impulse_start_time > 0 && impulse) {
+                    if (/*impulse_start_time > 0 && */impulse) {
                         dial_impulse_count++;
                     }
                     impulse_start_time = t;
