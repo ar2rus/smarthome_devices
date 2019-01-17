@@ -23,6 +23,7 @@
 #include "Tasks.h"
 
 #define ALARM_DURATION 15000
+#define NUMBER_DURATION 5000
 
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
@@ -56,6 +57,11 @@ void leds_apply(CRGB* _leds) {
     FastLED.show();
   }
 }
+
+//хранит параметр, переданный через метод /number
+//его передача в callContinuousTask возможна только
+//через глобальную переменную
+uint32_t number_to_show;
 
 
 void config_time(float timezone_hours_offset, int daylightOffset_sec,
@@ -159,6 +165,11 @@ void exec_t_inside() {
   leds_apply(_leds);
 }
 
+void exec_number() {
+  nixie_set(number_to_show, 5);
+  leds_clear(_leds);
+  leds_apply(_leds);
+}
 
 void config_modes(uint32_t clock_duration, 
   uint32_t t_duration, uint32_t p_duration, uint32_t h_duration,
@@ -273,19 +284,44 @@ void setup() {
       }
       leds_apply(_leds);*/
       
-  static uint16_t hue16 = 0;
-  hue16 += 9;
-  fill_rainbow( leds, NUMPIXELS, hue16 / 256, 0);
-
-  // set the brightness to a sine wave that moves with a beat
-  uint8_t bright = beatsin8( BPM, DIMMEST, BRIGHTEST);
-  FastLED.setBrightness( bright );
-  FastLED.show();
-
-
+      static uint16_t hue16 = 0;
+      hue16 += 9;
+      fill_rainbow( leds, NUMPIXELS, hue16 / 256, 0);
+    
+      // set the brightness to a sine wave that moves with a beat
+      uint8_t bright = beatsin8( BPM, DIMMEST, BRIGHTEST);
+      FastLED.setBrightness( bright );
+      FastLED.show();
     });
     
     request->send(200);
+  });
+
+  server.on("/number", HTTP_GET, [](AsyncWebServerRequest *request) {
+    int r = 404;
+    if(request->hasArg("v")){ //отображает последние(младшие) 6 цифр переданного номера
+      String v = request->arg("v");
+      int length = _min(v.length(), 6);
+      v = v.substring(_max(v.length() - length, 0));
+      
+      //check digits in arg value
+      char all_digits = 1;
+      for (byte i = 0; i < v.length(); i++) {
+        if (!isDigit(v.charAt(i))) {
+              all_digits = 0;
+            }
+      }
+      
+      if (all_digits) {
+        number_to_show = v.toInt();
+         tw->callContinuousTask(NUMBER_DURATION, NULL, []() {
+            exec_number();
+         });
+        r = 200;
+      }
+      
+    }
+    request->send(r);
   });
 
   server.on("/led", HTTP_GET, [](AsyncWebServerRequest * request) {
