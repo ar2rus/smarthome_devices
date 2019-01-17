@@ -89,7 +89,7 @@ void setup() {
   clunetMulticastBegin();
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
-    char r = 404;
+    int r = 404;
     if (request->args() == 0) {
       if (switch_toggle(true)){
         r = 200;
@@ -99,7 +99,7 @@ void setup() {
   });
 
   server.on("/on", HTTP_GET, [](AsyncWebServerRequest *request){  //on and dimmer
-    char r = 404;
+    int r = 404;
       switch (request->args()) {
         case 0:
           if (switch_on(true)){
@@ -130,7 +130,7 @@ void setup() {
   });
 
   server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request){  //off
-    char r = 404;
+    int r = 404;
     if (request->args() == 0) {
       if (switch_off(true)){
         r = 200;
@@ -140,7 +140,7 @@ void setup() {
   });
 
   server.on("/fadein", HTTP_GET, [](AsyncWebServerRequest *request){ //fade-in
-    char r = 404;
+    int r = 404;
     if (request->args() == 0) {
       if (fade_in_start()){
         r = 200;
