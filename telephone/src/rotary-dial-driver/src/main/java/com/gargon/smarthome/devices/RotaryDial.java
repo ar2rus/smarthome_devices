@@ -44,21 +44,24 @@ public class RotaryDial {
         DIAL_INACTIVATED,    //набор цифры завершен, диск в исходном положении
         DIGIT_DIALED,        //набрана цифра (в аргументе (тип byte): цифра от 0 до 9 или -1, если цифра не была набрана)
         NUMBER_DIAL_STARTED, //начат набор номера
+        NUMBER_DIAL_CURRENT, //текущий набранный номер
         NUMBER_DIALED,       //набран номер (в аргументе (тип byte[]): массив цифр от 0 до 9 
                              //или null, если набор номера не был удачно завершен или был прерван, например, положенной трубкой)
     }
     
-    //Последовательность выдачи событий при классическом наборе номера, например "02":
+    //Последовательность выдачи событий при правильном наборе номера, например "02":
     //1. PICKED_UP
     //2. DIAL_ACTIVATED
     //3. NUMBER_DIAL_STARTED
     //4. DIAL_INACTIVATED
     //5. DIGIT_DIALED, 0
-    //6. DIAL_ACTIVATED
-    //7. DIAL_INACTIVATED
-    //8. DIGIT_DIALED, 2
-    //9. NUMBER_DIALED, [0,2]
-    //10.PUT_DOWN
+    //6. NUMBER_DIAL_CURRENT, [0]
+    //7. DIAL_ACTIVATED
+    //8. DIAL_INACTIVATED
+    //9. DIGIT_DIALED, 2
+    //10. NUMBER_DIAL_CURRENT, [0,2]
+    //10. NUMBER_DIALED, [0,2]
+    //11. PUT_DOWN
     
     //После события DIAL_ACTIVATED всегда будут события DIAL_INACTIVATED и DIGIT_DIALED
     //А после события NUMBER_DIAL_STARTED всегда будет событие NUMBER_DIALED
@@ -83,6 +86,11 @@ public class RotaryDial {
     private static final Logger LOG = Logger.getLogger(RotaryDial.class.getName());
     
     public RotaryDial(int cradle_pin, int dial_activate_pin, int dial_impulse_pin) {
+        this(cradle_pin, dial_activate_pin, dial_impulse_pin, MAX_DELAY_BETWEEN_DIGITS);
+    }
+    
+    public RotaryDial(int cradle_pin, int dial_activate_pin, int dial_impulse_pin,
+        int max_delay_between_digits) {
         final GpioController gpio = GpioFactory.getInstance();
 
         dialActivatePin = gpio.provisionDigitalInputPin(RaspiPin.getPinByAddress(dial_activate_pin), PinPullResistance.PULL_UP);
@@ -131,24 +139,22 @@ public class RotaryDial {
                                 if (number != null) {   //был сделан сброс
                                     if (digit_code >= 0) {   //набрана корректная цифра, добавляем в номер
                                         number.add(digit_code);
-
+                                        sendNumberEvent(EVENT.NUMBER_DIAL_CURRENT, number);
+                                        
                                         numberReadyTask = new TimerTask() {
                                             @Override
                                             public void run() {
                                                 synchronized (numberLock) {
                                                     if (number != null) {
-                                                        byte[] byte_array = new byte[number.size()];
-                                                        for (int i = 0; i < number.size(); i++) {
-                                                            byte_array[i] = number.get(i);
-                                                        }
-                                                        sendEvent(EVENT.NUMBER_DIALED, byte_array);
+                                                        sendNumberEvent(EVENT.NUMBER_DIALED, number);
+                                                        
                                                         number = null;
                                                         numberReadyTask = null;
                                                     }
                                                 }
                                             }
                                         };
-                                        timer.schedule(numberReadyTask, MAX_DELAY_BETWEEN_DIGITS);
+                                        timer.schedule(numberReadyTask, max_delay_between_digits);
 
                                     } else {  //ошибка при наборе цифры -> сбрасываем весь номер
                                         reset_dial();
@@ -267,6 +273,16 @@ public class RotaryDial {
         }
     }
 
+    private void sendNumberEvent(EVENT event, List<Byte> number) {
+        if (number != null) {
+            byte[] byte_array = new byte[number.size()];
+            for (int i = 0; i < number.size(); i++) {
+                byte_array[i] = number.get(i);
+            }
+            sendEvent(event, byte_array);
+        }
+    }
+    
     private void sendEvent(EVENT event, byte... arg) {
         for (RotaryDialListener listener : listeners) {
             listener.handleRotaryDialEvent(event, arg);
