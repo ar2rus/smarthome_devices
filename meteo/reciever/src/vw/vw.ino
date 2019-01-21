@@ -5,11 +5,27 @@
 
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
+#include "FS.h"
+
 
 #include "VirtualWire.h"
 #include "ClunetMulticast.h"
 
 #include "Credentials.h"
+
+//максимальное время использования полученных данных
+#define MESSAGE_USE_TIME 15*60*1000
+
+//максимальная задержка между пакетами-дубликатами одного сообщения
+#define MAX_DELAY_BETWEEN_PACKETS 1000
+
+#define INVALID_M 0xFFFFFFFF
+#define INVALID_T 0xFFFFFFFF
+#define INVALID_P 0xFFFFFFFF
+#define INVALID_H 0xFFFF
+#define INVALID_L 0xFFFF
+#define INVALID_VCC 0xFFFF
+
 
 extern "C" {
   #include "user_interface.h"
@@ -99,6 +115,10 @@ IPAddress ip(192,168,1,121);  //Node static IP
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
+#define LOG_FILE_MAX_SIZE 102400
+const char *log_file = "/log.csv";
+
+
 AsyncWebServer server(80);
 
 int32_t T;
@@ -108,18 +128,49 @@ uint16_t L;
 uint16_t VCC;
 
 //время получения последних данных
-uint32_t M = 0xFFFFFFFF;
+uint32_t M = INVALID_M;
+//количество полученных дублирующих сообщений
+uint8_t R;
 
 void reset(){
-  T  = 0xFFFFFFFF;
-  P = 0xFFFFFFFF;
-  H = 0xFFFF;
-  L = 0xFFFF;
-  VCC = 0xFFFF;
+  T   = INVALID_T;
+  P   = INVALID_P;
+  H   = INVALID_H;
+  L   = INVALID_L;
+  VCC = INVALID_VCC;
+  R   = 0;
 }
 
 void server_404(AsyncWebServerRequest *request){
   request->send(404, "text/plain", "File Not Found\n\n");
+}
+
+String valueToString(bool valid, String value, String unit, boolean readable){
+  if (valid){
+    return readable ? "-" : "";
+  }else{
+    return value + (readable ? (" " + unit) : "");
+  }
+}
+
+String tToString(boolean readable){
+  return valueToString(T == INVALID_T, String(T/100.0), "*C", readable);
+}
+
+String pToString(boolean readable){
+  return valueToString(P == INVALID_P, String(P/1000.0), "mm Hg", readable);
+}
+
+String hToString(boolean readable){
+  return valueToString(H == INVALID_H, String(H/10.0), "%", readable);
+}
+
+String lToString(boolean readable){
+  return valueToString(L == INVALID_L, String(L), "Lx", readable);
+}
+
+String vccToString(boolean readable){
+  return valueToString(VCC == INVALID_VCC, String(VCC/100.0), "V", readable);
 }
 
 void setup() {
@@ -165,6 +216,12 @@ void setup() {
 
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+  if(!SPIFFS.begin()){
+    Serial.println("SPIFFS begin failed");
+    return;
+  }
+
   
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
@@ -204,28 +261,32 @@ void setup() {
       switch (resp_format){
         case 0:{
           String message;
-          if (M==0xFFFFFFFF){
+          if (M==INVALID_M){
               message = "No data recieved";
           }else{
-            message = "Time: " + String((millis()-M)/1000) + " sec\n";
-            message += "\nT: " +  (T==0xFFFFFFFF ? "-" : String(T/100.0) + " *C");
-            message += "\nH: " +  (H==0xFFFF ? "-" : String(H/10.0) + " %");
-            message += "\nP: " +  (P==0xFFFFFFFF ? "-" : String(P/1000.0) + " mm Hg");
-            message += "\nL: " +  (L==0xFFFF ? "-" : String(L) + " Lx");
-            message += "\nV: " +  (VCC==0xFFFF ? "-" : String(VCC/100.0) + " V");
+            message = "Time: " + String((millis()-M)/1000) + " sec";
+            if (R > 0){
+              message += " (" + String(R)+" messages)";
+            }
+            message += "\n";
+            message += "\nT: " +  tToString(true);
+            message += "\nH: " +  hToString(true);
+            message += "\nP: " +  pToString(true);
+            message += "\nL: " +  lToString(true);
+            message += "\nV: " +  vccToString(true);
           }
           request->send(200, "text/plain", message);
           }
           break;
         case 1:{
           String message = "{";
-          if (M!=0xFFFFFFFF){
+          if (M!=INVALID_M){
             message += "\"time\":" + String((millis()-M)/1000) + ",";
-            message += "\"t\":" + (T==0xFFFFFFFF ? "-" : String(T/100.0)) + ",";
-            message += "\"h\":" + (H==0xFFFF ? "-" : String(H/10.0)) + ",";
-            message += "\"p\":" + (P==0xFFFFFFFF ? "-" : String(P/1000.0)) + ",";
-            message += "\"l\":" + (L==0xFFFF ? "-" : String(L)) + ",";
-            message += "\"v\":" + (VCC==0xFFFF ? "-" : String(VCC/100.0));
+            message += "\"t\":\"" + tToString(false) + "\",";
+            message += "\"h\":\"" + hToString(false) + "\",";
+            message += "\"p\":\"" + pToString(false) + "\",";
+            message += "\"l\":\"" + lToString(false) + "\",";
+            message += "\"v\":\"" + vccToString(false) + "\",";
           }
           message += "}";
           request->send(200, "application/json", message);
@@ -234,6 +295,10 @@ void setup() {
         default:
           server_404(request);
       }
+  });
+
+  server.on("/log", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, log_file, String(), true);
   });
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -253,10 +318,10 @@ void setup() {
 
 void sendMeteoInfo(unsigned char address){
     char buf[9];
-    buf[0] = ((L==0xFFFF ? 0 : 1) << 3)
-           | ((P==0xFFFFFFFF ? 0 : 1) << 2) 
-           | ((H==0xFFFF ? 0 : 1) << 1) 
-           | ((T==0xFFFFFFFF ? 0 : 1) << 0);
+    buf[0] = ((L==INVALID_L ? 0 : 1) << 3)
+           | ((P==INVALID_P ? 0 : 1) << 2) 
+           | ((H==INVALID_H ? 0 : 1) << 1) 
+           | ((T==INVALID_T ? 0 : 1) << 0);
 
     int16_t T16 = (int16_t)T;
     memcpy(&buf[1], &T16, sizeof(T16));
@@ -267,25 +332,59 @@ void sendMeteoInfo(unsigned char address){
     clunetMulticastSend(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
 }
 
+bool new_message_to_log = false;
+
+void log_data(){
+  File file = SPIFFS.open(log_file, "a");
+  if (file){
+    if (file.size() < LOG_FILE_MAX_SIZE){
+      file.print(M);
+      file.print(";");
+      file.print(R);
+      file.print(";");
+      file.print(tToString(false));
+      file.print(";");
+      file.print(hToString(false));
+      file.print(";");
+      file.print(pToString(false));
+      file.print(";");
+      file.print(lToString(false));
+      file.print(";");
+      file.print(vccToString(false));
+      file.println();
+    }
+    file.close();
+  }
+}
+
 void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];
     uint8_t buflen = VW_MAX_MESSAGE_LEN;
 
-    if (millis()-M > 15*60*1000){ //15 min
+    uint32_t m = millis();
+    uint32_t dm = m-M;
+    
+    if (dm > MESSAGE_USE_TIME){ //15 min
         reset();
+    }
+
+    if (new_message_to_log){
+      if (dm > MAX_DELAY_BETWEEN_PACKETS){  //все новые пакеты -> это уже новое сообщение
+        //пишем лог
+        log_data();
+        new_message_to_log = false;
+      }
     }
 
     if (vw_get_message(buf, &buflen)) { // Non-blocking
       digitalWrite(2, LOW); // Flash a light to show received good message
-
-      uint32_t m = millis();
 
       BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
       BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
       BME280_S32_t uh = ((uint32_t)buf[6]<<8) | (uint32_t)buf[7];
 
       L = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];         //*1
-      if (L == 0xFFFF){ //reserved value for error
+      if (L == INVALID_L){ //reserved value for error
           L--;  //max valid value -> 65534
       }
       
@@ -295,8 +394,12 @@ void loop() {
       P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
       H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
 
-      if (m-M > 1 * 1000){  //прошло больше секунды -> это не дублирующее сообщение
+      if (dm > MAX_DELAY_BETWEEN_PACKETS){  //прошло больше секунды -> это не дублирующее сообщение
+        R = 1;
+        new_message_to_log = true;
         sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
+      }else{
+        R++;
       }
 
       M = m;
@@ -315,7 +418,7 @@ void loop() {
                 int16_t T16 = (int16_t)T;
                 char buf[3+sizeof(T16)];
                 buf[0] = 1; //num of devices
-                buf[1] = T==0xFFFFFFFF ? 0xFF : 2; //error / bmp/bme
+                buf[1] = T==INVALID_T ? 0xFF : 2; //error / bmp/bme
                 buf[2] = 0; //device id
                 
                 memcpy(&buf[3], &T16, sizeof(T16));
