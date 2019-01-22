@@ -1,3 +1,9 @@
+/**
+ * Use 2.4.1-2.4.2 esp8266 core;
+ * lwip 2 Higher bandwidth; CPU 80 MHz
+ * 
+ */
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
