@@ -3,10 +3,10 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#include <time.h>
+
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
-#include "FS.h"
-
 
 #include "VirtualWire.h"
 #include "ClunetMulticast.h"
@@ -115,10 +115,6 @@ IPAddress ip(192,168,1,121);  //Node static IP
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
-#define LOG_FILE_MAX_SIZE 102400
-const char *log_file = "/log.csv";
-
-
 AsyncWebServer server(80);
 
 int32_t T;
@@ -127,8 +123,8 @@ uint16_t H;
 uint16_t L;
 uint16_t VCC;
 
-//время получения последних данных
-uint32_t M = INVALID_M;
+time_t TIME;  //время получения последних данных
+uint32_t M = INVALID_M; //время получения последних данных в мс
 //количество полученных дублирующих сообщений
 uint8_t R;
 
@@ -138,7 +134,6 @@ void reset(){
   H   = INVALID_H;
   L   = INVALID_L;
   VCC = INVALID_VCC;
-  R   = 0;
 }
 
 void server_404(AsyncWebServerRequest *request){
@@ -149,7 +144,7 @@ String valueToString(bool valid, String value, String unit, boolean readable){
   if (valid){
     return readable ? "-" : "";
   }else{
-    return value + (readable ? (" " + unit) : "");
+    return value + ((readable && unit.length()) ? (" " + unit) : "");
   }
 }
 
@@ -171,6 +166,14 @@ String lToString(boolean readable){
 
 String vccToString(boolean readable){
   return valueToString(VCC == INVALID_VCC, String(VCC/100.0), "V", readable);
+}
+
+String timeToString(boolean readable){
+  return valueToString(M == INVALID_M, String(TIME), "", readable);
+}
+
+String rToString(boolean readable){
+  return valueToString(R == 0, String(R), "messages", readable);
 }
 
 void setup() {
@@ -217,11 +220,7 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  if(!SPIFFS.begin()){
-    Serial.println("SPIFFS begin failed");
-    return;
-  }
-
+  configTime((int)(4 * 3600), 0, "pool.ntp.org", "time.nist.gov", NULL);
   
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
@@ -253,6 +252,8 @@ void setup() {
               resp_format = 0;  //txt
             }else if (fmt == "json"){
               resp_format = 1;  //json
+            }else if (fmt == "csv"){
+              resp_format = 2;  //csv
             }
           }
           break;
@@ -261,13 +262,13 @@ void setup() {
       switch (resp_format){
         case 0:{
           String message;
-          if (M==INVALID_M){
+          if (M == INVALID_M){
               message = "No data recieved";
           }else{
-            message = "Time: " + String((millis()-M)/1000) + " sec";
-            if (R > 0){
-              message += " (" + String(R)+" messages)";
-            }
+            
+            message = "Time: " + timeToString(true);
+            message += " (" + String((millis()-M)/1000) + " seconds ago, " + rToString(true) + ")";
+            
             message += "\n";
             message += "\nT: " +  tToString(true);
             message += "\nH: " +  hToString(true);
@@ -280,25 +281,39 @@ void setup() {
           break;
         case 1:{
           String message = "{";
-          if (M!=INVALID_M){
-            message += "\"time\":" + String((millis()-M)/1000) + ",";
+          if (M != INVALID_M){
+            message += "\"time\":\"" + timeToString(false) + "\",";
             message += "\"t\":\"" + tToString(false) + "\",";
             message += "\"h\":\"" + hToString(false) + "\",";
             message += "\"p\":\"" + pToString(false) + "\",";
             message += "\"l\":\"" + lToString(false) + "\",";
-            message += "\"v\":\"" + vccToString(false) + "\",";
+            message += "\"v\":\"" + vccToString(false) + "\"";
           }
           message += "}";
           request->send(200, "application/json", message);
           }
           break;
+        case 2: {
+          String message = timeToString(false);
+          message += ";";
+          message += rToString(false);
+          message += ";";
+          message += tToString(false);
+          message += ";";
+          message += hToString(false);
+          message += ";";
+          message += pToString(false);
+          message += ";";
+          message += lToString(false);
+          message += ";";
+          message += vccToString(false);
+          
+          request->send(200, "text/plain", message);
+          }
+          break;
         default:
           server_404(request);
       }
-  });
-
-  server.on("/log", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, log_file, String(), true);
   });
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -332,31 +347,6 @@ void sendMeteoInfo(unsigned char address){
     clunetMulticastSend(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
 }
 
-bool new_message_to_log = false;
-
-void log_data(){
-  File file = SPIFFS.open(log_file, "a");
-  if (file){
-    if (file.size() < LOG_FILE_MAX_SIZE){
-      file.print(M);
-      file.print(";");
-      file.print(R);
-      file.print(";");
-      file.print(tToString(false));
-      file.print(";");
-      file.print(hToString(false));
-      file.print(";");
-      file.print(pToString(false));
-      file.print(";");
-      file.print(lToString(false));
-      file.print(";");
-      file.print(vccToString(false));
-      file.println();
-    }
-    file.close();
-  }
-}
-
 void loop() {
     uint8_t buf[VW_MAX_MESSAGE_LEN];
     uint8_t buflen = VW_MAX_MESSAGE_LEN;
@@ -366,14 +356,6 @@ void loop() {
     
     if (dm > MESSAGE_USE_TIME){ //15 min
         reset();
-    }
-
-    if (new_message_to_log){
-      if (dm > MAX_DELAY_BETWEEN_PACKETS){  //все новые пакеты -> это уже новое сообщение
-        //пишем лог
-        log_data();
-        new_message_to_log = false;
-      }
     }
 
     if (vw_get_message(buf, &buflen)) { // Non-blocking
@@ -395,8 +377,8 @@ void loop() {
       H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
 
       if (dm > MAX_DELAY_BETWEEN_PACKETS){  //прошло больше секунды -> это не дублирующее сообщение
+        time(&TIME);
         R = 1;
-        new_message_to_log = true;
         sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
       }else{
         R++;
@@ -468,4 +450,3 @@ void loop() {
     ArduinoOTA.handle();
     yield();
 }
-
