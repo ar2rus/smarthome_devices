@@ -1,3 +1,10 @@
+/**
+ * Use 2.4.1 esp8266 core; PWM not working with 2.4.2
+ * lwip 2 Higher bandwidth; CPU 80 MHz
+ * 
+ */
+
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -153,12 +160,17 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
+   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
+    ESP.restart();
+  });
+
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_response(request, 404);
   });
 
   server.begin();
 }
+
 
 void server_response(AsyncWebServerRequest *request, unsigned int response) {
   switch (response) {
