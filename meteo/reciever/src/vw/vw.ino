@@ -1,6 +1,6 @@
 /**
  * Use 2.4.1-2.4.2 esp8266 core;
- * lwip 2 Higher bandwidth; CPU 80 MHz
+ * lwip 1.4 Higher bandwidth; CPU 80 MHz
  * 
  */
 
