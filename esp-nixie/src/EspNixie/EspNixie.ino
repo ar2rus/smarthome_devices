@@ -1,3 +1,10 @@
+/**
+ * Use 2.4.1-2.4.2 esp8266 core
+ * lwip 1.4 Higher bandwidth; CPU 160 MHz
+ * 
+ */
+
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 
@@ -391,4 +398,3 @@ void loop() {
   ArduinoOTA.handle();
   yield();
 }
-
