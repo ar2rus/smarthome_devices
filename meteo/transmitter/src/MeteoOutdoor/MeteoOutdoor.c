@@ -19,6 +19,8 @@
 
 char data[14];
 
+#define NUMBER_VW_SEND 5
+
 ISR (WDT_vect) {
 	//wdt_reset();
 	//WDTCSR |= _BV(WDIE); // разрешаем прерывания по ватчдогу. Иначе будет резет.
@@ -94,8 +96,9 @@ int main(void){
 				data[size_0++] = t2 & 0xFF;
 				
 				
-				//отправляем 2 раза
-				for (int i=0; i<2; i++){
+				//отправляем 5 раз
+				//с 11.03.17 - 20.01.19 было 2 отправки (крайние значения напряжения 2.45-2.5В)
+				for (int i=0; i<NUMBER_VW_SEND; i++){
 					vw_send((uint8_t *)data, size_0);
 					vw_wait_tx();
 				}
