@@ -122,13 +122,13 @@ public:
     uint8_t request();
     
     uint8_t hasT();
-    int16_t getT();
+    float getT();
 
     uint8_t hasH();
-    int16_t getH();
+    float getH();
     
     uint8_t hasP();
-    int16_t getP();
+    float getP();
 
     virtual void whitespace(char c);
     virtual void startDocument();

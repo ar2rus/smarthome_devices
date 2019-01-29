@@ -214,24 +214,24 @@ uint8_t Narodmon::hasT(){
   return t_time > 0 && (millis() - t_time) < T_MAX_TIME;
 }
 
-int16_t Narodmon::getT(){
-  return t;
+float Narodmon::getT(){
+  return t / 10.0;
 }
 
 uint8_t Narodmon::hasH(){
   return h_time > 0 && (millis() - h_time) < H_MAX_TIME;
 }
 
-int16_t Narodmon::getH(){
-  return h;
+float Narodmon::getH(){
+  return h / 10.0;
 }
 
 uint8_t Narodmon::hasP(){
   return p_time > 0 && (millis() - p_time) < P_MAX_TIME;
 }
 
-int16_t Narodmon::getP(){
-  return p;
+float Narodmon::getP(){
+  return p / 10.0;
 }
 
 void Narodmon::whitespace(char c) {
@@ -332,7 +332,7 @@ void Narodmon::endDocument() {
     t = value;
     t_time = millis();
 
-    DEBUG("T=%f", (float)getT()/10);
+    DEBUG("T=%f", getT());
   }
 
   value = resolve_value(values, values_cnt, NARODMON_TYPE_HUMIDITY, CLOSEST);
@@ -340,7 +340,7 @@ void Narodmon::endDocument() {
     h = value;
     h_time = millis();
 
-    DEBUG("H=%f", (float)getH()/10);
+    DEBUG("H=%f", getH());
   }
 
   value = resolve_value(values, values_cnt, NARODMON_TYPE_PRESSURE, CLOSEST);
@@ -348,7 +348,7 @@ void Narodmon::endDocument() {
     p = value;
     p_time = millis();
 
-    DEBUG("P=%f", (float)getP()/10);
+    DEBUG("P=%f", getP());
   }
 
   AsyncClient * client = aClient;
