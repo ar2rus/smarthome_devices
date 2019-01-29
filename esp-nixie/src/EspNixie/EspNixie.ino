@@ -124,8 +124,8 @@ uint8_t available_t() {
 }
 
 void exec_t() {
-  int16_t t = nm->getT();
-  nixie_set(t / 10.0, 3, 1);
+  float t = nm->getT();
+  nixie_set(t, 3, 1);
 
   uint8_t sign = t >= 0 ? 1 : 0;
   uint8_t e10 = (abs(t) / 100) > 0;
@@ -146,7 +146,7 @@ uint8_t available_p() {
 }
 
 void exec_p() {
-  nixie_set(nm->getP() / 10.0, 3, 1);
+  nixie_set(nm->getP(), 3, 1);
   leds_clear(_leds);
   leds_apply(_leds);
 }
@@ -156,8 +156,8 @@ uint8_t available_h() {
 }
 
 void exec_h() {
-  int16_t t = nm->getH();
-  nixie_set(t / 10, 3);
+  float h = nm->getH();
+  nixie_set(h, 3);
   leds_clear(_leds);
   leds_apply(_leds);
 }
@@ -283,6 +283,28 @@ void setup() {
     request->send(200);
   });
 
+  server.on("/t_value", HTTP_GET, [](AsyncWebServerRequest * request) {
+    request->send(200, "text/plain", nm->hasT() ? String(nm->getT(), 1) : "");
+  });
+
+  server.on("/p", HTTP_GET, [](AsyncWebServerRequest * request) {
+    tw->callContinuousTask(10000, available_p, exec_p);
+    request->send(200);
+  });
+
+  server.on("/p_value", HTTP_GET, [](AsyncWebServerRequest * request) {
+    request->send(200, "text/plain", nm->hasP() ? String(nm->getP(), 1) : "");
+  });
+
+  server.on("/h", HTTP_GET, [](AsyncWebServerRequest * request) {
+    tw->callContinuousTask(10000, available_h, exec_h);
+    request->send(200);
+  });
+
+  server.on("/h_value", HTTP_GET, [](AsyncWebServerRequest * request) {
+    request->send(200, "text/plain", nm->hasH() ? String(nm->getH(), 1) : "");
+  });
+
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest * request) {
     tw->callContinuousTask(ALARM_DURATION, NULL, []() {
       _clock();
@@ -378,7 +400,7 @@ void setup() {
   ArduinoOTA.begin();
 
   config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
-  config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 8);
+  config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 5);
   config_modes(10000, 5000, 5000, 0, 0);
   
   INFO("Setup done");
