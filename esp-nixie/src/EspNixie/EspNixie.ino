@@ -4,7 +4,6 @@
  * 
  */
 
-
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 
@@ -13,17 +12,13 @@
 
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
-
-#define FASTLED_ALLOW_INTERRUPTS 0
-//#define FASTLED_INTERRUPT_RETRY_COUNT 10
-#include <FastLED.h>
-
+ 
 #include <time.h>
 
 #include "Narodmon.h"
 #include "Nixie.h"
+#include "Leds.h"
 
-//#include "NeoPixels.h"
 #include "InsideTermometer.h"
 
 #include "Credentials.h"
@@ -32,38 +27,19 @@
 #define ALARM_DURATION 15000
 #define NUMBER_DURATION 5000
 
+#define LED_PIN 5
+#define NUMPIXELS 6
+
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 TaskWrapper* tw = new TaskWrapper();
 Narodmon* nm = new Narodmon(WiFi.macAddress());
+Leds* leds = new Leds(LED_PIN, NUMPIXELS);
 
 AsyncWebServer server(80);
 
-#define LED_PIN 5
-#define NUMPIXELS 6
-
-bool leds_on = true;
-CRGB leds[NUMPIXELS], _leds[NUMPIXELS];
-
-void leds_clear(CRGB* _leds) {
-  fill_solid(_leds, NUMPIXELS, leds_on ? CRGB::White : CRGB::Black);
-}
-
-void leds_apply(CRGB* _leds) {
-  bool changed = false;
-  for (int i = 0; i < NUMPIXELS; i++) {
-    if (leds[i] != _leds[i]) {
-      changed = true;
-      leds[i] = _leds[i];
-    }
-  }
-  if (changed) {
-    FastLED.setBrightness(40);
-    FastLED.show();
-  }
-}
 
 //хранит параметр, переданный через метод /number
 //его передача в callContinuousTask возможна только
@@ -87,10 +63,33 @@ void config_narodmon(String apiKey, uint8_t use_latlng, double lat, double lng, 
   nm->setConfigRadius(radius);
 }
 
-void exec_none() {
+void show_none() {
   nixie_clear();
-  leds_clear(_leds);
-  leds_apply(_leds);
+  leds->backlight();
+}
+
+const CRGB MINUS_COLOR = CRGB::Blue;
+
+void show_value(float v, uint8_t pos_1, int num_frac){
+  nixie_set(v, pos_1, num_frac);
+
+  leds->set([&](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
+      if (v < 0) {  ///minus value
+    
+        int lb = pos_1;
+        float t = abs(v);
+        while (((int)t) > 0){
+          t /= 10;
+          lb--;
+        }
+    
+        lb = max(lb, 0);
+        int rb = min(pos_1 + num_frac, leds_num - 1);
+        for (int i=lb; i<=rb; i++){
+          leds[i] = MINUS_COLOR;
+        }
+      }
+  });
 }
 
 uint8_t available_clock() {
@@ -113,88 +112,64 @@ void _clock(){
   }
 }
 
-void exec_clock() {
+void show_clock() {
   _clock();
-  leds_clear(_leds);
-  leds_apply(_leds);
+  leds->backlight();
 }
 
 uint8_t available_t() {
   return nm->hasT();
 }
 
-void exec_t() {
-  float t = nm->getT();
-  nixie_set(t, 3, 1);
-
-  uint8_t sign = t >= 0 ? 1 : 0;
-  uint8_t e10 = (abs(t) / 100) > 0;
-
-  leds_clear(_leds);
-  if (!sign) {
-    if (e10) {
-      _leds[2] = CRGB::Blue;
-    }
-    _leds[3] = CRGB::Blue;
-    _leds[4] = CRGB::Blue;
-  }
-  leds_apply(_leds);
+void show_t() {
+  show_value(nm->getT(), 3, 1);
 }
 
 uint8_t available_p() {
   return nm->hasP();
 }
 
-void exec_p() {
-  nixie_set(nm->getP(), 3, 1);
-  leds_clear(_leds);
-  leds_apply(_leds);
+void show_p() {
+  show_value(nm->getP(), 3, 1);
 }
 
 uint8_t available_h() {
   return nm->hasH();
 }
 
-void exec_h() {
-  float h = nm->getH();
-  nixie_set(h, 3);
-  leds_clear(_leds);
-  leds_apply(_leds);
+void show_h() {
+  show_value(nm->getH(), 3, 0);
 }
 
 uint8_t available_t_inside() {
   return insideTermometerHasT();
 }
 
-void exec_t_inside() {
-  nixie_set(insideTermometerTemperature(), 2, 3);
-  leds_clear(_leds);
-  leds_apply(_leds);
+void show_t_inside() {
+  show_value(insideTermometerTemperature(), 2, 3);
 }
 
-void exec_number() {
-  nixie_set(number_to_show, 5);
-  leds_clear(_leds);
-  leds_apply(_leds);
+void show_number() {
+  show_value(number_to_show, 5, 0);
 }
 
 void config_modes(uint32_t clock_duration, 
   uint32_t t_duration, uint32_t p_duration, uint32_t h_duration,
   uint32_t t_inside_duration) {
   tw->reset();
-  tw->addContinuousTask(clock_duration, available_clock, exec_clock);
-  tw->addContinuousTask(t_duration, available_t, exec_t);
+  tw->addContinuousTask(clock_duration, available_clock, show_clock);
+  tw->addContinuousTask(t_duration, available_t, show_t);
   if (p_duration){
-    tw->addContinuousTask(clock_duration, available_clock, exec_clock);
-    tw->addContinuousTask(p_duration, available_p, exec_p);
+    tw->addContinuousTask(clock_duration, available_clock, show_clock);
+    tw->addContinuousTask(p_duration, available_p, show_p);
   }
   if (h_duration){
-    tw->addContinuousTask(clock_duration, available_clock, exec_clock);
-    tw->addContinuousTask(h_duration, available_h, exec_h);
+    tw->addContinuousTask(clock_duration, available_clock, show_clock);
+    tw->addContinuousTask(h_duration, available_h, show_h);
   }
   if (t_inside_duration){
-    tw->addContinuousTask(clock_duration, available_clock, exec_clock);
-    tw->addContinuousTask(t_inside_duration, available_t_inside, exec_t_inside);
+    tw->addContinuousTask(clock_duration, available_clock, show_clock);
+    tw->addContinuousTask(t_inside_duration, available_t_inside, show_t_inside);
   }
   
   //  tw->addPeriodicalTask(1000, 60000, []() {
@@ -209,23 +184,9 @@ void config_modes(uint32_t clock_duration,
 
 uint8_t ota_progress;
 
-/*void rainbow_beat() {
-  uint8_t beatA = beatsin8(17, 0, 255);                        // Starting hue
-  uint8_t beatB = beatsin8(13, 0, 255);
-  fill_rainbow(leds, NUMPIXELS, (beatA+beatB)/2, 8);            // Use FastLED's fill_rainbow routine.
-}*/
-
-#define BPM       60
-#define DIMMEST   0
-#define BRIGHTEST 255
-
 void setup() {
   DEBUG("Booting");
   nixie_init();
-
-  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUMPIXELS).setCorrection(TypicalPixelString);
-  leds_clear(_leds);
-  leds_apply(_leds);
 
   WiFi.mode(WIFI_STA);
 
@@ -264,22 +225,22 @@ void setup() {
   });
 
   server.on("/clock", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(10000, available_clock, exec_clock);
+    tw->callContinuousTask(10000, available_clock, show_clock);
     request->send(200);
   });
 
   server.on("/t", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(10000, available_t, exec_t);
+    tw->callContinuousTask(10000, available_t, show_t);
     request->send(200);
   });
 
   server.on("/p", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(10000, available_p, exec_p);
+    tw->callContinuousTask(10000, available_p, show_p);
     request->send(200);
   });
 
   server.on("/h", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(10000, available_h, exec_h);
+    tw->callContinuousTask(10000, available_h, show_h);
     request->send(200);
   });
 
@@ -288,7 +249,7 @@ void setup() {
   });
 
   server.on("/p", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(10000, available_p, exec_p);
+    tw->callContinuousTask(10000, available_p, show_p);
     request->send(200);
   });
 
@@ -297,7 +258,7 @@ void setup() {
   });
 
   server.on("/h", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tw->callContinuousTask(10000, available_h, exec_h);
+    tw->callContinuousTask(10000, available_h, show_h);
     request->send(200);
   });
 
@@ -308,19 +269,7 @@ void setup() {
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest * request) {
     tw->callContinuousTask(ALARM_DURATION, NULL, []() {
       _clock();
-    /*  for (int i = 0; i < NUMPIXELS; i++) {
-        _leds[i] = CRGB::Red;
-      }
-      leds_apply(_leds);*/
-      
-      static uint16_t hue16 = 0;
-      hue16 += 9;
-      fill_rainbow( leds, NUMPIXELS, hue16 / 256, 0);
-    
-      // set the brightness to a sine wave that moves with a beat
-      uint8_t bright = beatsin8( BPM, DIMMEST, BRIGHTEST);
-      FastLED.setBrightness( bright );
-      FastLED.show();
+      leds->rainbow();
     });
     
     request->send(200);
@@ -344,7 +293,7 @@ void setup() {
       if (all_digits) {
         number_to_show = v.toInt();
          tw->callContinuousTask(NUMBER_DURATION, NULL, []() {
-            exec_number();
+            show_number();
          });
         r = 200;
       }
@@ -354,7 +303,7 @@ void setup() {
   });
 
   server.on("/led", HTTP_GET, [](AsyncWebServerRequest * request) {
-    leds_on = !leds_on;
+    leds->backlight_toggle();
     request->send(200);
   });
 
@@ -362,6 +311,7 @@ void setup() {
     request->send(404, "text/plain", "File Not Found\n\n");
   });
   server.begin();
+
 
   ArduinoOTA.setHostname("esp-nixie");
   ArduinoOTA.onStart([]() {
@@ -373,21 +323,23 @@ void setup() {
 
     ota_progress = 0;
     tw->callContinuousTask([]() {
-      leds_clear(_leds);
-      for (int i = 0; i < NUMPIXELS; i++) {
-        if (ota_progress >= (i + 1) * 100 / NUMPIXELS) {
-          _leds[i] = CRGB::Orange;
-        } else {
-          break;
-        }
-      }
-      leds_apply(_leds);
+      leds->set([&](CRGB* leds, uint8_t num_leds, uint8_t* brightness){
+            const CRGB OTA_PROGRESS_COLOR = CRGB::Orange;
+          
+            for (int i = 0; i < num_leds; i++) {
+            if (ota_progress >= (i + 1) * 100 / num_leds) {
+              leds[i] = OTA_PROGRESS_COLOR;
+            } else {
+              break;
+            }
+          }
+        });
       nixie_set(ota_progress, 5);
     });
   });
 
   ArduinoOTA.onEnd([]() {
-    tw->callContinuousTask(exec_none);
+    tw->callContinuousTask(show_none);
     tw->update();
   });
 
