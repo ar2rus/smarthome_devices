@@ -1,11 +1,11 @@
 #include "Leds.h"
 
 
-Leds::Leds(const uint8_t pin, uint8_t num_leds){
+Leds::Leds(uint8_t num_leds){
 	_num = num_leds;
 	
 	_leds = new CRGB[_num];
-	FastLED.addLeds<WS2812B, 5, GRB>(_leds, num_leds).setCorrection(TypicalPixelString);
+	FastLED.addLeds<WS2812B, LED_PIN, GRB>(_leds, num_leds).setCorrection(TypicalPixelString);
 	
 	backlight();
 }
@@ -13,7 +13,7 @@ Leds::Leds(const uint8_t pin, uint8_t num_leds){
 void Leds::set(LedsSetupHandlerFunction setupFunction){
 	CRGB leds[_num];
 	memcpy(&leds, &_leds, _num * sizeof(CRGB));
-	
+  
 	uint8_t brightness = _brightness;
 	
     if (setupFunction){
