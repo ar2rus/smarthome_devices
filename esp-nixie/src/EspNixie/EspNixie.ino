@@ -27,7 +27,6 @@
 #define ALARM_DURATION 15000
 #define NUMBER_DURATION 5000
 
-#define LED_PIN 5
 #define NUMPIXELS 6
 
 IPAddress ip(192, 168, 1, 130); //Node static IP
@@ -36,7 +35,7 @@ IPAddress subnet(255, 255, 255, 0);
 
 TaskWrapper* tw = new TaskWrapper();
 Narodmon* nm = new Narodmon(WiFi.macAddress());
-Leds* leds = new Leds(LED_PIN, NUMPIXELS);
+Leds* leds = new Leds(NUMPIXELS);
 
 AsyncWebServer server(80);
 
