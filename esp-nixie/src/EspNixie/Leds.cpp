@@ -1,12 +1,8 @@
 #include "Leds.h"
 
 
-Leds::Leds(uint8_t num_leds){
-	_num = num_leds;
-	
-	_leds = new CRGB[_num];
-	FastLED.addLeds<WS2812B, LED_PIN, GRB>(_leds, num_leds).setCorrection(TypicalPixelString);
-	
+Leds::Leds(){
+	FastLED.addLeds<WS2812B, LED_PIN, GRB>(_leds, _num).setCorrection(TypicalPixelString);
 	backlight();
 }
 
@@ -40,6 +36,31 @@ void Leds::set(CRGB color){
 	set([&color](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
 		fill_solid(leds, leds_num, color);
 	});
+}
+
+uint8_t Leds::get(CRGB* leds){
+  memcpy(leds, &_leds, _num * sizeof(CRGB));
+  return _num;
+}
+
+String Leds::info(){
+    String value = "";
+    for (int i=0; i<num; i++){
+      String r = String(_leds[i].r, HEX);
+      if (r.length() < 2){
+        r = "0" + r;
+      }
+      String g = String(_leds[i].g, HEX);
+      if (g.length() < 2){
+        g = "0" + g;
+      }
+      String b = String(_leds[i].b, HEX);
+      if (b.length() < 2){
+        b = "0" + b;
+      }
+      value += (r + g + b) + "\r\n";
+    }
+    return value;
 }
 
 void Leds::backlight(){

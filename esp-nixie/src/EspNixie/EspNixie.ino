@@ -27,15 +27,13 @@
 #define ALARM_DURATION 15000
 #define NUMBER_DURATION 5000
 
-#define NUMPIXELS 6
-
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 TaskWrapper* tw = new TaskWrapper();
 Narodmon* nm = new Narodmon(WiFi.macAddress());
-Leds* leds = new Leds(NUMPIXELS);
+Leds* leds = new Leds();
 
 AsyncWebServer server(80);
 
@@ -272,6 +270,30 @@ void setup() {
     
     request->send(200);
   });
+
+  server.on("/test", HTTP_GET, [](AsyncWebServerRequest * request) {
+    CRGB leds_[10];
+    int num = leds->get(leds_);
+    String value = "";
+    for (int i=0; i<num; i++){
+      String r = String(leds_[i].r, HEX);
+      if (r.length() < 2){
+        r = "0" + r;
+      }
+      String g = String(leds_[i].g, HEX);
+      if (g.length() < 2){
+        g = "0" + g;
+      }
+      String b = String(leds_[i].b, HEX);
+      if (b.length() < 2){
+        b = "0" + b;
+      }
+      value += (r + g + b) + "\r\n";
+    }
+    
+    request->send(200, "text/plain", value);
+  });
+  
 
   server.on("/number", HTTP_GET, [](AsyncWebServerRequest *request) {
     int r = 404;

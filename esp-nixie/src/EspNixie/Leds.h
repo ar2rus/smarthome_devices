@@ -8,14 +8,16 @@
 #include <functional>
 
 #define LED_PIN 5
+#define LED_COUNT 6
 
 typedef std::function<void(CRGB* leds, uint8_t leds_num, uint8_t* brightness)> LedsSetupHandlerFunction;
 
 
 class Leds{
 private:
-	uint8_t _num;
-	CRGB* _leds;
+  const uint8_t _num = LED_COUNT;
+  
+	CRGB _leds[LED_COUNT];
 	
 	uint8_t _brightness = 40;
 	
@@ -24,7 +26,10 @@ private:
 	
 	void backlight_on(bool on);
 public:
-  Leds(uint8_t num_leds);
+  Leds();
+
+  uint8_t get(CRGB* leds);
+  String info();
 	
 	void backlight();		//switches to backlight (if enabled)
 	void set(CRGB color);	//shows all leds with the same color
