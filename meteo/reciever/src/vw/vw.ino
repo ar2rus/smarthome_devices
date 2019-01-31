@@ -1,15 +1,23 @@
 /**
- * Use 2.4.1-2.4.2 esp8266 core;
- * lwip 1.4 Higher bandwidth; CPU 80 MHz
- * 192K SPIFFS
- */
+   Use 2.4.1-2.4.2 esp8266 core;
+   lwip 1.4 Higher bandwidth; CPU 80 MHz
+   192K SPIFFS
+*/
+
 
 #include <ESP8266WiFi.h>
+#include <FS.h>
+#include <WiFiClient.h>
+#include <TimeLib.h>
+#include <NtpClientLib.h>
 #include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
+#include <Ticker.h>
 #include <ArduinoOTA.h>
+#include <ArduinoJson.h>
+#include <FSWebServerLib.h>
+#include <Hash.h>
 
-#include <time.h>
+#include <WiFiUdp.h>
 
 #include "ESPAsyncTCP.h"
 #include "ESPAsyncWebServer.h"
@@ -17,9 +25,6 @@
 #include "VirtualWire.h"
 #include "ClunetMulticast.h"
 
-#include "Credentials.h"
-
-#include "FS.h"
 
 //максимальное время использования полученных данных
 #define MESSAGE_USE_TIME 15*60*1000
@@ -36,7 +41,7 @@
 
 
 extern "C" {
-  #include "user_interface.h"
+#include "user_interface.h"
 
   //BME280 calibration consts
   static uint16_t dig_T1 = 28209;
@@ -58,9 +63,9 @@ extern "C" {
   static int16_t  dig_H5 = 0;
   static uint8_t  dig_H6 = 30;
 
-  #define BME280_S32_t int32_t
-  #define BME280_U32_t uint32_t
-  #define BME280_S64_t int64_t
+#define BME280_S32_t int32_t
+#define BME280_U32_t uint32_t
+#define BME280_S64_t int64_t
 
   // Returns temperature in DegC, resolution is 0.01 DegC. Output value of “5123” equals 51.23 DegC.
   // t_fine carries fine temperature as global value
@@ -68,8 +73,8 @@ extern "C" {
   BME280_S32_t BME280_compensate_T_int32(BME280_S32_t adc_T)
   {
     BME280_S32_t var1, var2, T;
-    var1 = ((((adc_T>>3) - ((BME280_S32_t)dig_T1<<1))) * ((BME280_S32_t)dig_T2)) >> 11;
-    var2 = (((((adc_T>>4) - ((BME280_S32_t)dig_T1)) * ((adc_T>>4) - ((BME280_S32_t)dig_T1))) >> 12) * ((BME280_S32_t)dig_T3)) >> 14;
+    var1 = ((((adc_T >> 3) - ((BME280_S32_t)dig_T1 << 1))) * ((BME280_S32_t)dig_T2)) >> 11;
+    var2 = (((((adc_T >> 4) - ((BME280_S32_t)dig_T1)) * ((adc_T >> 4) - ((BME280_S32_t)dig_T1))) >> 12) * ((BME280_S32_t)dig_T3)) >> 14;
     t_fine = var1 + var2;
     T = (t_fine * 5 + 128) >> 8;
     return T;
@@ -79,23 +84,23 @@ extern "C" {
   // Output value of “24674867” represents 24674867/256 = 96386.2 Pa = 963.862 hPa
   BME280_U32_t BME280_compensate_P_int64(BME280_S32_t adc_P)
   {
-  BME280_S64_t var1, var2, p;
-  var1 = ((BME280_S64_t)t_fine) - 128000;
-  var2 = var1 * var1 * (BME280_S64_t)dig_P6;
-  var2 = var2 + ((var1*(BME280_S64_t)dig_P5)<<17);
-  var2 = var2 + (((BME280_S64_t)dig_P4)<<35);
-  var1 = ((var1 * var1 * (BME280_S64_t)dig_P3)>>8) + ((var1 * (BME280_S64_t)dig_P2)<<12);
-  var1 = (((((BME280_S64_t)1)<<47)+var1))*((BME280_S64_t)dig_P1)>>33;
-  if (var1 == 0)
-  {
-  return 0; // avoid exception caused by division by zero
-  }
-  p = 1048576-adc_P;
-  p = (((p<<31)-var2)*3125)/var1;
-  var1 = (((BME280_S64_t)dig_P9) * (p>>13) * (p>>13)) >> 25;
-  var2 = (((BME280_S64_t)dig_P8) * p) >> 19;
-  p = ((p + var1 + var2) >> 8) + (((BME280_S64_t)dig_P7)<<4);
-  return (BME280_U32_t)p;
+    BME280_S64_t var1, var2, p;
+    var1 = ((BME280_S64_t)t_fine) - 128000;
+    var2 = var1 * var1 * (BME280_S64_t)dig_P6;
+    var2 = var2 + ((var1 * (BME280_S64_t)dig_P5) << 17);
+    var2 = var2 + (((BME280_S64_t)dig_P4) << 35);
+    var1 = ((var1 * var1 * (BME280_S64_t)dig_P3) >> 8) + ((var1 * (BME280_S64_t)dig_P2) << 12);
+    var1 = (((((BME280_S64_t)1) << 47) + var1)) * ((BME280_S64_t)dig_P1) >> 33;
+    if (var1 == 0)
+    {
+      return 0; // avoid exception caused by division by zero
+    }
+    p = 1048576 - adc_P;
+    p = (((p << 31) - var2) * 3125) / var1;
+    var1 = (((BME280_S64_t)dig_P9) * (p >> 13) * (p >> 13)) >> 25;
+    var2 = (((BME280_S64_t)dig_P8) * p) >> 19;
+    p = ((p + var1 + var2) >> 8) + (((BME280_S64_t)dig_P7) << 4);
+    return (BME280_U32_t)p;
   }
 
 
@@ -103,27 +108,20 @@ extern "C" {
   // Output value of “47445” represents 47445/1024 = 46.333 %RH
   BME280_U32_t bme280_compensate_H_int32(BME280_S32_t adc_H)
   {
-  BME280_S32_t v_x1_u32r;
-  v_x1_u32r = (t_fine - ((BME280_S32_t)76800));
-  v_x1_u32r = (((((adc_H << 14) - (((BME280_S32_t)dig_H4) << 20) - (((BME280_S32_t)dig_H5) * v_x1_u32r)) +
-  ((BME280_S32_t)16384)) >> 15) * (((((((v_x1_u32r * ((BME280_S32_t)dig_H6)) >> 10) * (((v_x1_u32r *((BME280_S32_t)dig_H3)) >> 11) + ((BME280_S32_t)32768))) >> 10) + ((BME280_S32_t)2097152)) *
-  ((BME280_S32_t)dig_H2) + 8192) >> 14));
-  v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((BME280_S32_t)dig_H1)) >> 4));
-  v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
-  v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
-  return (BME280_U32_t)(v_x1_u32r>>12);
+    BME280_S32_t v_x1_u32r;
+    v_x1_u32r = (t_fine - ((BME280_S32_t)76800));
+    v_x1_u32r = (((((adc_H << 14) - (((BME280_S32_t)dig_H4) << 20) - (((BME280_S32_t)dig_H5) * v_x1_u32r)) +
+                   ((BME280_S32_t)16384)) >> 15) * (((((((v_x1_u32r * ((BME280_S32_t)dig_H6)) >> 10) * (((v_x1_u32r * ((BME280_S32_t)dig_H3)) >> 11) + ((BME280_S32_t)32768))) >> 10) + ((BME280_S32_t)2097152)) *
+                       ((BME280_S32_t)dig_H2) + 8192) >> 14));
+    v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((BME280_S32_t)dig_H1)) >> 4));
+    v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
+    v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
+    return (BME280_U32_t)(v_x1_u32r >> 12);
   }
 
 }
 
-const char *ssid = AP_SSID;
-const char *pass = AP_PASSWORD;
-
-IPAddress ip(192,168,1,121);  //Node static IP
-IPAddress gateway(192,168,1,1);
-IPAddress subnet(255,255,255,0);
-
-AsyncWebServer server(80);
+AsyncWebServer server(8080);
 
 int32_t T;
 uint32_t P;
@@ -136,7 +134,7 @@ uint32_t M = INVALID_M; //время получения последних да�
 //количество полученных дублирующих сообщений
 uint8_t R;
 
-void reset(){
+void reset() {
   T   = INVALID_T;
   P   = INVALID_P;
   H   = INVALID_H;
@@ -144,139 +142,100 @@ void reset(){
   VCC = INVALID_VCC;
 }
 
-void server_404(AsyncWebServerRequest *request){
+void server_404(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "File Not Found\n\n");
 }
 
-String valueToString(bool valid, String value, String unit, boolean readable){
-  if (valid){
+String valueToString(bool valid, String value, String unit, boolean readable) {
+  if (valid) {
     return readable ? "-" : "";
-  }else{
+  } else {
     return value + ((readable && unit.length()) ? (" " + unit) : "");
   }
 }
 
-String tToString(boolean readable){
-  return valueToString(T == INVALID_T, String(T/100.0), "*C", readable);
+String tToString(boolean readable) {
+  return valueToString(T == INVALID_T, String(T / 100.0), "*C", readable);
 }
 
-String pToString(boolean readable){
-  return valueToString(P == INVALID_P, String(P/1000.0), "mm Hg", readable);
+String pToString(boolean readable) {
+  return valueToString(P == INVALID_P, String(P / 1000.0), "mm Hg", readable);
 }
 
-String hToString(boolean readable){
-  return valueToString(H == INVALID_H, String(H/10.0), "%", readable);
+String hToString(boolean readable) {
+  return valueToString(H == INVALID_H, String(H / 10.0), "%", readable);
 }
 
-String lToString(boolean readable){
+String lToString(boolean readable) {
   return valueToString(L == INVALID_L, String(L), "Lx", readable);
 }
 
-String vccToString(boolean readable){
-  return valueToString(VCC == INVALID_VCC, String(VCC/100.0), "V", readable);
+String vccToString(boolean readable) {
+  return valueToString(VCC == INVALID_VCC, String(VCC / 100.0), "V", readable);
 }
 
-String timeToString(boolean readable){
+String timeToString(boolean readable) {
   return valueToString(M == INVALID_M, String(TIME), "", readable);
 }
 
-String rToString(boolean readable){
+String rToString(boolean readable) {
   return valueToString(R == 0, String(R), "messages", readable);
 }
 
 void setup() {
   Serial.begin(115200);
-  
   Serial.println("Booting");
-  WiFi.mode(WIFI_STA);
-  
-  WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
 
-  //Wifi connection
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
+  SPIFFS.begin();
+  ESPHTTPServer.begin(&SPIFFS);
 
-  ArduinoOTA.setHostname("meteo");
-
-  ArduinoOTA.onStart([]() {
-    Serial.println("OTA started");
-  });
-
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nOTA finished");
-  });
-  
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("OTA progress: %u%%\r", (progress / (total / 100)));
-  });
-
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("\nError[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("OTA auth failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("OTA begin failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("OTA connect failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("OTA receive failed");
-    else if (error == OTA_END_ERROR) Serial.println("OTA end failed");
-  });
-  
-  ArduinoOTA.begin();
-
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  configTime((int)(4 * 3600), 0, "pool.ntp.org", "time.nist.gov", NULL);
-  
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
 
   reset();
-  
+
   vw_set_rx_pin(14);
   vw_set_rx_inverted(1);
-  
+
   vw_set_tx_pin(16);    //not neccesary
-  
+
   vw_set_ptt_pin(0);    //not neccesary
-  
+
   vw_setup(2000);  // Bits per sec
   vw_rx_start();   // Start the receiver PLL running
 
   clunetMulticastBegin();
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      int resp_format = -1;
-      switch (request->args()) {
-        case 0:
-          resp_format = 0;  //txt
-          break;
-        case 1:
-          if(request->hasArg("fmt")){
-            String fmt = request->arg("fmt");
-            if (fmt == "txt"){
-              resp_format = 0;  //txt
-            }else if (fmt == "json"){
-              resp_format = 1;  //json
-            }else if (fmt == "csv"){
-              resp_format = 2;  //csv
-            }
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
+    int resp_format = -1;
+    switch (request->args()) {
+      case 0:
+        resp_format = 0;  //txt
+        break;
+      case 1:
+        if (request->hasArg("fmt")) {
+          String fmt = request->arg("fmt");
+          if (fmt == "txt") {
+            resp_format = 0;  //txt
+          } else if (fmt == "json") {
+            resp_format = 1;  //json
+          } else if (fmt == "csv") {
+            resp_format = 2;  //csv
           }
-          break;
-      }
+        }
+        break;
+    }
 
-      switch (resp_format){
-        case 0:{
+    switch (resp_format) {
+      case 0: {
           String message;
-          if (M == INVALID_M){
-              message = "No data recieved";
-          }else{
-            
+          if (M == INVALID_M) {
+            message = "No data recieved";
+          } else {
+
             message = "Time: " + timeToString(true);
-            message += " (" + String((millis()-M)/1000) + " seconds ago, " + rToString(true) + ")";
-            
+            message += " (" + String((millis() - M) / 1000) + " seconds ago, " + rToString(true) + ")";
+
             message += "\n";
             message += "\nT: " +  tToString(true);
             message += "\nH: " +  hToString(true);
@@ -285,11 +244,11 @@ void setup() {
             message += "\nV: " +  vccToString(true);
           }
           request->send(200, "text/plain", message);
-          }
-          break;
-        case 1:{
+        }
+        break;
+      case 1: {
           String message = "{";
-          if (M != INVALID_M){
+          if (M != INVALID_M) {
             message += "\"time\":\"" + timeToString(false) + "\",";
             message += "\"t\":\"" + tToString(false) + "\",";
             message += "\"h\":\"" + hToString(false) + "\",";
@@ -299,9 +258,9 @@ void setup() {
           }
           message += "}";
           request->send(200, "application/json", message);
-          }
-          break;
-        case 2: {
+        }
+        break;
+      case 2: {
           String message = timeToString(false);
           message += ";";
           message += rToString(false);
@@ -315,33 +274,33 @@ void setup() {
           message += lToString(false);
           message += ";";
           message += vccToString(false);
-          
+
           request->send(200, "text/plain", message);
-          }
-          break;
-        default:
-          server_404(request);
-      }
+        }
+        break;
+      default:
+        server_404(request);
+    }
   });
 
-  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
-    server.on("/list", HTTP_GET, [](AsyncWebServerRequest *request){
-      SPIFFS.begin();
-      
-      String str = "";
-      Dir dir = SPIFFS.openDir("/");
-      while (dir.next()) {
-        str += dir.fileName();
-        str += " / ";
-        str += dir.fileSize();
-        str += "\r\n";
-      }
-      
-      SPIFFS.end();
-      
+  server.on("/list", HTTP_GET, [](AsyncWebServerRequest * request) {
+    //SPIFFS.begin();
+
+    String str = "";
+    Dir dir = SPIFFS.openDir("/");
+    while (dir.next()) {
+      str += dir.fileName();
+      str += " / ";
+      str += dir.fileSize();
+      str += "\r\n";
+    }
+
+    //SPIFFS.end();
+
     request->send(200, "text/plain", str);
   });
 
@@ -349,103 +308,103 @@ void setup() {
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
-  
-  server.onNotFound( [](AsyncWebServerRequest *request) {
+
+  server.onNotFound( [](AsyncWebServerRequest * request) {
     server_404(request);
   });
 
   server.begin();
 }
 
-void sendMeteoInfo(unsigned char address){
-    char buf[9];
-    buf[0] = ((L==INVALID_L ? 0 : 1) << 3)
-           | ((P==INVALID_P ? 0 : 1) << 2) 
-           | ((H==INVALID_H ? 0 : 1) << 1) 
-           | ((T==INVALID_T ? 0 : 1) << 0);
+void sendMeteoInfo(unsigned char address) {
+  char buf[9];
+  buf[0] = ((L == INVALID_L ? 0 : 1) << 3)
+           | ((P == INVALID_P ? 0 : 1) << 2)
+           | ((H == INVALID_H ? 0 : 1) << 1)
+           | ((T == INVALID_T ? 0 : 1) << 0);
 
-    int16_t T16 = (int16_t)T;
-    memcpy(&buf[1], &T16, sizeof(T16));
-    memcpy(&buf[3], &H, sizeof(H));
-    int16_t P16 = P/100;
-    memcpy(&buf[5], &P16, sizeof(P16));
-    memcpy(&buf[7], &L, sizeof(L));
-    clunetMulticastSend(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
+  int16_t T16 = (int16_t)T;
+  memcpy(&buf[1], &T16, sizeof(T16));
+  memcpy(&buf[3], &H, sizeof(H));
+  int16_t P16 = P / 100;
+  memcpy(&buf[5], &P16, sizeof(P16));
+  memcpy(&buf[7], &L, sizeof(L));
+  clunetMulticastSend(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
 }
 
 void loop() {
-    uint8_t buf[VW_MAX_MESSAGE_LEN];
-    uint8_t buflen = VW_MAX_MESSAGE_LEN;
+  uint8_t buf[VW_MAX_MESSAGE_LEN];
+  uint8_t buflen = VW_MAX_MESSAGE_LEN;
 
-    uint32_t m = millis();
-    uint32_t dm = m-M;
-    
-    if (dm > MESSAGE_USE_TIME){ //15 min
-        reset();
+  uint32_t m = millis();
+  uint32_t dm = m - M;
+
+  if (dm > MESSAGE_USE_TIME) { //15 min
+    reset();
+  }
+
+  if (vw_get_message(buf, &buflen)) { // Non-blocking
+    digitalWrite(2, LOW); // Flash a light to show received good message
+
+    BME280_S32_t ut = ((uint32_t)buf[3] << 12) | ((uint32_t)buf[4] << 4) | ((buf[5] >> 4) & 0x0F);
+    BME280_S32_t up = ((uint32_t)buf[0] << 12) | ((uint32_t)buf[1] << 4) | ((buf[2] >> 4) & 0x0F);
+    BME280_S32_t uh = ((uint32_t)buf[6] << 8) | (uint32_t)buf[7];
+
+    L = ((uint16_t)buf[8] << 8) | (uint16_t)buf[9];       //*1
+    if (L == INVALID_L) { //reserved value for error
+      L--;  //max valid value -> 65534
     }
 
-    if (vw_get_message(buf, &buflen)) { // Non-blocking
-      digitalWrite(2, LOW); // Flash a light to show received good message
+    VCC = ((uint16_t)buf[10] << 8) | (uint16_t)buf[11];   //*100
 
-      BME280_S32_t ut = ((uint32_t)buf[3]<<12) | ((uint32_t)buf[4]<<4) | ((buf[5]>>4) & 0x0F);
-      BME280_S32_t up = ((uint32_t)buf[0]<<12) | ((uint32_t)buf[1]<<4) |((buf[2]>>4) & 0x0F);
-      BME280_S32_t uh = ((uint32_t)buf[6]<<8) | (uint32_t)buf[7];
+    T = BME280_compensate_T_int32(ut);                             //*100
+    P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
+    H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
 
-      L = ((uint16_t)buf[8]<<8) | (uint16_t)buf[9];         //*1
-      if (L == INVALID_L){ //reserved value for error
-          L--;  //max valid value -> 65534
-      }
-      
-      VCC = ((uint16_t)buf[10]<<8) | (uint16_t)buf[11];     //*100
-      
-      T = BME280_compensate_T_int32(ut);                             //*100
-      P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
-      H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
-
-      if (dm > MAX_DELAY_BETWEEN_PACKETS){  //прошло больше секунды -> это не дублирующее сообщение
-        time(&TIME);
-        R = 1;
-        sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
-      }else{
-        R++;
-      }
-
-      M = m;
-
-      delay(100);
-      digitalWrite(2, HIGH);
+    if (dm > MAX_DELAY_BETWEEN_PACKETS) { //прошло больше секунды -> это не дублирующее сообщение
+      time(&TIME);
+      R = 1;
+      sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
+    } else {
+      R++;
     }
 
-    clunet_msg msg;
-    if (clunetMulticastHandleMessages(&msg)){
-      switch (msg.command){
-        case CLUNET_COMMAND_TEMPERATURE:{
-            if ((msg.size==1 && msg.data[0] == 0) 
-                  || (msg.size == 2 && msg.data[0]==1 && msg.data[1]==2)){  //all devices or bmp/bme devices
-                
-                int16_t T16 = (int16_t)T;
-                char buf[3+sizeof(T16)];
-                buf[0] = 1; //num of devices
-                buf[1] = T==INVALID_T ? 0xFF : 2; //error / bmp/bme
-                buf[2] = 0; //device id
-                
-                memcpy(&buf[3], &T16, sizeof(T16));
-                clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
-            }
+    M = m;
+
+    delay(100);
+    digitalWrite(2, HIGH);
+  }
+
+  clunet_msg msg;
+  if (clunetMulticastHandleMessages(&msg)) {
+    switch (msg.command) {
+      case CLUNET_COMMAND_TEMPERATURE: {
+          if ((msg.size == 1 && msg.data[0] == 0)
+              || (msg.size == 2 && msg.data[0] == 1 && msg.data[1] == 2)) { //all devices or bmp/bme devices
+
+            int16_t T16 = (int16_t)T;
+            char buf[3 + sizeof(T16)];
+            buf[0] = 1; //num of devices
+            buf[1] = T == INVALID_T ? 0xFF : 2; //error / bmp/bme
+            buf[2] = 0; //device id
+
+            memcpy(&buf[3], &T16, sizeof(T16));
+            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
           }
-          break;
-        case CLUNET_COMMAND_HUMIDITY:
-          if (msg.size == 0){
-              clunetMulticastSend(msg.src_address, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
-          }
-          break;
-        case CLUNET_COMMAND_PRESSURE:
-          if (msg.size == 0){
-            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
-          }
+        }
         break;
-        case CLUNET_COMMAND_LIGHT_LEVEL:{
-          if (msg.size == 0){
+      case CLUNET_COMMAND_HUMIDITY:
+        if (msg.size == 0) {
+          clunetMulticastSend(msg.src_address, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
+        }
+        break;
+      case CLUNET_COMMAND_PRESSURE:
+        if (msg.size == 0) {
+          clunetMulticastSend(msg.src_address, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
+        }
+        break;
+      case CLUNET_COMMAND_LIGHT_LEVEL: {
+          if (msg.size == 0) {
             char buf[3];
             buf[0] = 2; //значение люксометра
             memcpy(&buf[1], &L, 2);
@@ -453,14 +412,14 @@ void loop() {
           }
         }
         break;
-        case CLUNET_COMMAND_VOLTAGE:{
-          if (msg.size == 0){
+      case CLUNET_COMMAND_VOLTAGE: {
+          if (msg.size == 0) {
             clunetMulticastSend(msg.src_address, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
           }
         }
         break;
-        case CLUNET_COMMAND_METEO:{
-          if (msg.size == 0){
+      case CLUNET_COMMAND_METEO: {
+          if (msg.size == 0) {
             sendMeteoInfo(msg.src_address);
           }
         }
@@ -468,11 +427,12 @@ void loop() {
         /*case CLUNET_COMMAND_DEBUG:{
           uint32_t m = millis() - M;
           clunetMulticastSend(msg.src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
-        }
-        break;*/
-      }
+          }
+          break;*/
     }
+  }
 
-    ArduinoOTA.handle();
-    yield();
+
+  ESPHTTPServer.handle();
+  yield();
 }
