@@ -87,7 +87,7 @@ void nixie_set(float v, uint8_t pos_1, int num_frac){
 
   char digits[DIGITS_COUNT];
   if (nixie_int(b, pos_1+num_frac, num_frac+1, digits)){
-    digits[pos_1] = digit_code(digit_value(digits[pos_1]), 1, 1); //add point
+    digits[pos_1] = digit_code(digit_value(digits[pos_1]), 1, num_frac>0); //add point
     nixie_set(digits[0], digits[1], digits[2], digits[3], digits[4], digits[5]);
   }
 }
