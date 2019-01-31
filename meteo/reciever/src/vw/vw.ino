@@ -1,7 +1,7 @@
 /**
  * Use 2.4.1-2.4.2 esp8266 core;
  * lwip 1.4 Higher bandwidth; CPU 80 MHz
- * 
+ * 192K SPIFFS
  */
 
 #include <ESP8266WiFi.h>
@@ -18,6 +18,8 @@
 #include "ClunetMulticast.h"
 
 #include "Credentials.h"
+
+#include "FS.h"
 
 //максимальное время использования полученных данных
 #define MESSAGE_USE_TIME 15*60*1000
@@ -326,6 +328,24 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
+    server.on("/list", HTTP_GET, [](AsyncWebServerRequest *request){
+      SPIFFS.begin();
+      
+      String str = "";
+      Dir dir = SPIFFS.openDir("/");
+      while (dir.next()) {
+        str += dir.fileName();
+        str += " / ";
+        str += dir.fileSize();
+        str += "\r\n";
+      }
+      
+      SPIFFS.end();
+      
+    request->send(200, "text/plain", str);
+  });
+
+
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
@@ -333,7 +353,7 @@ void setup() {
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_404(request);
   });
-  
+
   server.begin();
 }
 
