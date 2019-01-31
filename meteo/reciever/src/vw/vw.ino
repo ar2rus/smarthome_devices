@@ -1,29 +1,19 @@
 /**
-   Use 2.4.1-2.4.2 esp8266 core;
-   lwip 1.4 Higher bandwidth; CPU 80 MHz
-   192K SPIFFS
+   Use 2.4.2 esp8266 core;
+   lwip v2 Higher bandwidth; CPU 80 MHz
+   128K SPIFFS
 */
 
 
-#include <ESP8266WiFi.h>
 #include <FS.h>
-#include <WiFiClient.h>
-#include <TimeLib.h>
-#include <NtpClientLib.h>
-#include <ESP8266mDNS.h>
-#include <Ticker.h>
-#include <ArduinoOTA.h>
-#include <ArduinoJson.h>
 #include <FSWebServerLib.h>
-#include <Hash.h>
+#include <ESPAsyncWebServer.h>
 
-#include <WiFiUdp.h>
-
-#include "ESPAsyncTCP.h"
-#include "ESPAsyncWebServer.h"
+#include <TimeLib.h>
 
 #include "VirtualWire.h"
 #include "ClunetMulticast.h"
+
 
 
 //максимальное время использования полученных данных
@@ -362,7 +352,7 @@ void loop() {
     H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
 
     if (dm > MAX_DELAY_BETWEEN_PACKETS) { //прошло больше секунды -> это не дублирующее сообщение
-      time(&TIME);
+      TIME = now();
       R = 1;
       sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
     } else {
