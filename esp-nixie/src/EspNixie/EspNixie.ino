@@ -77,8 +77,7 @@ void show_value(float v, uint8_t pos_1, int num_frac){
     
         int lb = pos_1;
         float t = abs(v);
-        while (((int)t) > 0){
-          t /= 10;
+        while (((int)(t = t/10)) > 0){
           lb--;
         }
     
