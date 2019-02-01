@@ -6,16 +6,23 @@
     dependencies:
       https://github.com/PaulStoffregen/Time
       https://github.com/gmag11/NtpClient (origin/develop)
+      https://github.com/gmag11/FSBrowserNG
+
+      https://github.com/me-no-dev/ESPAsyncUDP
+      https://github.com/me-no-dev/ESPAsyncWebServer
+      https://github.com/arthugargon/ClunetMulticast
       
 */
 
+#include <FS.h>
 #include <FSWebServerLib.h>
 #include <ESPAsyncWebServer.h>
 
 #include <TimeLib.h>
 
+#include <ClunetMulticast.h>
 #include "VirtualWire.h"
-#include "ClunetMulticast.h"
+
 
 
 
@@ -115,7 +122,7 @@ extern "C" {
 }
 
 AsyncWebServer server(8080);
-ClunetMulticast clunet;
+ClunetMulticast clunet(0x81, "Meteo");
 
 
 int32_t T;
@@ -180,7 +187,8 @@ String rToString(boolean readable) {
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
-
+  
+  SPIFFS.begin();
   ESPHTTPServer.begin(&SPIFFS);
 
   pinMode(2, OUTPUT);
