@@ -1,21 +1,7 @@
 #ifndef ClunetMulticast_h
 #define ClunetMulticast_h
 
-#define CLUNET_BUFFER_SIZE 255
-
-#define CLUNET_OFFSET_SRC_ADDRESS 0
-#define CLUNET_OFFSET_DST_ADDRESS 1
-#define CLUNET_OFFSET_COMMAND 2
-#define CLUNET_OFFSET_SIZE 3
-#define CLUNET_OFFSET_DATA 4
-
-typedef struct {
-  unsigned char src_address;
-  unsigned char dst_address;
-  unsigned char command;
-  unsigned char size;
-  char data[CLUNET_BUFFER_SIZE];
-} clunet_msg;
+#include <functional>
 
 
 #define CLUNET_SUPRADIN_ADDRESS 0x00
@@ -427,11 +413,43 @@ typedef struct {
 /* Сообщает об открытии или закрытии окна. 1 - открыто, 2 - закрыто */
 
 
-//external functions
-extern void clunetMulticastBegin();
 
-extern char clunetMulticastHandleMessages(clunet_msg* msg);
+#define CLUNET_BUFFER_SIZE 255
 
-extern void clunetMulticastSend(unsigned char address, unsigned char command, char* data, unsigned char size);
+#define CLUNET_OFFSET_SRC_ADDRESS 0
+#define CLUNET_OFFSET_DST_ADDRESS 1
+#define CLUNET_OFFSET_COMMAND 2
+#define CLUNET_OFFSET_SIZE 3
+#define CLUNET_OFFSET_DATA 4
+
+typedef struct {
+  uint8_t src_address;
+  uint8_t dst_address;
+  uint8_t command;
+  uint8_t size;
+  uint8_t data[CLUNET_BUFFER_SIZE];
+} clunet_message;
+
+
+const IPAddress CLUNET_MULTICAST_IP(234, 5, 6, 7);
+
+#define CLUNET_MULTICAST_PORT 12345
+
+typedef std::function<void(clunet_message* message)> ClunetMulticastMessageHandlerFunction;
+
+class ClunetMulticast{
+  private:
+    AsyncUDP _udp;
+  public: 
+    ClunetMulticast();
+
+    bool connect();
+    void close();
+    
+    void onMessage(ClunetMulticastMessageHandlerFunction fn);
+    size_t send(uint8_t address, uint8_t command, uint8_t* data, uint8_t size);
+
+    bool connected();
+};
 
 #endif

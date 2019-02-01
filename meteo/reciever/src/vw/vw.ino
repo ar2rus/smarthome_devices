@@ -2,10 +2,13 @@
    Use 2.4.2 esp8266 core;
    lwip v2 Higher bandwidth; CPU 80 MHz
    128K SPIFFS
+
+    dependencies:
+      https://github.com/PaulStoffregen/Time
+      https://github.com/gmag11/NtpClient (origin/develop)
+      
 */
 
-
-#include <FS.h>
 #include <FSWebServerLib.h>
 #include <ESPAsyncWebServer.h>
 
@@ -112,6 +115,8 @@ extern "C" {
 }
 
 AsyncWebServer server(8080);
+ClunetMulticast clunet;
+
 
 int32_t T;
 uint32_t P;
@@ -176,7 +181,6 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
 
-  SPIFFS.begin();
   ESPHTTPServer.begin(&SPIFFS);
 
   pinMode(2, OUTPUT);
@@ -194,7 +198,63 @@ void setup() {
   vw_setup(2000);  // Bits per sec
   vw_rx_start();   // Start the receiver PLL running
 
-  clunetMulticastBegin();
+  if (clunet.connect()){
+    clunet.onMessage([](clunet_message* msg){
+    switch (msg->command) {
+      case CLUNET_COMMAND_TEMPERATURE: {
+          if ((msg->size == 1 && msg->data[0] == 0)
+              || (msg->size == 2 && msg->data[0] == 1 && msg->data[1] == 2)) { //all devices or bmp/bme devices
+
+            int16_t T16 = (int16_t)T;
+            uint8_t buf[3 + sizeof(T16)];
+            buf[0] = 1; //num of devices
+            buf[1] = T == INVALID_T ? 0xFF : 2; //error / bmp/bme
+            buf[2] = 0; //device id
+
+            memcpy(&buf[3], &T16, sizeof(T16));
+            clunet.send(msg->src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
+          }
+        }
+        break;
+      case CLUNET_COMMAND_HUMIDITY:
+        if (msg->size == 0) {
+          clunet.send(msg->src_address, CLUNET_COMMAND_HUMIDITY_INFO, (uint8_t*)&H, sizeof(H));
+        }
+        break;
+      case CLUNET_COMMAND_PRESSURE:
+        if (msg->size == 0) {
+          clunet.send(msg->src_address, CLUNET_COMMAND_PRESSURE_INFO, (uint8_t*)&P, sizeof(P));
+        }
+        break;
+      case CLUNET_COMMAND_LIGHT_LEVEL: {
+          if (msg->size == 0) {
+            uint8_t buf[3];
+            buf[0] = 2; //значение люксометра
+            memcpy(&buf[1], &L, 2);
+            clunet.send(msg->src_address, CLUNET_COMMAND_LIGHT_LEVEL_INFO, buf, sizeof(buf));
+          }
+        }
+        break;
+      case CLUNET_COMMAND_VOLTAGE: {
+          if (msg->size == 0) {
+            clunet.send(msg->src_address, CLUNET_COMMAND_VOLTAGE_INFO, (uint8_t*)&VCC, sizeof(VCC));
+          }
+        }
+        break;
+      case CLUNET_COMMAND_METEO: {
+          if (msg->size == 0) {
+            sendMeteoInfo(msg->src_address);
+          }
+        }
+        break;
+        /*case CLUNET_COMMAND_DEBUG:{
+          uint32_t m = millis() - M;
+          clunet.send(msg->src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
+          }
+          break;*/
+      }
+    });
+  }
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
     int resp_format = -1;
@@ -277,24 +337,6 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
-  server.on("/list", HTTP_GET, [](AsyncWebServerRequest * request) {
-    //SPIFFS.begin();
-
-    String str = "";
-    Dir dir = SPIFFS.openDir("/");
-    while (dir.next()) {
-      str += dir.fileName();
-      str += " / ";
-      str += dir.fileSize();
-      str += "\r\n";
-    }
-
-    //SPIFFS.end();
-
-    request->send(200, "text/plain", str);
-  });
-
-
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
@@ -306,8 +348,8 @@ void setup() {
   server.begin();
 }
 
-void sendMeteoInfo(unsigned char address) {
-  char buf[9];
+void sendMeteoInfo(uint8_t address) {
+  uint8_t buf[9];
   buf[0] = ((L == INVALID_L ? 0 : 1) << 3)
            | ((P == INVALID_P ? 0 : 1) << 2)
            | ((H == INVALID_H ? 0 : 1) << 1)
@@ -319,7 +361,7 @@ void sendMeteoInfo(unsigned char address) {
   int16_t P16 = P / 100;
   memcpy(&buf[5], &P16, sizeof(P16));
   memcpy(&buf[7], &L, sizeof(L));
-  clunetMulticastSend(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
+  clunet.send(address, CLUNET_COMMAND_METEO_INFO, buf, sizeof(buf));
 }
 
 void loop() {
@@ -364,64 +406,6 @@ void loop() {
     delay(100);
     digitalWrite(2, HIGH);
   }
-
-  clunet_msg msg;
-  if (clunetMulticastHandleMessages(&msg)) {
-    switch (msg.command) {
-      case CLUNET_COMMAND_TEMPERATURE: {
-          if ((msg.size == 1 && msg.data[0] == 0)
-              || (msg.size == 2 && msg.data[0] == 1 && msg.data[1] == 2)) { //all devices or bmp/bme devices
-
-            int16_t T16 = (int16_t)T;
-            char buf[3 + sizeof(T16)];
-            buf[0] = 1; //num of devices
-            buf[1] = T == INVALID_T ? 0xFF : 2; //error / bmp/bme
-            buf[2] = 0; //device id
-
-            memcpy(&buf[3], &T16, sizeof(T16));
-            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
-          }
-        }
-        break;
-      case CLUNET_COMMAND_HUMIDITY:
-        if (msg.size == 0) {
-          clunetMulticastSend(msg.src_address, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
-        }
-        break;
-      case CLUNET_COMMAND_PRESSURE:
-        if (msg.size == 0) {
-          clunetMulticastSend(msg.src_address, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
-        }
-        break;
-      case CLUNET_COMMAND_LIGHT_LEVEL: {
-          if (msg.size == 0) {
-            char buf[3];
-            buf[0] = 2; //значение люксометра
-            memcpy(&buf[1], &L, 2);
-            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_LIGHT_LEVEL_INFO, buf, sizeof(buf));
-          }
-        }
-        break;
-      case CLUNET_COMMAND_VOLTAGE: {
-          if (msg.size == 0) {
-            clunetMulticastSend(msg.src_address, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
-          }
-        }
-        break;
-      case CLUNET_COMMAND_METEO: {
-          if (msg.size == 0) {
-            sendMeteoInfo(msg.src_address);
-          }
-        }
-        break;
-        /*case CLUNET_COMMAND_DEBUG:{
-          uint32_t m = millis() - M;
-          clunetMulticastSend(msg.src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
-          }
-          break;*/
-    }
-  }
-
 
   ESPHTTPServer.handle();
   yield();
