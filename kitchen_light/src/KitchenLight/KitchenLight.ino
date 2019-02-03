@@ -1,30 +1,33 @@
 /**
- * Use 2.4.1 esp8266 core; PWM not working with 2.4.2
- * lwip 2 Higher bandwidth; CPU 80 MHz
- * 
+    Use 2.4.1 esp8266 core; PWM not working with 2.4.2
+    lwip 2 Higher bandwidth; CPU 80 MHz
+    128K SPIFFS
+
+     dependencies:
+      https://github.com/PaulStoffregen/Time
+      https://github.com/gmag11/NtpClient (origin/develop)
+      https://github.com/gmag11/FSBrowserNG
+
+      https://github.com/me-no-dev/ESPAsyncUDP
+      https://github.com/me-no-dev/ESPAsyncWebServer
+      https://github.com/arthugargon/ClunetMulticast
+
  */
 
 
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
+#include <FS.h>
+#include <FSWebServerLib.h>
+#include <ESPAsyncWebServer.h>
 
-#include "ESPAsyncTCP.h"
-#include "ESPAsyncWebServer.h"
+#include <TimeLib.h>
 
-#include "ClunetMulticast.h"
-#include "Credentials.h"
+#include <ClunetMulticast.h>
 
-const char *ssid = AP_SSID;
-const char *pass = AP_PASSWORD;
+AsyncWebServer server(8080);
+ClunetMulticast clunet(0x82, "KitchenLight");
 
-IPAddress ip(192, 168, 1, 122); //Node static IP
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 255, 0);
-
-AsyncWebServer server(80);
-
+const char RELAY_0_ID = 1;
+const char BUTTON_ID = 3;
 
 const int BUTTON_PIN = 12;
 const int LIGHT_PIN = 14;
@@ -51,49 +54,55 @@ void setup() {
 
 
   Serial.begin(115200);
-
   Serial.println("Booting");
-  WiFi.mode(WIFI_STA);
+  
+  SPIFFS.begin();
+  ESPHTTPServer.begin(&SPIFFS);
 
-  WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
-
-  //Wifi connection
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
-
-  ArduinoOTA.setHostname("kitchen-light");
-
-  ArduinoOTA.onStart([]() {
-    Serial.println("OTA started");
-  });
-
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nOTA finished");
-  });
-
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("OTA progress: %u%%\r", (progress / (total / 100)));
-  });
-
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("\nError[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("OTA auth failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("OTA begin failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("OTA connect failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("OTA receive failed");
-    else if (error == OTA_END_ERROR) Serial.println("OTA end failed");
-  });
-
-  ArduinoOTA.begin();
-
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  clunetMulticastBegin();
+    if (clunet.connect()){
+      clunet.onMessage([](clunet_message* msg){
+         switch (msg->command) {
+            case CLUNET_COMMAND_SWITCH:
+              if (msg->data[0] == 0xFF) { //info request
+                if (msg->size == 1) {
+                  switchResponse(msg->src_address);
+                }
+              } else {
+                if (msg->size == 2) {
+                  switch (msg->data[0]) {
+                    case 0x00:
+                    case 0x01:
+                    case 0x02:
+                      if (msg->data[1] == RELAY_0_ID) {
+                        switch_exec(msg->data[0], false);
+                      }
+                      break;
+                    case 0x03:
+                      switch_exec((msg->data[1] >> (RELAY_0_ID - 1)) & 0x01, false);
+                      break;
+                  }
+                  switchResponse(msg->src_address);
+                }
+              }
+              break;
+            case CLUNET_COMMAND_BUTTON:
+              if (msg->size == 0) {
+                buttonResponse(msg->src_address);
+              }
+              break;
+            case CLUNET_COMMAND_DIMMER:
+              if (msg->size == 1 && msg->data[0] == 0xFF) {
+                dimmerResponse(msg->src_address);
+              } else if (msg->size == 2) {
+                //у нас только один канал. Проверяем, что команда для него
+                if ((msg->data[0] >> (RELAY_0_ID - 1)) & 0x01) {
+                  dimmer_exec(msg->data[1], false);
+                  dimmerResponse(msg->src_address);
+                }
+              }
+          }
+      });
+    }
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     int r = 404;
@@ -184,12 +193,9 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
   }
 }
 
-
-const char RELAY_0_ID = 1;
-
 void switchResponse(unsigned char address) {
-  char info = (light_state << (RELAY_0_ID - 1));
-  clunetMulticastSend(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
+  uint8_t info = (light_state << (RELAY_0_ID - 1));
+  clunet.send(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
 boolean switchExecute(char command) {
@@ -239,8 +245,8 @@ boolean switch_toggle(boolean send_response) {
 }
 
 void dimmerResponse(unsigned char address) {
-  char data[] = {1, RELAY_0_ID, dimmer_value};
-  clunetMulticastSend(address, CLUNET_COMMAND_DIMMER_INFO, data, sizeof(data));
+  uint8_t data[] = {1, RELAY_0_ID, dimmer_value};
+  clunet.send(address, CLUNET_COMMAND_DIMMER_INFO, data, sizeof(data));
 }
 
 boolean dimmerExecute(unsigned char value) {
@@ -281,11 +287,9 @@ boolean fade_in_stop(char send_response) {
 }
 
 
-const char BUTTON_ID = 3;
-
 void buttonResponse(unsigned char address) {
-  char data[] = {BUTTON_ID, !button_state};
-  clunetMulticastSend(address, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
+  uint8_t data[] = {BUTTON_ID, !button_state};
+  clunet.send(address, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
 }
 
 unsigned long button_pressed_time = 0;
@@ -345,50 +349,7 @@ void loop() {
     }
   }
 
-  clunet_msg msg;
-  if (clunetMulticastHandleMessages(&msg)) {
-    switch (msg.command) {
-      case CLUNET_COMMAND_SWITCH:
-        if (msg.data[0] == 0xFF) { //info request
-          if (msg.size == 1) {
-            switchResponse(msg.src_address);
-          }
-        } else {
-          if (msg.size == 2) {
-            switch (msg.data[0]) {
-              case 0x00:
-              case 0x01:
-              case 0x02:
-                if (msg.data[1] == RELAY_0_ID) {
-                  switch_exec(msg.data[0], false);
-                }
-                break;
-              case 0x03:
-                switch_exec((msg.data[1] >> (RELAY_0_ID - 1)) & 0x01, false);
-                break;
-            }
-            switchResponse(msg.src_address);
-          }
-        }
-        break;
-      case CLUNET_COMMAND_BUTTON:
-        if (msg.size == 0) {
-          buttonResponse(msg.src_address);
-        }
-        break;
-      case CLUNET_COMMAND_DIMMER:
-        if (msg.size == 1 && msg.data[0] == 0xFF) {
-          dimmerResponse(msg.src_address);
-        } else if (msg.size == 2) {
-          //у нас только один канал. Проверяем, что команда для него
-          if ((msg.data[0] >> (RELAY_0_ID - 1)) & 0x01) {
-            dimmer_exec(msg.data[1], false);
-            dimmerResponse(msg.src_address);
-          }
-        }
-    }
-  }
 
-  ArduinoOTA.handle();
+  ESPHTTPServer.handle();
   yield();
 }

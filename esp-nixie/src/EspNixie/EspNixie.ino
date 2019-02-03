@@ -1,41 +1,38 @@
 /**
- * Use 2.4.1-2.4.2 esp8266 core
- * lwip 1.4 Higher bandwidth; CPU 160 MHz
+    Use 2.4.2 esp8266 core
+    lwip 2 Higher bandwidth; CPU 160 MHz
+    128K SPIFFS
+  
+    dependencies:
+      https://github.com/PaulStoffregen/Time
+      https://github.com/gmag11/NtpClient (origin/develop)
+      https://github.com/gmag11/FSBrowserNG
+
+      https://github.com/me-no-dev/ESPAsyncUDP
+      https://github.com/me-no-dev/ESPAsyncWebServer
  * 
  */
 
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+#include <FS.h>
+#include <FSWebServerLib.h>
+#include <ESPAsyncWebServer.h>
 
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-
-#include "ESPAsyncTCP.h"
-#include "ESPAsyncWebServer.h"
- 
-#include <time.h>
+#include <TimeLib.h>
 
 #include "Narodmon.h"
 #include "Nixie.h"
 #include "Leds.h"
-
 #include "InsideTermometer.h"
-
-#include "Credentials.h"
 #include "Tasks.h"
 
 #define ALARM_DURATION 15000
 #define NUMBER_DURATION 5000
 
-IPAddress ip(192, 168, 1, 130); //Node static IP
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 255, 0);
-
 TaskWrapper* tw = new TaskWrapper();
 Narodmon* nm = new Narodmon(WiFi.macAddress());
 Leds* leds = new Leds();
 
-AsyncWebServer server(80);
+AsyncWebServer server(8080);
 
 
 //хранит параметр, переданный через метод /number
@@ -44,11 +41,11 @@ AsyncWebServer server(80);
 uint32_t number_to_show;
 
 
-void config_time(float timezone_hours_offset, int daylightOffset_sec,
+/*void config_time(float timezone_hours_offset, int daylightOffset_sec,
                  const char* server1, const char* server2, const char* server3) {
   configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
   INFO("Timezone: %f; daylightOffset: %d", timezone_hours_offset, daylightOffset_sec);
-}
+}*/
 
 void config_narodmon(String apiKey, uint8_t use_latlng, double lat, double lng, uint8_t radius) {
   nm->setApiKey(apiKey);
@@ -70,9 +67,9 @@ const CRGB MINUS_COLOR = CRGB::Blue;
 void show_value(float v, uint8_t pos_1, int num_frac){
   nixie_set(v, pos_1, num_frac);
 
-  leds->set([&](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
-      if (v < 0) {  ///minus value
-    
+  if (v < 0) {  ///minus value
+    leds->set([&](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
+ 
         int lb = pos_1;
         float t = abs(v);
         while (((int)(t = t/10)) > 0){
@@ -84,28 +81,24 @@ void show_value(float v, uint8_t pos_1, int num_frac){
         for (int i=lb; i<=rb; i++){
           leds[i] = MINUS_COLOR;
         }
-      }
-  });
+    });
+  }else{
+    leds->backlight();
+  }
+
 }
 
 uint8_t available_clock() {
-  time_t this_second = 0;
-  time(&this_second);
-  return this_second;
+  return NTP.getLastNTPSync();
 }
 
 void _clock(){
-  time_t this_second;
-  time(&this_second);
-  if (this_second){
-    int h = (this_second / 3600) % 24;
-    int m = (this_second / 60) % 60;
-    int s = (this_second % 60);
-    char p = this_second % 2;
+    time_t t = now();
+    int h = hour(t);
+    int m = minute(t);
+    int s = second(t);
+    char p = t % 2;
     nixie_set(digit_code(h / 10, 1, 0), digit_code(h % 10, 1, p), digit_code(m / 10, 1, 0), digit_code(m % 10, 1, p), digit_code(s / 10, 1, 0), digit_code(s % 10, 1, p));
-  }else{
-    nixie_clear();
-  }
 }
 
 void show_clock() {
@@ -113,6 +106,22 @@ void show_clock() {
   leds->backlight();
 }
 
+/*
+uint8_t available_clock_adjust() {
+  return !available_clock();
+}
+
+void _clock_adjust(){
+    time_t t = now();
+    char p = (t / 500) % 6 ;    
+    nixie_set(digit_code(0, p==0, 1), digit_code(0, p==1, 1), digit_code(0, p==2, 1), digit_code(0, p==3, 1), digit_code(0, p==4, 1), digit_code(0, p==5, 1));
+}
+
+void show_clock_adjust() {
+  _clock_adjust();
+  leds->backlight();
+}
+*/
 uint8_t available_t() {
   return nm->hasT();
 }
@@ -134,7 +143,7 @@ uint8_t available_h() {
 }
 
 void show_h() {
-  show_value(nm->getH(), 3, 0);
+  show_value(nm->getH(), 4, 0);
 }
 
 uint8_t available_t_inside() {
@@ -153,6 +162,9 @@ void config_modes(uint32_t clock_duration,
   uint32_t t_duration, uint32_t p_duration, uint32_t h_duration,
   uint32_t t_inside_duration) {
   tw->reset();
+  
+  //tw->addContinuousTask(clock_duration, available_clock_adjust, show_clock_adjust);
+  
   tw->addContinuousTask(clock_duration, available_clock, show_clock);
   tw->addContinuousTask(t_duration, available_t, show_t);
   if (p_duration){
@@ -184,16 +196,9 @@ void setup() {
   DEBUG("Booting");
   nixie_init();
 
-  WiFi.mode(WIFI_STA);
-
-  WiFi.begin(AP_SSID, AP_PASSWORD);
-  WiFi.config(ip, gateway, subnet);
-
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(1000);
-    ESP.restart();
-  }
-  
+  SPIFFS.begin();
+  ESPHTTPServer.begin(&SPIFFS);
+    
   INFO("IP address: %s", WiFi.localIP().toString().c_str());
 
   //insideTermometerInit();
@@ -271,30 +276,6 @@ void setup() {
     request->send(200);
   });
 
-  server.on("/test", HTTP_GET, [](AsyncWebServerRequest * request) {
-    CRGB leds_[10];
-    int num = leds->get(leds_);
-    String value = "";
-    for (int i=0; i<num; i++){
-      String r = String(leds_[i].r, HEX);
-      if (r.length() < 2){
-        r = "0" + r;
-      }
-      String g = String(leds_[i].g, HEX);
-      if (g.length() < 2){
-        g = "0" + g;
-      }
-      String b = String(leds_[i].b, HEX);
-      if (b.length() < 2){
-        b = "0" + b;
-      }
-      value += (r + g + b) + "\r\n";
-    }
-    
-    request->send(200, "text/plain", value);
-  });
-  
-
   server.on("/number", HTTP_GET, [](AsyncWebServerRequest *request) {
     int r = 404;
     if(request->hasArg("v")){ //отображает последние(младшие) 6 цифр переданного номера
@@ -333,14 +314,7 @@ void setup() {
   server.begin();
 
 
-  ArduinoOTA.setHostname("esp-nixie");
   ArduinoOTA.onStart([]() {
-    //if (ArduinoOTA.getCommand() == U_FLASH)
-    //  type = "sketch";
-    //else // U_SPIFFS
-    //  type = "filesystem";
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-
     ota_progress = 0;
     tw->callContinuousTask([]() {
       leds->set([&](CRGB* leds, uint8_t num_leds, uint8_t* brightness){
@@ -369,9 +343,9 @@ void setup() {
   });
 
 
-  ArduinoOTA.begin();
 
-  config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
+
+  //config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
   config_narodmon("9M5UhuQA2c8f8", 1, 53.2266, 50.1915, 5);
   config_modes(10000, 5000, 5000, 0, 0);
   
@@ -389,6 +363,6 @@ void loop() {
     tw->update();
   }
 
-  ArduinoOTA.handle();
+  ESPHTTPServer.handle();
   yield();
 }

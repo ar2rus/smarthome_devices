@@ -45,7 +45,7 @@ uint8_t Leds::get(CRGB* leds){
 
 String Leds::info(){
     String value = "";
-    for (int i=0; i<num; i++){
+    for (int i=0; i<_num; i++){
       String r = String(_leds[i].r, HEX);
       if (r.length() < 2){
         r = "0" + r;
@@ -83,6 +83,7 @@ void Leds::rainbow(){
 
 void Leds::backlight_on(bool on){
 	_backlight_on = on;
+ backlight();
 }
 
 void Leds::backlight_on(){
