@@ -7,6 +7,12 @@ char hallSensorValue;
 
 volatile uint32_t systime = 0;
 
+//набираемый на пульте номер (максимально NUMBER_DIAL_MAX_LENGTH символов)
+char number_dial[NUMBER_DIAL_MAX_LENGTH];
+//количество набранных символов
+uint8_t number_dial_cnt = 0;
+//время набора последнего символа (для анализа таймаута)
+uint32_t number_dial_time = 0;
 
 void switchResponse(unsigned char address){
 	char info = (RELAY_1_STATE << (RELAY_1_ID-1)) | (RELAY_0_STATE << (RELAY_0_ID-1));
@@ -55,6 +61,53 @@ void humidityResponse(unsigned char address){
 	}
 	
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_HUMIDITY_INFO, data, sizeof(data));
+}
+
+void numberDialResponse(uint8_t type){
+	char data[NUMBER_DIAL_MAX_LENGTH + 1];
+	data[0] = type;
+	char size = 1;
+	
+	switch (type){
+		case 0x01:
+		case 0x02:
+			memcpy(&data[1], &number_dial, number_dial_cnt);
+			size += number_dial_cnt;
+			break;
+		case 0x03:	
+			break;
+		default:	//неизвестный тип
+			return;
+	}
+	clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, COMMAND_ROTARY_DIAL_NUMBER_INFO, data, size);
+}
+
+void nextDigitDialed(unsigned char digit){
+	if (number_dial_cnt < NUMBER_DIAL_MAX_LENGTH){
+		number_dial_time = systime;
+		number_dial[number_dial_cnt++] = digit;
+		numberDialResponse(0x02);	//набираемый номер
+	}else{
+		numberDialResponse(0x03);	//превышена длина номера
+		number_dial_cnt = 0;
+	}
+}
+
+void numberDialed(){
+	if (number_dial_cnt){
+		number_dial_time = 0;
+		
+		numberDialResponse(0x01);
+		number_dial_cnt = 0;
+	}
+}
+
+void checkNumberTimeout(){
+	if (number_dial_time){
+		if (systime - number_dial_time > NUMBER_DIAL_TIMEOUT){
+			numberDialed();
+		}
+	}
 }
 
 void switchExecute(char id, char command){
@@ -237,6 +290,40 @@ void cmd(clunet_msg* m){
 									data[1] = 0xFF;
 									clunet_send_fairy(CLUNET_KITCHEN_LIGHT_ID, CLUNET_PRIORITY_COMMAND, CLUNET_COMMAND_DIMMER, data, 2);
 								break;
+								
+								case 0x80:
+									nextDigitDialed(1);	
+								break;
+								case 0x40:
+									nextDigitDialed(2);
+								break;
+								case 0xC0:
+									nextDigitDialed(3);
+								break;
+								case 0x20:
+									nextDigitDialed(4);
+								break;
+								case 0xA0:
+									nextDigitDialed(5);
+								break;
+								case 0x60:
+									nextDigitDialed(6);
+								break;
+								case 0xE0:
+									nextDigitDialed(7);
+								break;
+								case 0x10:
+									nextDigitDialed(8);
+								break;
+								case 0x90:
+									nextDigitDialed(9);
+								break;
+								case 0x00:
+									nextDigitDialed(0);
+								break;
+								case 0x08:	//enter
+									numberDialed();	//номер набран и подтвержден
+								break;	
 							}
 						}
 					}
@@ -311,6 +398,8 @@ int main(void){
 					c_time = systime;
 			}
 		}
+		
+		checkNumberTimeout();
 	}
 	
 	return 0;

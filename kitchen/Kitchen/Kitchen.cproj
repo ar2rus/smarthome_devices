@@ -34,10 +34,11 @@
   <documentation help="" />
   <offline-documentation help="" />
   <dependencies>
-    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.6.0" />
+    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.10.1" />
   </dependencies>
 </framework-data>
     </AsfFrameworkConfig>
+    <AsfVersion>3.5.0</AsfVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>

@@ -91,4 +91,9 @@
 
 #define CLUNET_KITCHEN_LIGHT_ID 0x82
 
+//максимальная длина номера, набираемого с пульта
+#define NUMBER_DIAL_MAX_LENGTH 20
+//таймаут набора номера с пульта (после нажатия последнего символа)
+#define NUMBER_DIAL_TIMEOUT 2000
+
 #endif /* BATH_SENSORS_H_ */
