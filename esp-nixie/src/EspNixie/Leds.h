@@ -1,6 +1,7 @@
 #ifndef LEDS_h
 #define LEDS_h
 
+#define FASTLED_INTERNAL
 #define FASTLED_ALLOW_INTERRUPTS 0
 //#define FASTLED_INTERRUPT_RETRY_COUNT 10
 #include <FastLED.h>

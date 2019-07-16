@@ -8,7 +8,7 @@ Leds::Leds(){
 
 void Leds::set(LedsSetupHandlerFunction setupFunction){
 	CRGB leds[_num];
-	memcpy(&leds, &_leds, _num * sizeof(CRGB));
+  get(leds);
   
 	uint8_t brightness = _brightness;
 	
@@ -18,9 +18,9 @@ void Leds::set(LedsSetupHandlerFunction setupFunction){
 	
 	bool changed = false;
 	for (int i = 0; i < _num; i++) {
-		if (_leds[i] != leds[i]) {
+		if (_leds[i] != leds[_num-i-1]) {
 			changed = true;
-			_leds[i] = leds[i];
+			_leds[i] = leds[_num-i-1];
 		}
 	}
 	
@@ -39,13 +39,15 @@ void Leds::set(CRGB color){
 }
 
 uint8_t Leds::get(CRGB* leds){
-  memcpy(leds, &_leds, _num * sizeof(CRGB));
+  for (int i=0; i<_num; i++){
+    leds[_num-i-1] = _leds[i];
+  }
   return _num;
 }
 
 String Leds::info(){
     String value = "";
-    for (int i=0; i<_num; i++){
+    for (int i=_num-1; i<0; i--){
       String r = String(_leds[i].r, HEX);
       if (r.length() < 2){
         r = "0" + r;
