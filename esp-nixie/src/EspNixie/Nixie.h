@@ -33,11 +33,18 @@ typedef char nixie_codes[DIGITS_COUNT];
 
 void nixie_init();
 
-void nixie_set(char d0, char d1, char d2, char d3, char d4, char d5);
+uint8_t nixie_int(uint32_t v, uint8_t pos_1, uint8_t min_num_digits, char* digits);
+
+void nixie_set(char d5, char d4, char d3, char d2, char d1, char d0);
+
+void nixie_set(char* digit_codes);
 
 void nixie_set(uint32_t v, uint8_t pos_1);
 
 void nixie_set(float v, uint8_t pos_1, int num_frac);
+
+//выводит из массива digits count цифр начиная с цифры с индексом offset в позицию pos_1
+void nixie_set(char* digits, uint8_t offset, uint8_t count, uint8_t pos_1);
 
 void nixie_clear();
 
