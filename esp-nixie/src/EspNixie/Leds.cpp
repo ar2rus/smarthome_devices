@@ -6,15 +6,15 @@ Leds::Leds(){
 	backlight();
 }
 
-void Leds::set(LedsSetupHandlerFunction setupFunction){
+void Leds::set(LedsBrightnessSetupHandlerFunction setupFunction){
 	CRGB leds[_num];
   get(leds);
   
-	uint8_t brightness = _brightness;
+	uint8_t brightness = FastLED.getBrightness();
 	
-    if (setupFunction){
-      setupFunction(leds, _num, &brightness);
-    }
+  if (setupFunction){
+    setupFunction(leds, _num, &brightness);
+  }
 	
 	bool changed = false;
 	for (int i = 0; i < _num; i++) {
@@ -23,8 +23,8 @@ void Leds::set(LedsSetupHandlerFunction setupFunction){
 			_leds[i] = leds[_num-i-1];
 		}
 	}
-	
-	changed |= (brightness != _brightness);
+
+	changed |= (brightness != FastLED.getBrightness());
 
 	if (changed) {
 		FastLED.setBrightness(brightness);
@@ -32,9 +32,19 @@ void Leds::set(LedsSetupHandlerFunction setupFunction){
 	}
 }
 
-void Leds::set(CRGB color){
-	set([&color](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
+void Leds::set(LedsSetupHandlerFunction setupFunction){
+  if (setupFunction){
+    set([&](CRGB* leds, uint8_t num_leds, uint8_t* brightness){
+      setupFunction(leds, num_leds);
+      *brightness = _backlight_brightness;
+    });
+  }
+}
+
+void Leds::set(CRGB color, uint8_t _brightness){
+	set([&](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
 		fill_solid(leds, leds_num, color);
+    *brightness = _brightness;
 	});
 }
 
@@ -66,7 +76,7 @@ String Leds::info(){
 }
 
 void Leds::backlight(){
-  set(_backlight_on ? _backlight_color : CRGB::Black);
+  set(_backlight_on ? _backlight_color : CRGB::Black, _backlight_brightness);
 }
 
 #define BPM       60
@@ -100,10 +110,24 @@ void Leds::backlight_toggle(){
 	backlight_on(!_backlight_on);
 }
 
-void Leds::setBrightness(uint8_t brightness){
-	_brightness = brightness;
+void Leds::setBacklightBrightness(uint8_t brightness){
+  if (brightness>=BRIGHTNESS_MIN_VALUE && brightness<BRIGHTNESS_MAX_VALUE){
+    _backlight_brightness = brightness;
+  }
 }
 
 void Leds::setBacklightColor(CRGB color){
 	_backlight_color = color;
+}
+
+void Leds::upBacklightBrightness(uint8_t delta){
+  int nval = _backlight_brightness + delta;
+  nval = min(nval, BRIGHTNESS_MAX_VALUE);
+  setBacklightBrightness(nval);
+}
+  
+void Leds::downBacklightBrightness(uint8_t delta){
+  int nval = _backlight_brightness - delta;
+  nval = max(nval, BRIGHTNESS_MIN_VALUE);
+  setBacklightBrightness(nval);
 }

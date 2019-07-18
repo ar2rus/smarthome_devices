@@ -11,7 +11,14 @@
 #define LED_PIN 5
 #define LED_COUNT 6
 
-typedef std::function<void(CRGB* leds, uint8_t leds_num, uint8_t* brightness)> LedsSetupHandlerFunction;
+const CRGB DEFAULT_BACKLIGHT_COLOR = CRGB::White;
+#define DEFAULT_BACKLIGHT_BRIGHTNESS 40
+
+#define BRIGHTNESS_MIN_VALUE 10
+#define BRIGHTNESS_MAX_VALUE 255
+
+typedef std::function<void(CRGB* leds, uint8_t leds_num, uint8_t* brightness)> LedsBrightnessSetupHandlerFunction;
+typedef std::function<void(CRGB* leds, uint8_t leds_num)> LedsSetupHandlerFunction;
 
 
 class Leds{
@@ -20,11 +27,10 @@ private:
   
 	CRGB _leds[LED_COUNT];
 	
-	uint8_t _brightness = 40;
-	
 	bool _backlight_on = false;
-	CRGB _backlight_color = CRGB::White;
-	
+  CRGB _backlight_color = DEFAULT_BACKLIGHT_COLOR;
+	uint8_t _backlight_brightness = DEFAULT_BACKLIGHT_BRIGHTNESS;
+   
 	void backlight_on(bool on);
 public:
   Leds();
@@ -33,16 +39,20 @@ public:
   String info();
 	
 	void backlight();		//switches to backlight (if enabled)
-	void set(CRGB color);	//shows all leds with the same color
-	void set(LedsSetupHandlerFunction setupFunction);	//show custom colors
+	void set(CRGB color, uint8_t brightness);	//shows all leds with the same color
+	void set(LedsSetupHandlerFunction setupFunction);	//show custom colors with backlight brightness level
+  void set(LedsBrightnessSetupHandlerFunction setupFunction); //show custom colors & brightness
 	void rainbow();			//shows rainbow
 	
 	void backlight_on();
 	void backlight_off();
 	void backlight_toggle();
 
-	void setBrightness(uint8_t brightness);
+	void setBacklightBrightness(uint8_t brightness);
 	void setBacklightColor(CRGB color);
+
+  void upBacklightBrightness(uint8_t delta = 10);
+  void downBacklightBrightness(uint8_t delta = 10);
 };
 
 #endif
