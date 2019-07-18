@@ -28,11 +28,15 @@
 #define ALARM_DURATION 15000
 #define NUMBER_DURATION 5000
 
+#define SYSTEM_LEDS_BRIGHTNESS 50
+
 IPAddress ip(192, 168, 1, 130); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
-TaskWrapper* tw = new TaskWrapper();
+#define UPDATE_TIME 50
+
+TaskWrapper* tw = new TaskWrapper(UPDATE_TIME);
 Narodmon* nm = new Narodmon(WiFi.macAddress());
 Leds* leds = new Leds();
 
@@ -44,7 +48,7 @@ AsyncWebServer server(80);
 //хранит параметр, переданный через метод /number
 //его передача в callContinuousTask возможна только
 //через глобальную переменную
-char number_to_show[DIGITS_COUNT];
+char number_to_show[NIXIE_DIGITS_COUNT];
 
 
 void config_time(float timezone_hours_offset, int daylightOffset_sec,
@@ -74,7 +78,7 @@ void show_value(float v, uint8_t pos_1, int num_frac){
   nixie_set(v, pos_1, num_frac);
 
   if (v < 0) {  ///minus value
-    leds->set([&](CRGB* leds, uint8_t leds_num, uint8_t* brightness){
+    leds->set([&](CRGB* leds, uint8_t leds_num){  //используем вариант с _backlight_brightness
  
         int lb = pos_1;
         float t = abs(v);
@@ -179,6 +183,42 @@ void config_modes(uint32_t clock_duration,
   });
 }
 
+const CRGB PROGRESS_COLOR = CRGB::Blue;
+
+uint8_t point_pos = 0;
+void show_connecting_progress(){
+   leds->set([&](CRGB* leds, uint8_t num_leds, uint8_t* brightness){
+          
+          for (int i = 0; i < num_leds; i++) {
+            leds[i] = point_pos == i ? PROGRESS_COLOR : CRGB::Black;
+          }
+          if (point_pos++ >= num_leds){
+            point_pos = 0;
+          }
+
+          *brightness = SYSTEM_LEDS_BRIGHTNESS;
+   });
+}
+
+uint8_t getIntArg(AsyncWebServerRequest *request, String argName, int* argValue){
+  if (request->hasArg(argName.c_str())){
+      String v = request->arg(argName.c_str());
+      
+      char all_digits = 1;
+      for (byte i = 0; i < v.length(); i++) {
+        if (!isDigit(v.charAt(i))) {
+            all_digits = 0;
+            break;
+         }
+      }
+
+      if(all_digits){
+        *argValue = v.toInt();
+        return 1;
+      }
+  }
+  return 0;
+}
 
 uint8_t ota_progress;
 
@@ -191,10 +231,19 @@ void setup() {
   WiFi.begin(AP_SSID, AP_PASSWORD);
   WiFi.config(ip, gateway, subnet);
 
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(1000);
-    ESP.restart();
+  tw->addPeriodicalTask(0, 200, []() {
+    show_connecting_progress();
+  });
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    tw->update();
+    delay(100);
   }
+
+//  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+//    delay(1000);
+//    ESP.restart();
+//  }
   
   INFO("IP address: %s", WiFi.localIP().toString().c_str());
   
@@ -226,7 +275,12 @@ void setup() {
   });*/
 
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
-    ESP.restart();
+     tw->callContinuousTask([]() {
+        ESP.restart();
+     });
+    
+    show_none();
+    request->send(200);
   });
 
   server.on("/clock", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -280,10 +334,6 @@ void setup() {
     request->send(200);
   });
 
-  /*server.on("/time", HTTP_GET, [](AsyncWebServerRequest * request) {
-    request->send(200, "text/plain", sntp_get_real_time(sntp_get_current_timestamp()));
-  });*/
-
   server.on("/tz", HTTP_GET, [](AsyncWebServerRequest * request) {
     config_time(request->arg("tz").toInt(), 0, "pool.ntp.org", "time.nist.gov", NULL);
     request->send(200);
@@ -291,9 +341,9 @@ void setup() {
 
   server.on("/number", HTTP_GET, [](AsyncWebServerRequest *request) {
     int r = 404;
-    if(request->hasArg("v")){ //отображает последние(младшие) DIGITS_COUNT(6) цифр переданного номера
+    if(request->hasArg("v")){ //отображает последние(младшие) NIXIE_DIGITS_COUNT(6) цифр переданного номера
       String v = request->arg("v");
-      int length = _min(v.length(), DIGITS_COUNT);
+      int length = _min(v.length(), NIXIE_DIGITS_COUNT);
       v = v.substring(_max(v.length() - length, 0));
 
       char all_digits = 1;
@@ -316,9 +366,41 @@ void setup() {
     request->send(r);
   });
 
-  server.on("/led", HTTP_GET, [](AsyncWebServerRequest * request) {
-    leds->backlight_toggle();
-    request->send(200);
+
+  #define REST_LED "/led"
+  #define REST_LED_PARAM_BRIGHTNESS "brightness"
+  #define REST_LED_PARAM_UP "up"
+  #define REST_LED_PARAM_DOWN "down"
+  
+  server.on(REST_LED, HTTP_GET, [&](AsyncWebServerRequest* request) {
+    int status_code = 200;
+    if (request->params() == 0){
+      leds->backlight_toggle();
+    }else{
+      if (request->hasParam(REST_LED_PARAM_BRIGHTNESS)){
+        int brightness;
+        if(getIntArg(request, REST_LED_PARAM_BRIGHTNESS, &brightness)){
+          if (brightness <= 255){
+            leds->setBacklightBrightness(brightness);
+          }else{
+            status_code = 404;
+          }
+        }else{
+          status_code = 404;
+        }
+      } else if (request->hasParam(REST_LED_PARAM_UP)){
+        leds->upBacklightBrightness();
+      } else if (request->hasParam(REST_LED_PARAM_DOWN)){
+        leds->downBacklightBrightness();
+      } else {
+        status_code = 404;
+      }
+
+      if (status_code == 200){
+        leds->backlight_on();
+      }
+    }
+    request->send(status_code);
   });
 
   server.onNotFound( [](AsyncWebServerRequest * request) {
@@ -337,24 +419,28 @@ void setup() {
 
     ota_progress = 0;
     tw->callContinuousTask([]() {
-      leds->set([&](CRGB* leds, uint8_t num_leds, uint8_t* brightness){
-            const CRGB OTA_PROGRESS_COLOR = CRGB::Orange;
-          
-            for (int i = 0; i < num_leds; i++) {
-            if (ota_progress >= (i + 1) * 100 / num_leds) {
-              leds[i] = OTA_PROGRESS_COLOR;
-            } else {
-              break;
-            }
-          }
-        });
+      
       nixie_set(ota_progress, 0);
+      leds->backlight_off();
+      
+      const CRGB OTA_PROGRESS_COLOR = CRGB::Orange;
+      
+      leds->set([&](CRGB* leds, uint8_t num_leds, uint8_t* brightness){
+        for (int i = 0; i < num_leds; i++) {
+          if (ota_progress >= (i + 1) * 100 / num_leds) {
+            leds[i] = OTA_PROGRESS_COLOR;
+          } else {
+            break;
+          }
+        }
+        *brightness = SYSTEM_LEDS_BRIGHTNESS;
+      });
     });
   });
 
   ArduinoOTA.onEnd([]() {
-    tw->callContinuousTask(show_none);
-    tw->update();
+      leds->backlight_off();
+      nixie_clear_force();
   });
 
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -372,17 +458,9 @@ void setup() {
   INFO("Setup done");
 }
 
-#define UPDATE_TIME 50
-
-uint32_t update_t = 0;
-
 void loop() {
-  uint32_t t = millis();
-  if (t - update_t > UPDATE_TIME) {
-    update_t = t;
-    tw->update();
-  }
-
+  tw->update();
+  
   ArduinoOTA.handle();
   yield();
 }
