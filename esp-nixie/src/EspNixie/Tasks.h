@@ -18,6 +18,9 @@ struct periodical_task {
 
 class TaskWrapper {
   private:
+    uint16_t _min_update_period;
+    uint32_t _last_update_time;
+    
     continuous_task task_queue[TASK_LIST_MAX_LENGTH];
     uint8_t task_queue_length;
 
@@ -34,54 +37,64 @@ class TaskWrapper {
       _task.execute = NULL;
       _task_start_t = 0;
       task_list_length = 0;
+      _last_update_time = millis()-_min_update_period;  //0-delay after reset
       update();
     }
 
-    TaskWrapper() {
+    /*
+     * min_update_period - минимальный период (мс) между реальными обновлениями.
+     * Вызовы метода update() чаще чем через min_update_period будут игнорироваться
+     */
+    TaskWrapper(uint16_t min_update_period = 0) {
+      _min_update_period = min_update_period;
       reset();
     }
 
     void update() {
       uint32_t t = millis();
 
-      if ((!_task.execute)                                            //не назначен метод выполнения (reset)
-      || (_task.duration && t >= _task_start_t + _task.duration)      //не бесконечная задача, время выполнения завершено
-      || (_task.available && !_task.available())) {                   //метод проверки назначен и возвращает false(невозможно дальше выполнять)
-        //смена задачи
-        uint8_t _index = _task_index;
-        while (1) {
-          if (_task_index++ >= task_queue_length) {
-            _task_index = 0;
-          }
-
-          if (_index == _task_index) { //цикл замкнулся, нет задач к выполнению
-            _task.available = NULL;
-            _task.execute = NULL;
-            break;
-          } else {
-            if (task_queue[_task_index].available && task_queue[_task_index].available()) {
-              _task.duration = task_queue[_task_index].duration;
-              _task.available = task_queue[_task_index].available;
-              _task.execute = task_queue[_task_index].execute;
-              _task_start_t = t;
-              break;
+      if (t - _last_update_time >= _min_update_period) {
+          _last_update_time = t;
+    
+          if ((!_task.execute)                                            //не назначен метод выполнения (reset)
+          || (_task.duration && t >= _task_start_t + _task.duration)      //не бесконечная задача, время выполнения завершено
+          || (_task.available && !_task.available())) {                   //метод проверки назначен и возвращает false(невозможно дальше выполнять)
+            //смена задачи
+            uint8_t _index = _task_index;
+            while (1) {
+              if (_task_index++ >= task_queue_length) {
+                _task_index = 0;
+              }
+    
+              if (_index == _task_index) { //цикл замкнулся, нет задач к выполнению
+                _task.available = NULL;
+                _task.execute = NULL;
+                break;
+              } else {
+                if (task_queue[_task_index].available && task_queue[_task_index].available()) {
+                  _task.duration = task_queue[_task_index].duration;
+                  _task.available = task_queue[_task_index].available;
+                  _task.execute = task_queue[_task_index].execute;
+                  _task_start_t = t;
+                  break;
+                }
+              }
             }
           }
-        }
-      }
-
-      if (_task.execute) {
-        if (!_task.available || _task.available()) {
-          _task.execute();
-        }
-      }
-
-      //periodical tasks
-      for (int i = 0; i < task_list_length; i++) {
-        if (t >= task_list[i].next_start_t) {
-          task_list[i].next_start_t = t + task_list[i].period;
-          task_list[i].execute();
-        }
+    
+          if (_task.execute) {
+            if (!_task.available || _task.available()) {
+              _task.execute();
+            }
+          }
+    
+          //periodical tasks
+          for (int i = 0; i < task_list_length; i++) {
+            if (t >= task_list[i].next_start_t) {
+              task_list[i].next_start_t = t + task_list[i].period;
+              task_list[i].execute();
+            }
+          }
       }
     }
 
