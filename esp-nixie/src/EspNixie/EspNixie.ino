@@ -19,14 +19,17 @@
 #include "Credentials.h"
 #include "Tasks.h"
 #include "Narodmon.h"
+#include "HistoryObservation.h"
 #include "Nixie.h"
 #include "Leds.h"
+
 
 #include "InsideTermometer.h"
 
 
 #define ALARM_DURATION 15000
 #define NUMBER_DURATION 5000
+#define STOPWATCH_DURATION 5000
 
 #define SYSTEM_LEDS_BRIGHTNESS 50
 
@@ -39,6 +42,7 @@ IPAddress subnet(255, 255, 255, 0);
 TaskWrapper* tw = new TaskWrapper(UPDATE_TIME);
 Narodmon* nm = new Narodmon(WiFi.macAddress());
 Leds* leds = new Leds();
+HistoryObservation* historyObserver = new HistoryObservation();
 
 AsyncWebServer server(80);
 
@@ -127,6 +131,50 @@ uint8_t available_t() {
   return nm->hasT();
 }
 
+uint32_t stopwatch_start_time = 0;
+uint32_t stopwatch_pause_time = 0;
+
+void _stopwatch(){
+  if (stopwatch_start_time && !stopwatch_pause_time){
+    uint32_t st = millis() -  stopwatch_start_time;
+    int ms = (st % 1000) / 100;
+    int s = (st / 1000) % 60;
+    int m = (st / 60000);
+    int p = s % 2;
+    nixie_set(digit_code(m / 10, 1, 0), digit_code(m % 10, 1, p), digit_code(s / 10, 1, 0), digit_code(s % 10, 1, p), digit_code(ms, 1, 0), digit_code(0, 0, 0));
+  }
+}
+
+void show_stopwatch() {
+  _stopwatch();
+  leds->backlight();
+}
+
+void _stopwatch_start(){
+  stopwatch_start_time = millis();
+  stopwatch_pause_time = 0;
+}
+
+void _stopwatch_stop(){
+  stopwatch_start_time = 0;
+}
+
+void _stopwatch_toggle_pause(){
+  if (available_stopwatch()){
+    uint32_t t = millis();
+    if (stopwatch_pause_time){
+      stopwatch_start_time += (t - stopwatch_pause_time);
+      stopwatch_pause_time = 0;
+    }else{
+      stopwatch_pause_time = t;
+    }
+  }
+}
+
+uint8_t available_stopwatch() {
+  return stopwatch_start_time;
+}
+
 void show_t() {
   show_value(nm->getT(), 2, 1);
 }
@@ -180,6 +228,14 @@ void config_modes(uint32_t clock_duration,
 
   tw->addPeriodicalTask(10000, 120000, []() {
     nm->request();
+  });
+
+  tw->addPeriodicalTask(15000, 300000, []() {
+    if (nm->hasP()){
+      time_t t;
+      time(&t);
+      historyObserver->addNextValue(t, nm->getP()*10);
+    }
   });
 }
 
@@ -274,6 +330,26 @@ void setup() {
     request->send(200, "text/plain", NTP.getTimeDateString (NTP.getLastNTPSync ()));
   });*/
 
+  server.on("/time", HTTP_GET, [](AsyncWebServerRequest * request) {
+      time_t t;
+      time(&t);
+    request->send(200, "text/plain", String(t));
+  });
+
+  server.on("/history", HTTP_GET, [](AsyncWebServerRequest * request) {
+    time_t t;
+    time(&t);
+
+    if(request->hasArg("hour")){
+       int h;
+       if (getIntArg(request, "hour", &h)){
+          request->send(200, "text/plain", String(t) + ": " + String(historyObserver->getHourValue(t - h * 3600)));
+       }
+    }else{
+      request->send(200, "text/plain", String(t) + ": " + String(historyObserver->getDayValue(t)));
+    }
+  });
+
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
      tw->callContinuousTask([]() {
         ESP.restart();
@@ -338,6 +414,30 @@ void setup() {
     config_time(request->arg("tz").toInt(), 0, "pool.ntp.org", "time.nist.gov", NULL);
     request->send(200);
   });
+
+   server.on("/stopwatch", HTTP_GET, [](AsyncWebServerRequest *request) {
+      int status_code = 404;
+      if (request->params() == 0 || (request->params() == 1 && request->hasArg("start"))){
+        _stopwatch_start();
+        tw->callContinuousTask(available_stopwatch, show_stopwatch);
+        status_code = 200;
+      }else if (request->params() == 1){
+        if (request->hasArg("stop")){
+          if (available_stopwatch()){
+            _stopwatch_stop();
+            tw->callContinuousTask(STOPWATCH_DURATION, show_stopwatch);
+            status_code = 200;
+          }
+        }else if (request->hasArg("pause")){
+          if (available_stopwatch()){
+            _stopwatch_toggle_pause();
+            tw->callContinuousTask(available_stopwatch, show_stopwatch);
+            status_code = 200;
+          }
+        }
+      }
+      request->send(status_code);
+   });
 
   server.on("/number", HTTP_GET, [](AsyncWebServerRequest *request) {
     int r = 404;
