@@ -1,3 +1,13 @@
+/**
+ * Use 2.5.2 esp8266 core
+ * lwip 1.4 Higher bandwidth; CPU 80 MHz
+ * 1M (128K)
+ * 
+ * dependencies:
+ * IRremoteESP8266 2.6.4
+ * Radio by Matthias Hertel
+ */
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -991,7 +1001,7 @@ void cmd(clunet_msg* m){
 void loop() {
   if (irrecv.decode(&ir_results)) {
     if (ir_results.decode_type == NEC){
-      if (ir_results.value == REPEAT){
+      if (ir_results.value == kRepeat){
         nec_data[1] |= 0x80;  //7bit 
       }else{
         nec_data[0] = 0x00;
