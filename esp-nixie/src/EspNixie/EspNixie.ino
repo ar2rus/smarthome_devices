@@ -1,5 +1,5 @@
 /**
- * Use 2.5.2 esp8266 core
+ * Use 2.6.2 esp8266 core
  * lwip 1.4 Higher bandwidth; CPU 160 MHz
  * 1M (128K)
  * 

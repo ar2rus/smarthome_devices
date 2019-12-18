@@ -1,16 +1,16 @@
 /**
-    Use 2.4.1 esp8266 core; PWM not working with 2.4.2
+    Use 2.6.2 esp8266 core
     lwip 2 Higher bandwidth; CPU 80 MHz
     128K SPIFFS
 
      dependencies:
       https://github.com/PaulStoffregen/Time
-      https://github.com/gmag11/NtpClient (origin/develop)
+      https://github.com/gmag11/NtpClient
       https://github.com/gmag11/FSBrowserNG
 
       https://github.com/me-no-dev/ESPAsyncUDP
       https://github.com/me-no-dev/ESPAsyncWebServer
-      https://github.com/arthugargon/ClunetMulticast
+      https://github.com/arthurgargon/ClunetMulticast
 
  */
 
