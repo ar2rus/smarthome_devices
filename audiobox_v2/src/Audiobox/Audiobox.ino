@@ -20,11 +20,9 @@
 #include <IRrecv.h>
 #include <IRutils.h>
 
-#include "ESPAsyncTCP.h"
-#include "ESPAsyncWebServer.h"
+#include <ESPAsyncWebServer.h>
 
-#include "ClunetMulticast.h"
-#include "ClunetMulticastConfig.h"
+#include <ClunetMulticast.h>
 #include "Credentials.h"
 
 #include <EEPROM.h>
@@ -37,6 +35,7 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 AsyncWebServer server(80);
+ClunetMulticast clunet(CLUNET_AUDIOBOX_ADDRESS, CLUNET_AUDIOBOX_NAME);
 
 lc75341 audio(14, 16, 12);
 
@@ -316,7 +315,11 @@ void setup() {
 
   irrecv.enableIRIn();
 
-  clunetMulticastBegin();
+  if (clunet.connect()){
+    clunet.onMessage([](clunet_message* msg){
+      cmd(msg);
+    });
+  }
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     //char r = 404;
@@ -370,7 +373,6 @@ void setup() {
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_response(request, 404);
   });
-
 
   server.begin();
 }
@@ -456,11 +458,11 @@ void channel(uint8_t ch){
   
   data[0] = 0;
   data[1] = ch;
-  b_cmd(CLUNET_COMMAND_CHANNEL, data, 2);
+  clunet.broadcast_send(CLUNET_COMMAND_CHANNEL, data, 2);
 }
 
-void create_cmd(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
-  clunet_msg tmp_msg;
+void send_cmd(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
+  clunet_message tmp_msg;
   tmp_msg.src_address = src_address;
   tmp_msg.dst_address = dst_address;
   tmp_msg.command = (char)command;
@@ -472,16 +474,15 @@ void create_cmd(unsigned char src_address, unsigned char dst_address, unsigned c
 
 //команда для себя без выдачи ответа
 void s_cmd(unsigned char command, char* data, unsigned char size){
-  create_cmd(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, command, data, size);
+  send_cmd(CLUNET_AUDIOBOX_ADDRESS, CLUNET_AUDIOBOX_ADDRESS, command, data, size);
 }
 
-//команда для выдачи всем
+//команда для себя с ответом всем
 void b_cmd(unsigned char command, char* data, unsigned char size){
-  create_cmd(CLUNET_DEVICE_ID, CLUNET_BROADCAST_ADDRESS, command, data, size);
+  send_cmd(CLUNET_BROADCAST_ADDRESS, CLUNET_AUDIOBOX_ADDRESS, command, data, size);
 }
 
-void cmd(clunet_msg* m){
-  
+void cmd(clunet_message* m){
   //в выключенном состоянии разрешаем только 
   //CLUNET_COMMAND_POWER и CLUNET_COMMAND_CHANNEL
   if (!power_state){
@@ -765,7 +766,7 @@ void cmd(clunet_msg* m){
         case 0xEA:  //request num saved channels
           if (m->size == 1){
             m->data[1] = FM_get_num_channels();
-            clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+            clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
           }
           break;
         case 0xEB:  //get saved channel's frequency
@@ -773,7 +774,7 @@ void cmd(clunet_msg* m){
             
             uint16_t* freq = (uint16_t*)(&m->data[2]);
             *freq = FM_get_channel_frequency(m->data[1]);
-            clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 4);
+            clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 4);
           }
           break;
         case 0xEC:  //add channel
@@ -781,13 +782,13 @@ void cmd(clunet_msg* m){
             case 1: { //current freq
               fm_channel_info* info = FM_channel_info();
               m->data[1] = FM_add_channel(info->frequency);
-              clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
               }
               break;
             case 3: { //specified freq
               uint16_t* f = (uint16_t*)&m->data[1];
               m->data[1] = FM_add_channel(*f);
-              clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
               }
               break;
           }
@@ -797,13 +798,13 @@ void cmd(clunet_msg* m){
             case 2: { //current freq
               fm_channel_info* info = FM_channel_info();
               m->data[1] = FM_save_channel(m->data[1], info->frequency);
-              clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
               }
               break;
             case 4: { //specified freq
               uint16_t* f = (uint16_t*)&m->data[2];
               m->data[1] = FM_save_channel(m->data[1], *f);
-              clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
               }
               break;
           }
@@ -813,7 +814,7 @@ void cmd(clunet_msg* m){
             if (m->data[1] == 0xEE && m->data[2] == 0xFF){
               FM_clear_channels();
               m->data[1] = 1;
-              clunetMulticastSend(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
               break;
             }
           }
@@ -822,8 +823,8 @@ void cmd(clunet_msg* m){
     }
     break;
     case CLUNET_COMMAND_RC_BUTTON_PRESSED:{
-      if (m->src_address == CLUNET_DEVICE_ID){
-        clunetMulticastSend(CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+      if (m->src_address == CLUNET_AUDIOBOX_ADDRESS){
+        clunet.broadcast_send(CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
       }
       
       if (m->data[0] == 0x00){  //nec
@@ -832,7 +833,7 @@ void cmd(clunet_msg* m){
           switch (m->data[2]){
             case 0x48:{
               data[0] = 2;
-              b_cmd(CLUNET_COMMAND_POWER, data, 1);
+              clunet.broadcast_send(CLUNET_COMMAND_POWER, data, 1);
               }
               break;
             case 0x80:
@@ -849,57 +850,57 @@ void cmd(clunet_msg* m){
             //  break;
             case 0xF8:{
               data[0] = 2;
-              b_cmd(CLUNET_COMMAND_CHANNEL, data, 1);
+              clunet.broadcast_send(CLUNET_COMMAND_CHANNEL, data, 1);
               }
               break;
             case 0xD8:{
               data[0] = 1;
-              b_cmd(CLUNET_COMMAND_CHANNEL, data, 1);
+              clunet.broadcast_send(CLUNET_COMMAND_CHANNEL, data, 1);
               }
               break;
               
             case 0x08:{
               data[0] = 1;
-              b_cmd(CLUNET_COMMAND_MUTE, data, 1);
+              clunet.broadcast_send(CLUNET_COMMAND_MUTE, data, 1);
               }
               break;
             case 0xA0:{
               data[0] = 2;
               data[1] = 2;
-              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
+              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x10:{
               data[0] = 2;
               data[1] = 3;
-              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
+              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x60:{
               data[0] = 3;
               data[1] = 2;
-              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
+              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x90:{
               data[0] = 3;
               data[1] = 3;
-              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
+              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x00:{
               data[0] = 0;
-              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 1);
+              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 1);
               }
               break;
             case 0x4A:{
               data[0] = 0x03;
-              b_cmd(CLUNET_COMMAND_FM, data, 1);
+              clunet.broadcast_send(CLUNET_COMMAND_FM, data, 1);
               }
               break;
             case 0x28:{
               data[0] = 0x02;
-              b_cmd( CLUNET_COMMAND_FM, data, 1);
+              clunet.broadcast_send( CLUNET_COMMAND_FM, data, 1);
               }
               break;
             
@@ -926,7 +927,7 @@ void cmd(clunet_msg* m){
                   break;
               }
               data[0] = 0x00;
-              b_cmd(CLUNET_COMMAND_FM, data, 3);
+              clunet.broadcast_send(CLUNET_COMMAND_FM, data, 3);
               break;
           }
         }
@@ -952,19 +953,19 @@ void cmd(clunet_msg* m){
     break;
   }
   
-  if (!(m->src_address == CLUNET_DEVICE_ID && m->dst_address == CLUNET_DEVICE_ID)){  //not s_cmd
+  if (!(m->src_address == CLUNET_AUDIOBOX_ADDRESS && m->dst_address == CLUNET_AUDIOBOX_ADDRESS)){  //not s_cmd
     char data[3];
     switch(response){
       case 1:{
         data[0] = audio.input_value() + 1;  //0 channel -> to 1 channel
-        clunetMulticastSend(m->dst_address, CLUNET_COMMAND_CHANNEL_INFO, data, 1);
+        clunet.send(m->dst_address, CLUNET_COMMAND_CHANNEL_INFO, data, 1);
         saveInput(data[0]-1);
       }
       break;
       case 2:{
         data[0] = audio.volume_percent_value();
         data[1] = audio.volume_dB_value();
-        clunetMulticastSend(m->dst_address, CLUNET_COMMAND_VOLUME_INFO, data, 2);
+        clunet.send(m->dst_address, CLUNET_COMMAND_VOLUME_INFO, data, 2);
         saveVolume(data[1]);
       }
       break;
@@ -972,28 +973,26 @@ void cmd(clunet_msg* m){
         data[0] = audio.gain_dB_value();
         data[1] = audio.treble_dB_value();
         data[2] = audio.bass_dB_value();
-        clunetMulticastSend(m->dst_address, CLUNET_COMMAND_EQUALIZER_INFO, data, 3);
+        clunet.send(m->dst_address, CLUNET_COMMAND_EQUALIZER_INFO, data, 3);
         saveEqualizer(data[0], data[1], data[2]);
       }
       break;
       case 5:
-        clunetMulticastSend(m->dst_address, CLUNET_COMMAND_POWER_INFO, (char*)&power_state, sizeof(power_state));
+        clunet.send(m->dst_address, CLUNET_COMMAND_POWER_INFO, (char*)&power_state, sizeof(power_state));
         savePower(power_state);
         break;
-
       case 10:{
         fm_channel_info* info = FM_channel_info();
-        clunetMulticastSend(m->dst_address, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
+        clunet.send(m->dst_address, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
         saveFMChannel(info);
       }
       break;
       case 11:{
         fm_state_info* info = FM_state_info();
-        clunetMulticastSend(m->dst_address, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
+        clunet.send(m->dst_address, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
         saveFMControls(info);
       }
       break;
-      
     }
   }
 }
@@ -1012,18 +1011,13 @@ void loop() {
     }else{
       nec_data[0] = 0xFF; //reset
     }
-    irrecv.resume(); // принимаем следующую команду
-  }
-  
-  clunet_msg msg;
-  if (clunetMulticastHandleMessages(&msg)) {
-      cmd(&msg);
+    irrecv.resume(); //принимаем следующую команду
   }
 
   if (delayedResponseCounterValue > 0){
-    if (millis()-delayedResponseCounterValue > 150){
-      char d = 0xFF;
-      b_cmd(CLUNET_COMMAND_VOLUME, &d, 1);
+    if (millis() - delayedResponseCounterValue > VOLUME_DELAY_RESPONSE){
+      char data = 0xFF;
+      b_cmd(CLUNET_COMMAND_VOLUME, &data, 1);
       delayedResponseCounterValue = 0;
     }
   }

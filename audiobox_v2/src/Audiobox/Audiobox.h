@@ -1,6 +1,10 @@
 #ifndef Audiobox_h
 #define Audiobox_h
 
+#define CLUNET_AUDIOBOX_ADDRESS 0x84
+#define CLUNET_AUDIOBOX_NAME "Audiobox"
+
+#define VOLUME_DELAY_RESPONSE 150
 
 #define EEPROM_CONFIG_ADDRESS 0x00
 
