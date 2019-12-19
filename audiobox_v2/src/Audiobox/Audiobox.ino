@@ -479,7 +479,7 @@ void s_cmd(unsigned char command, char* data, unsigned char size){
 
 //команда для себя с ответом всем
 void b_cmd(unsigned char command, char* data, unsigned char size){
-  send_cmd(CLUNET_BROADCAST_ADDRESS, CLUNET_AUDIOBOX_ADDRESS, command, data, size);
+  send_cmd(CLUNET_AUDIOBOX_ADDRESS, CLUNET_BROADCAST_ADDRESS, command, data, size);
 }
 
 void cmd(clunet_message* m){
@@ -833,7 +833,7 @@ void cmd(clunet_message* m){
           switch (m->data[2]){
             case 0x48:{
               data[0] = 2;
-              clunet.broadcast_send(CLUNET_COMMAND_POWER, data, 1);
+              b_cmd(CLUNET_COMMAND_POWER, data, 1);
               }
               break;
             case 0x80:
@@ -850,57 +850,57 @@ void cmd(clunet_message* m){
             //  break;
             case 0xF8:{
               data[0] = 2;
-              clunet.broadcast_send(CLUNET_COMMAND_CHANNEL, data, 1);
+              b_cmd(CLUNET_COMMAND_CHANNEL, data, 1);
               }
               break;
             case 0xD8:{
               data[0] = 1;
-              clunet.broadcast_send(CLUNET_COMMAND_CHANNEL, data, 1);
+              b_cmd(CLUNET_COMMAND_CHANNEL, data, 1);
               }
               break;
               
             case 0x08:{
               data[0] = 1;
-              clunet.broadcast_send(CLUNET_COMMAND_MUTE, data, 1);
+              b_cmd(CLUNET_COMMAND_MUTE, data, 1);
               }
               break;
             case 0xA0:{
               data[0] = 2;
               data[1] = 2;
-              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
+              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x10:{
               data[0] = 2;
               data[1] = 3;
-              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
+              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x60:{
               data[0] = 3;
               data[1] = 2;
-              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
+              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x90:{
               data[0] = 3;
               data[1] = 3;
-              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 2);
+              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 2);
               }
               break;
             case 0x00:{
               data[0] = 0;
-              clunet.broadcast_send(CLUNET_COMMAND_EQUALIZER, data, 1);
+              b_cmd(CLUNET_COMMAND_EQUALIZER, data, 1);
               }
               break;
             case 0x4A:{
               data[0] = 0x03;
-              clunet.broadcast_send(CLUNET_COMMAND_FM, data, 1);
+              b_cmd(CLUNET_COMMAND_FM, data, 1);
               }
               break;
             case 0x28:{
               data[0] = 0x02;
-              clunet.broadcast_send( CLUNET_COMMAND_FM, data, 1);
+              b_cmd( CLUNET_COMMAND_FM, data, 1);
               }
               break;
             
@@ -927,7 +927,7 @@ void cmd(clunet_message* m){
                   break;
               }
               data[0] = 0x00;
-              clunet.broadcast_send(CLUNET_COMMAND_FM, data, 3);
+              b_cmd(CLUNET_COMMAND_FM, data, 3);
               break;
           }
         }
