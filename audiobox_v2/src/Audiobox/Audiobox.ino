@@ -458,7 +458,7 @@ void channel(uint8_t ch){
   
   data[0] = 0;
   data[1] = ch;
-  clunet.broadcast_send(CLUNET_COMMAND_CHANNEL, data, 2);
+  b_cmd(CLUNET_COMMAND_CHANNEL, data, 2);
 }
 
 void send_cmd(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
