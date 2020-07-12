@@ -22,6 +22,7 @@ static const int pot_angle[POT_COUNT] = {0, 60, 120, 180};
 #define TASK_SERVO 1
 #define TASK_PUMP 2
 #define TASK_DELAY 3
+#define TASK_SERVO_DETACH 5
 #define TASK_WATER_TIME_CHECK 10
 #define TASK_WATER_TIME_SAVE 11
 
@@ -46,10 +47,15 @@ boolean can_water_pot(long* fill_time, int pot){
 }
 
 int get_servo_task(Task* task, int pot){
-  if (has_pot(pot)){
-    task->id = TASK_SERVO;
-    task->param = pot_angle[pot];
-    return 1;
+  if (pot >= 0){
+    if (has_pot(pot)){
+      task->id = TASK_SERVO;
+      task->param = pot_angle[pot];
+      return 1;
+    }
+  }else {
+      task->id = TASK_SERVO_DETACH;
+      return 1;
   }
   return 0;
 }
@@ -96,7 +102,7 @@ int get_water_time_save(Task* task, int pot){
 int get_water_task(Task* task, long* fill_time, int pot){
   int i=0;
   if (get_servo_task(&task[i++], pot)){           //поворачиваем или указан неправильный горшок 
-    long t = millis();
+
     if (can_water_pot(fill_time, pot)){           //проверяем можно ли уже лить в этот горшок
       get_delay_task(&task[i++], SERVO_POS_TIME);
       get_water_time_check(&task[i++], pot);      //на всякий случай проверем еще раз
@@ -105,8 +111,14 @@ int get_water_task(Task* task, long* fill_time, int pot){
       get_delay_task(&task[i++], POT_FILL_TIME);
       get_pump_task(&task[i++], 0);
       get_water_time_save(&task[i++], pot);     //сохраняем время остановки помпы (если доработали до конца)
+
+      get_servo_task(&task[i++], -1);   //detach servo
+      
       return i;
     }else{
+     
+      get_servo_task(&task[i++], -1);   //detach servo
+    
       return -1;                              //forbidden
     }
   }

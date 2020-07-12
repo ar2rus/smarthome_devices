@@ -34,13 +34,10 @@ long fill_time[POT_COUNT];
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
-  
-  
+ 
   pinMode(PUMP_PIN, OUTPUT);
   digitalWrite(PUMP_PIN, pump_state);
   
-  servo.attach(SERVO_PIN);
-
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(ssid, pass);
@@ -238,12 +235,14 @@ boolean pump_exec(char command) {
 }
 
 void servo_exec(int angle){
+  servo.attach(SERVO_PIN);
   servo.write(angle);
   servoResponse(CLUNET_BROADCAST_ADDRESS, angle);
 }
 
 void stop_all(){
   pump_exec(0);
+  servo.detach();
 }
 
 void copy_task(TaskExt* dst, Task* src){
@@ -285,6 +284,9 @@ void update_task_queue(){
     switch (task->id){
       case TASK_SERVO:
         servo_exec(task->param);
+        break;
+      case TASK_SERVO_DETACH:
+        servo.detach();
         break;
       case TASK_PUMP:
         pump_exec(task->param);
