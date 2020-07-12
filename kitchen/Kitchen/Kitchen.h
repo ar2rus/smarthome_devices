@@ -43,6 +43,7 @@
 
 
 #define BUTTON_ID 1
+#define BUTTON_LONG_ID 2
 
 #define BUTTON_PORT D
 #define BUTTON_PIN 5

@@ -2,10 +2,13 @@
 #include "Kitchen.h"
 
 
-char buttonStateValue;
-char hallSensorValue;
+volatile char buttonStateValue;
+volatile char hallSensorValue;
 
 volatile uint32_t systime = 0;
+
+volatile uint32_t c_time = 0;
+volatile uint32_t button_pressed_time = 0;
 
 //набираемый на пульте номер (максимально NUMBER_DIAL_MAX_LENGTH символов)
 char number_dial[NUMBER_DIAL_MAX_LENGTH];
@@ -19,9 +22,13 @@ void switchResponse(unsigned char address){
 	clunet_send_fairy(address, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-void buttonResponse(unsigned char address){
-	char data[] = {BUTTON_ID, buttonStateValue};
+void buttonStateResponse(unsigned char address, unsigned char button_id, unsigned char state){
+	char data[] = {button_id, state};
 	clunet_send_fairy(address, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
+}
+
+void buttonResponse(unsigned char address, unsigned char button_id){
+	buttonStateResponse(address, button_id, buttonStateValue);
 }
 
 void exhaustedFanResponse(unsigned char address){
@@ -234,7 +241,8 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_BUTTON:
 			if (m->size == 0){
-				buttonResponse(m->src_address);
+				buttonStateResponse(m->src_address, BUTTON_ID, buttonStateValue ? (button_pressed_time ? 1 : 0) : 0);
+				buttonStateResponse(m->src_address, BUTTON_LONG_ID, buttonStateValue ? (!button_pressed_time ? 1 : 0) : 0);
 			}
 			break;
 		case CLUNET_COMMAND_DEVICE_STATE:
@@ -345,9 +353,6 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 	}
 }
 
-
-volatile unsigned int c_time = 0;
-
 int main(void){
 	
 	cli();
@@ -374,29 +379,40 @@ int main(void){
 			cmd(clunet_buffered_pop());
 		}
 		
-		if (c_time != systime){	//	check the button and the hall sensor every 10 ms only
-			if (c_time-systime >= 10){
-					char state = BUTTON_READ;
-					if (state != buttonStateValue){
-						buttonStateValue = state;
-						
-						if (buttonStateValue){
-							buttonResponse(CLUNET_BROADCAST_ADDRESS);
+		if (systime - c_time >= 10){	//	check the button and the hall sensor every 10 ms only
+				char state = BUTTON_READ;
+				if (state != buttonStateValue){
+					if (state){
+						button_pressed_time = systime;
+					}else{
+						if (button_pressed_time){
+							buttonResponse(CLUNET_BROADCAST_ADDRESS, BUTTON_ID);
 							switchExecute(FAN_RELAY_ID, 0x02);	//toggle
 							switchResponse(CLUNET_BROADCAST_ADDRESS);
+							buttonStateResponse(CLUNET_BROADCAST_ADDRESS, BUTTON_ID, 0);
+						}else{
+							buttonStateResponse(CLUNET_BROADCAST_ADDRESS, BUTTON_LONG_ID, 0);
 						}
 					}
-					
-					state = HALL_SENSOR_READ;
-					if (state != hallSensorValue){
-						hallSensorValue = state;
-						exhaustedFanResponse(CLUNET_BROADCAST_ADDRESS);
-						
-						switchExecute(FAN_RELAY_ID, hallSensorValue);
-						switchResponse(CLUNET_BROADCAST_ADDRESS);
+					buttonStateValue = state;
+				}else{
+					if (buttonStateValue && button_pressed_time){
+						if (systime - button_pressed_time >= 1500){
+							button_pressed_time = 0;
+							buttonResponse(CLUNET_BROADCAST_ADDRESS, BUTTON_LONG_ID);
+						}
 					}
-					c_time = systime;
-			}
+				}
+					
+				state = HALL_SENSOR_READ;
+				if (state != hallSensorValue){
+					hallSensorValue = state;
+					exhaustedFanResponse(CLUNET_BROADCAST_ADDRESS);
+						
+					switchExecute(FAN_RELAY_ID, hallSensorValue);
+					switchResponse(CLUNET_BROADCAST_ADDRESS);
+				}
+				c_time = systime;
 		}
 		
 		checkNumberTimeout();
