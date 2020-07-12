@@ -2,20 +2,10 @@
 #include "lc75341.h"
 #include "lc75341_config.h"
 
-
-
-/******************************\
- *        Constructor         *
- *  just set class variables  *
-\******************************/
 lc75341::lc75341(uint8_t do_pin, uint8_t cl_pin, uint8_t ce_pin) {
    ccb = new SanyoCCB(do_pin, cl_pin, ce_pin);
 }
 
-/******************************************\
- *                 init()                 *
- *  Set pin functions and initial states  *
-\******************************************/ 
 void lc75341::init() {
 	ccb->init();
 }
@@ -27,7 +17,6 @@ void lc75341::write(){
 unsigned char lc75341::input_value(){
 	return registry[0] & 0x03;
 }
-
 
 char lc75341::input(unsigned char input){
 	if (input >= LC75341_INPUT_MIN && input <= LC75341_INPUT_MAX){
@@ -58,7 +47,6 @@ char lc75341::input_prev(){
 	return input(i);
 }
 
-
 unsigned char lc75341::volume_value(){
 	return registry[1];
 }
@@ -81,7 +69,6 @@ char lc75341::volume(char v){
 	}
 	return 0;
 }
-
 
 char lc75341::volume_dB(signed char v){
 	return volume(-v);
@@ -133,7 +120,6 @@ char lc75341::volume_down(char step){
 	return 0;
 }
 
-
 char lc75341::volume_up_exp(unsigned char step){
 	unsigned char v = volume_value();
 	v /= 10;
@@ -147,7 +133,6 @@ char lc75341::volume_down_exp(unsigned char step){
 	
 	return volume_down(exp_koeff[v]*step);
 }
-
 
 char lc75341::mute(){
 	unsigned char v = volume_value();
@@ -194,7 +179,6 @@ char lc75341::gain(char g){
 	return 0;
 }
 
-
 char lc75341::gain_dB(unsigned char g){
 	return gain(g / 2);
 }
@@ -233,7 +217,6 @@ char lc75341::treble(signed char t){
 	return 0;
 }
 
-
 char lc75341::treble_dB(signed char t){
 	return treble(t / 2);
 }
@@ -245,7 +228,6 @@ char lc75341::treble_up(){
 char lc75341::treble_down(){
 	return treble_dB(treble_dB_value() - 2);
 }
-
 
 unsigned char lc75341::bass_value(){
 	return (registry[2] & 0xF0) >> 4;

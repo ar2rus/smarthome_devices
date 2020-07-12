@@ -4,6 +4,10 @@
 #include <inttypes.h>
 #include "Arduino.h"
 
+// Base delay (us).  Also used to time the CL (clock) line.
+// 100us should be enough even for slow CCB devices.
+#define CCB_DELAY 100
+
 class SanyoCCB {
 	public:
 		SanyoCCB(uint8_t, uint8_t, uint8_t);

@@ -321,21 +321,20 @@ void setup() {
     });
   }
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
-    //char r = 404;
-    //if (request->args() == 0) {
-    //  if (switch_toggle(true)){
-    //    r = 200;
-    //  }
-    //}
-    //server_response(request, r);
+//  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+//    //char r = 404;
+//    //if (request->args() == 0) {
+//    //  if (switch_toggle(true)){
+//    //    r = 200;
+//    //  }
+//    //}
+//    //server_response(request, r);
+//
+//   request->send_P(200, "text/html", serviceName);
+//   
+//  });
 
-   request->send_P(200, "text/html", serviceName);
-   
-  });
-
-  
-  server.on("/next", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
+    server.on("/next", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     audio.input_next();
     server_response(request, 200); 
   });
@@ -358,7 +357,6 @@ void setup() {
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
-
 
   server.on("/f", HTTP_GET, [](AsyncWebServerRequest *request){
     if(request->hasParam("v")){
