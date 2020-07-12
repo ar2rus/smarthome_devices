@@ -14,16 +14,27 @@
       
 */
 
-#include <FS.h>
-#include <FSWebServerLib.h>
+//#include <FS.h>
+//#include <FSWebServerLib.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 #include <ESPAsyncWebServer.h>
 
 #include <TimeLib.h>
 
 #include <ClunetMulticast.h>
+#include "Credentials.h"
 
 #include "VirtualWire.h"
 
+const char *ssid = AP_SSID;
+const char *pass = AP_PASSWORD;
+
+IPAddress ip(192, 168, 1, 121);     //Node static IP
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
 
 
 
@@ -189,13 +200,54 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
   
-  SPIFFS.begin();
-  ESPHTTPServer.begin(&SPIFFS);
+  //SPIFFS.begin();
+  //ESPHTTPServer.begin(&SPIFFS);
 
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
 
   reset();
+
+
+WiFi.mode(WIFI_STA);
+
+  WiFi.begin(ssid, pass);
+  WiFi.config(ip, gateway, subnet);
+
+  //Wifi connection
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("Connection Failed! Rebooting...");
+    delay(1000);
+    ESP.restart();
+  }
+
+  Serial.println("Connected");
+
+  ArduinoOTA.setHostname("meteo");
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA started");
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nOTA finished");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("OTA progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("\nError[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("OTA auth failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("OTA begin failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("OTA connect failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("OTA receive failed");
+    else if (error == OTA_END_ERROR) Serial.println("OTA end failed");
+  });
+
+  ArduinoOTA.begin();
+
 
   vw_set_rx_pin(14);
   vw_set_rx_inverted(1);
@@ -215,7 +267,7 @@ void setup() {
               || (msg->size == 2 && msg->data[0] == 1 && msg->data[1] == 2)) { //all devices or bmp/bme devices
 
             int16_t T16 = (int16_t)T;
-            uint8_t buf[3 + sizeof(T16)];
+            char buf[3 + sizeof(T16)];
             buf[0] = 1; //num of devices
             buf[1] = T == INVALID_T ? 0xFF : 2; //error / bmp/bme
             buf[2] = 0; //device id
@@ -227,17 +279,17 @@ void setup() {
         break;
       case CLUNET_COMMAND_HUMIDITY:
         if (msg->size == 0) {
-          clunet.send(msg->src_address, CLUNET_COMMAND_HUMIDITY_INFO, (uint8_t*)&H, sizeof(H));
+          clunet.send(msg->src_address, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
         }
         break;
       case CLUNET_COMMAND_PRESSURE:
         if (msg->size == 0) {
-          clunet.send(msg->src_address, CLUNET_COMMAND_PRESSURE_INFO, (uint8_t*)&P, sizeof(P));
+          clunet.send(msg->src_address, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
         }
         break;
       case CLUNET_COMMAND_LIGHT_LEVEL: {
           if (msg->size == 0) {
-            uint8_t buf[3];
+            char buf[3];
             buf[0] = 2; //значение люксометра
             memcpy(&buf[1], &L, 2);
             clunet.send(msg->src_address, CLUNET_COMMAND_LIGHT_LEVEL_INFO, buf, sizeof(buf));
@@ -246,7 +298,7 @@ void setup() {
         break;
       case CLUNET_COMMAND_VOLTAGE: {
           if (msg->size == 0) {
-            clunet.send(msg->src_address, CLUNET_COMMAND_VOLTAGE_INFO, (uint8_t*)&VCC, sizeof(VCC));
+            clunet.send(msg->src_address, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
           }
         }
         break;
@@ -346,6 +398,12 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
+  server.on("/rssi", HTTP_GET, [](AsyncWebServerRequest * request) {
+    long rssi = WiFi.RSSI();
+    int quality = 2 * (rssi + 100);
+    request->send(200, "text/plain", String(rssi) + " (" + quality + ")");
+  });
+
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
@@ -358,7 +416,7 @@ void setup() {
 }
 
 void sendMeteoInfo(uint8_t address) {
-  uint8_t buf[9];
+  char buf[9];
   buf[0] = ((L == INVALID_L ? 0 : 1) << 3)
            | ((P == INVALID_P ? 0 : 1) << 2)
            | ((H == INVALID_H ? 0 : 1) << 1)
@@ -416,6 +474,8 @@ void loop() {
     digitalWrite(2, HIGH);
   }
 
-  ESPHTTPServer.handle();
+
+  ArduinoOTA.handle();
+ // ESPHTTPServer.handle();
   yield();
 }

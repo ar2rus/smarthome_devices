@@ -35,7 +35,7 @@ const int LIGHT_PIN = 14;
 int button_state;
 int light_state = LOW;
 
-const unsigned char pwmrange = 255;  //0 - 100
+const int pwmrange = 255;
 int dimmer_value = 0;
 
 //fade-in
@@ -123,18 +123,22 @@ void setup() {
           }
           break;
         case 1:
-          if(request->hasArg("d")){//dimmer: 0 - 100
+          if(request->hasArg("d")){//dimmer: 0 - 255
             String arg = request->arg("d");
             
             //check digits in arg value
-            char all_digits = 1;
+            byte num_digits = 0;
             for (byte i = 0; i < arg.length(); i++) {
-              if (!isDigit(arg.charAt(i))) {
-                all_digits = 0;
+              if (isDigit(arg.charAt(i))) {
+                num_digits++;
+              }else{
+                num_digits = 0;
+                break;
               }
             }
 
-            if (all_digits) {
+            r = 400;
+            if (num_digits && num_digits <= 3) {  //0-255, maximum 3 digits
               if (dimmer_exec(arg.toInt(), true)) {
                 r = 200;
               }
@@ -186,6 +190,9 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
     case 200:
       request->send(200);
       break;
+    case 400:
+      request->send(400, "text/plain", "Bad request\n\n");
+      break;
     default:
       //case 404:
       request->send(404, "text/plain", "File Not Found\n\n");
@@ -194,11 +201,11 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
 }
 
 void switchResponse(unsigned char address) {
-  uint8_t info = (light_state << (RELAY_0_ID - 1));
+  char info = (light_state << (RELAY_0_ID - 1));
   clunet.send(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
-boolean switchExecute(char command) {
+bool switchExecute(byte command) {
   switch (command) {
     case 0x00:  //откл
       light_state = LOW;
@@ -210,7 +217,7 @@ boolean switchExecute(char command) {
       light_state = !light_state;
       break;
     default:
-        return false;
+      return false;
   }
 
   //disable pwm
@@ -221,8 +228,8 @@ boolean switchExecute(char command) {
   return true;
 }
 
-boolean switch_exec(char command, boolean send_response) {
-  boolean r = switchExecute(command);
+bool switch_exec(byte command, bool send_response) {
+  bool r = switchExecute(command);
   if (r) {
     if (send_response) {
       switchResponse(CLUNET_BROADCAST_ADDRESS);
@@ -232,24 +239,24 @@ boolean switch_exec(char command, boolean send_response) {
   return r;
 }
 
-boolean switch_on(boolean send_response) {
+bool switch_on(bool send_response) {
   return switch_exec(0x01, send_response);
 }
 
-boolean switch_off(boolean send_response) {
+bool switch_off(bool send_response) {
   return switch_exec(0x00, send_response);
 }
 
-boolean switch_toggle(boolean send_response) {
+bool switch_toggle(bool send_response) {
   return switch_exec(0x02, send_response);
 }
 
 void dimmerResponse(unsigned char address) {
-  uint8_t data[] = {1, RELAY_0_ID, dimmer_value};
+  char data[] = {1, RELAY_0_ID, dimmer_value};
   clunet.send(address, CLUNET_COMMAND_DIMMER_INFO, data, sizeof(data));
 }
 
-boolean dimmerExecute(unsigned char value) {
+bool dimmerExecute(int value) {
   if (value >= 0 && value <= pwmrange) {
     dimmer_value = value;
     light_state = value > 0;
@@ -259,15 +266,15 @@ boolean dimmerExecute(unsigned char value) {
   return false;
 }
 
-boolean dimmer_exec(unsigned char value, boolean send_response) {
-  boolean r = dimmerExecute(value);
+bool dimmer_exec(int value, bool send_response) {
+  bool r = dimmerExecute(value);
   if (r && send_response) {
     dimmerResponse(CLUNET_BROADCAST_ADDRESS);
   }
   return r;
 }
 
-boolean fade_in_start() {
+bool fade_in_start() {
   if (!fade_in_start_time) {
     fade_in_start_time = millis();
     return true;
@@ -275,7 +282,7 @@ boolean fade_in_start() {
   return false;
 }
 
-boolean fade_in_stop(char send_response) {
+bool fade_in_stop(bool send_response) {
   if (fade_in_start_time) {
     fade_in_start_time = 0;
     if (send_response) {
@@ -286,9 +293,8 @@ boolean fade_in_stop(char send_response) {
   return false;
 }
 
-
 void buttonResponse(unsigned char address) {
-  uint8_t data[] = {BUTTON_ID, !button_state};
+  char data[] = {BUTTON_ID, !button_state};
   clunet.send(address, CLUNET_COMMAND_BUTTON_INFO, data, sizeof(data));
 }
 
@@ -300,7 +306,6 @@ const int pwm_down_up_cycle_time = 4000;
 const int pwm_down_up_cycle_time_2 = pwm_down_up_cycle_time / 2;
 
 void loop() {
-
   int button_tmp = digitalRead(BUTTON_PIN);
   unsigned long m = millis();
 
@@ -348,7 +353,6 @@ void loop() {
       dimmer_exec(pwmrange - pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
     }
   }
-
 
   ESPHTTPServer.handle();
   yield();
