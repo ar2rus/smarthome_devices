@@ -37,6 +37,8 @@
 #define CLUNET_SUPRADIN_ADDRESS 0x00
 #define CLUNET_BROADCAST_ADDRESS 0xFF
 
+#define CLUNET_MULTICAST_DEVICE(address) (address & 0x80)
+
 
 /************COMMANDS****************/
 #define CLUNET_COMMAND_DISCOVERY 0x00
@@ -514,7 +516,7 @@ volatile char dataToRead[CLUNET_READ_BUFFER_SIZE];
 void clunet_init();
 
 // Отправка пакета от любого имени
-//void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size);
+void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size);
 
 // Отправка пакета от своего имени
 void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size);
