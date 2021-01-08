@@ -1,16 +1,28 @@
+/**
+ * Use 2.6.3 esp8266 core
+ * lwip 1.4 Higher bandwidth; CPU 80 MHz
+ * 1M (FS: 128K) !!!
+ * 
+ * dependencies:
+ * ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
+ * PTTasker https://github.com/ar2rus/PTTasker
+ * ClunetMulticast https://github.com/ar2rus/ClunetMulticast
+ */
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include "ESPAsyncTCP.h"
-#include "ESPAsyncWebServer.h"
-
-#include "WaterSystem.h"
 #include <Servo.h>
 
-#include "ClunetMulticast.h"
+//#include "ESPAsyncTCP.h"
+#include <ESPAsyncWebServer.h>
+#include <ClunetMulticast.h>
+
+#include "WaterSystem.h"
 #include "Credentials.h"
+
 
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
@@ -20,6 +32,8 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 AsyncWebServer server(80);
+
+ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 
 Servo servo;
 int pump_state = LOW;
@@ -74,8 +88,6 @@ void setup() {
   });
 
   ArduinoOTA.begin();
-
-  clunetMulticastBegin();
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
   //  char r = 404;
@@ -172,6 +184,31 @@ void setup() {
   });
 
   server.begin();
+
+  if (clunet.connect()){
+    Serial.println("connected");
+    clunet.onPacketReceived([](clunet_packet* packet){
+      Serial.printf("message received: %d\n", packet->command);
+      switch (packet->command) {
+        case CLUNET_COMMAND_SWITCH:{
+          if (packet->data[0] == 0xFF) { //info request
+            if (packet->size == 1) {
+              pumpResponse(packet->src);
+            }
+          }
+        }
+        break;
+        case CLUNET_COMMAND_SERVO:{
+          if (packet->data[0] == 0xFF) { //info request
+            if (packet->size == 1) {
+              servoResponse(packet->src, servo.read());
+            }
+          }
+        }
+        break;
+      }
+    });
+  }
 }
 
 boolean checkUintArg(String argument){
@@ -202,11 +239,11 @@ const char RELAY_0_ID = 1;
 
 void pumpResponse(unsigned char address) {
   char info = (pump_state << (RELAY_0_ID - 1));
-  clunetMulticastSend(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
+  clunet.send(address, CLUNET_COMMAND_SWITCH_INFO, &info, sizeof(info));
 }
 
 void servoResponse(unsigned char address, int16_t angle){
-  clunetMulticastSend(address, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, sizeof(angle));
+  clunet.send(address, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, sizeof(angle));
 }
 
 boolean pump_exec(char command) {
@@ -229,7 +266,7 @@ boolean pump_exec(char command) {
   digitalWrite(PUMP_PIN, pump_state);
   
   if (send_response) {
-    pumpResponse(CLUNET_BROADCAST_ADDRESS);
+    pumpResponse(CLUNET_ADDRESS_BROADCAST);
   }
   return true;
 }
@@ -237,7 +274,7 @@ boolean pump_exec(char command) {
 void servo_exec(int angle){
   servo.attach(SERVO_PIN);
   servo.write(angle);
-  servoResponse(CLUNET_BROADCAST_ADDRESS, angle);
+  servoResponse(CLUNET_ADDRESS_BROADCAST, angle);
 }
 
 void stop_all(){
@@ -315,26 +352,6 @@ void update_task_queue(){
 }
 
 void loop() {
-  clunet_msg msg;
-  if (clunetMulticastHandleMessages(&msg)) {
-    switch (msg.command) {
-      case CLUNET_COMMAND_SWITCH:
-        if (msg.data[0] == 0xFF) { //info request
-          if (msg.size == 1) {
-            pumpResponse(msg.src_address);
-          }
-        }
-        break;
-      case CLUNET_COMMAND_SERVO:
-        if (msg.data[0] == 0xFF) { //info request
-          if (msg.size == 1) {
-            servoResponse(msg.src_address, servo.read());
-          }
-        }
-        break;
-    }
-  }
-
   update_task_queue();
 
   ArduinoOTA.handle();
