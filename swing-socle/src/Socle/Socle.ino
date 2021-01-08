@@ -1,10 +1,14 @@
 /**
- * Use 2.5.2 esp8266 core
+ * Use 2.6.3 esp8266 core
  * lwip 1.4 Higher bandwidth; CPU 80 MHz
  * 1M (64K) !!!
  * 
  * dependencies:
- * TODO:
+ * ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
+ * ESPMiio https://github.com/ar2rus/ESPMiIO
+ * ESPInputs https://github.com/ar2rus/ESPInputs
+ * PTTasker https://github.com/ar2rus/PTTasker
+ * ClunetMulticast https://github.com/ar2rus/ClunetMulticast
  */
 
 #include <ESP8266WiFi.h>
@@ -157,7 +161,7 @@ PT_THREAD(servo_angle(pt_t *p, int angle)){
     PT_DELAY(p, SERVO_STEP_DELAY);
     val = servo.read();
   }  
-  clunet.send(CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, 2);
+  clunet.send(CLUNET_ADDRESS_BROADCAST, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, 2);
   PT_END(p);
 }
 
@@ -296,7 +300,7 @@ PT_THREAD(check_mirobo_status(pt_t *p)){
                       case VS_SPOT_CLEANUP:
                       case VS_GOING_TO_TARGET:
                       case VS_CLEANING_ZONE:
-                        servo_up(true, 20000);
+                        servo_up(true, 45000);
                     }
                   }else if (mirobo_state == VS_GOING_HOME){
                     switch (s){
@@ -313,7 +317,7 @@ PT_THREAD(check_mirobo_status(pt_t *p)){
                   }
                 }
                 mirobo_state = s;
-                send_clunet_device_state_info(CLUNET_BROADCAST_ADDRESS);
+                send_clunet_device_state_info(CLUNET_ADDRESS_BROADCAST);
               }
             }
           }else{
@@ -387,34 +391,34 @@ void setup() {
   ArduinoOTA.begin();
 
 
-   server.on("/up", HTTP_GET, [](AsyncWebServerRequest * request) {
-        char temp[16];
-        sprintf(temp, "{\"result\": %u}", servo_up(false));
-        request->send(200, "application/json", temp);
-   });
+  server.on("/up", HTTP_GET, [](AsyncWebServerRequest * request) {
+    char temp[16];
+    sprintf(temp, "{\"result\": %u}", servo_up(false));
+    request->send(200, "application/json", temp);
+  });
 
-   server.on("/down", HTTP_GET, [](AsyncWebServerRequest * request) {   
-        char temp[16];
-        sprintf(temp, "{\"result\": %u}", servo_down(false));
-        request->send(200, "application/json", temp);
-   });
+  server.on("/down", HTTP_GET, [](AsyncWebServerRequest * request) {   
+     char temp[16];
+     sprintf(temp, "{\"result\": %u}", servo_down(false));
+     request->send(200, "application/json", temp);
+  });
 
-   server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest * request) {
-        char temp[16];
-        sprintf(temp, "{\"result\": %u}", servo_toggle(false));
-        request->send(200, "application/json", temp);
-   });
+  server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest * request) {
+    char temp[16];
+    sprintf(temp, "{\"result\": %u}", servo_toggle(false));
+    request->send(200, "application/json", temp);
+  });
 
-   server.on("/mirobo_state", HTTP_GET, [](AsyncWebServerRequest * request) {
-        char temp[16];
-        sprintf(temp, "{\"state\": %u}", mirobo_state);
-        request->send(200, "application/json", temp);
-   });
+  server.on("/mirobo_state", HTTP_GET, [](AsyncWebServerRequest * request) {
+    char temp[16];
+    sprintf(temp, "{\"state\": %u}", mirobo_state);
+    request->send(200, "application/json", temp);
+  });
 
-   server.on("/mirobo_start", HTTP_GET, [](AsyncWebServerRequest * request) {
-      tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
-      request->send(200);
-   });
+  server.on("/mirobo_start", HTTP_GET, [](AsyncWebServerRequest * request) {
+    tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
+    request->send(200);
+  });
 
 //   server.on("/hello", HTTP_GET, [](AsyncWebServerRequest * request) {
 //      if (mirobo.connect([](MiioError e){
@@ -453,13 +457,13 @@ void setup() {
 //   });
 
   uint16_t id_t0 = inputs.on(0, STATE_CHANGE, 10, [](uint8_t state){
-        Serial.println("task0");
-        digitalWrite(LED_RED_PORT, !state);
+    Serial.println("task0");
+    digitalWrite(LED_RED_PORT, !state);
   });
 
   uint16_t id_t1 = inputs.on(0, STATE_LOW, 5000, [id_t0](uint8_t state){
-      Serial.println("removing task");
-      inputs.remove(id_t0);
+    Serial.println("removing task");
+    inputs.remove(id_t0);
   });
   
   pinMode(LED_RED_PORT, OUTPUT);
@@ -474,19 +478,19 @@ void setup() {
 
   if (clunet.connect()){
     Serial.println("connected");
-    clunet.onMessage([](clunet_message* msg){
+    clunet.onPacketReceived([](clunet_packet* packet){
       
-    Serial.printf("message received: %d\n", msg->command);
-      switch (msg->command) {
+    Serial.printf("message received: %d\n", packet->command);
+      switch (packet->command) {
         case CLUNET_COMMAND_DEVICE_STATE: {
-            if (msg->size == 1) {
-              switch (msg->data[0]){
+            if (packet->size == 1) {
+              switch (packet->data[0]){
                 case 0x01:{
                   tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
                   break;
                 }
                 case 0xFF:{
-                  send_clunet_device_state_info(msg->src_address);
+                  send_clunet_device_state_info(packet->src);
                   break;
                 }
               }
@@ -495,6 +499,15 @@ void setup() {
         }
         case CLUNET_COMMAND_BEEP:{
           tasker.once(&beep_info);
+          break;
+        }
+        //mirobo_toggle by long press on kitchen button
+        case CLUNET_COMMAND_BUTTON_INFO: {
+          if (packet->src == 0x1D){
+            if (packet->size == 2 && packet->data[0] == 02 && packet->data[1] == 01){
+              tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
+            }
+          }
           break;
         }
       }
@@ -509,6 +522,5 @@ void loop() {
   inputs.handle();
   
   ArduinoOTA.handle();
-  
   yield();
 }
