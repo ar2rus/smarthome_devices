@@ -1,33 +1,27 @@
 /**
-   Use 2.6.2 esp8266 core;
-   lwip v2 Higher bandwidth; CPU 80 MHz
-   128K SPIFFS
+   Use 2.6.3 esp8266 core;
+   lwip v1.4 Higher bandwidth; CPU 80 MHz
+   1M (FS: 64K)
 
-    dependencies:
-      https://github.com/PaulStoffregen/Time
-      https://github.com/gmag11/NtpClient
-      https://github.com/gmag11/FSBrowserNG
-
-      https://github.com/me-no-dev/ESPAsyncUDP
-      https://github.com/me-no-dev/ESPAsyncWebServer
-      https://github.com/arthurgargon/ClunetMulticast
+   dependencies:
+   https://github.com/me-no-dev/ESPAsyncWebServer
+   https://github.com/ar2rus/ClunetMulticast
       
 */
 
-//#include <FS.h>
-//#include <FSWebServerLib.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+
 #include <ESPAsyncWebServer.h>
-
-#include <TimeLib.h>
-
 #include <ClunetMulticast.h>
-#include "Credentials.h"
 
 #include "VirtualWire.h"
+
+#include "MeteoReceiver.h"
+#include "Credentials.h"
+
 
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
@@ -37,116 +31,21 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 
-
-//максимальное время использования полученных данных
-#define MESSAGE_USE_TIME 15*60*1000
-
-//максимальная задержка между пакетами-дубликатами одного сообщения
-#define MAX_DELAY_BETWEEN_PACKETS 1000
-
-#define INVALID_M 0xFFFFFFFF
-#define INVALID_T 0xFFFFFFFF
-#define INVALID_P 0xFFFFFFFF
-#define INVALID_H 0xFFFF
-#define INVALID_L 0xFFFF
-#define INVALID_VCC 0xFFFF
-
-
-extern "C" {
-#include "user_interface.h"
-
-  //BME280 calibration consts
-  static uint16_t dig_T1 = 28209;
-  static int16_t  dig_T2 = 26575;
-  static int16_t  dig_T3 = 50;
-  static uint16_t dig_P1 = 37882;
-  static int16_t  dig_P2 = -10739;
-  static int16_t  dig_P3 = 3024;
-  static int16_t  dig_P4 = 6140;
-  static int16_t  dig_P5 = -8;
-  static int16_t  dig_P6 = -7;
-  static int16_t  dig_P7 = 9900;
-  static int16_t  dig_P8 = -10230;
-  static int16_t  dig_P9 = 4285;
-  static uint8_t  dig_H1 = 75;
-  static int16_t  dig_H2 = 354;
-  static uint8_t  dig_H3 = 0;
-  static int16_t  dig_H4 = 339;
-  static int16_t  dig_H5 = 0;
-  static uint8_t  dig_H6 = 30;
-
-#define BME280_S32_t int32_t
-#define BME280_U32_t uint32_t
-#define BME280_S64_t int64_t
-
-  // Returns temperature in DegC, resolution is 0.01 DegC. Output value of “5123” equals 51.23 DegC.
-  // t_fine carries fine temperature as global value
-  BME280_S32_t t_fine;
-  BME280_S32_t BME280_compensate_T_int32(BME280_S32_t adc_T)
-  {
-    BME280_S32_t var1, var2, T;
-    var1 = ((((adc_T >> 3) - ((BME280_S32_t)dig_T1 << 1))) * ((BME280_S32_t)dig_T2)) >> 11;
-    var2 = (((((adc_T >> 4) - ((BME280_S32_t)dig_T1)) * ((adc_T >> 4) - ((BME280_S32_t)dig_T1))) >> 12) * ((BME280_S32_t)dig_T3)) >> 14;
-    t_fine = var1 + var2;
-    T = (t_fine * 5 + 128) >> 8;
-    return T;
-  }
-
-  // Returns pressure in Pa as unsigned 32 bit integer in Q24.8 format (24 integer bits and 8 fractional bits).
-  // Output value of “24674867” represents 24674867/256 = 96386.2 Pa = 963.862 hPa
-  BME280_U32_t BME280_compensate_P_int64(BME280_S32_t adc_P)
-  {
-    BME280_S64_t var1, var2, p;
-    var1 = ((BME280_S64_t)t_fine) - 128000;
-    var2 = var1 * var1 * (BME280_S64_t)dig_P6;
-    var2 = var2 + ((var1 * (BME280_S64_t)dig_P5) << 17);
-    var2 = var2 + (((BME280_S64_t)dig_P4) << 35);
-    var1 = ((var1 * var1 * (BME280_S64_t)dig_P3) >> 8) + ((var1 * (BME280_S64_t)dig_P2) << 12);
-    var1 = (((((BME280_S64_t)1) << 47) + var1)) * ((BME280_S64_t)dig_P1) >> 33;
-    if (var1 == 0)
-    {
-      return 0; // avoid exception caused by division by zero
-    }
-    p = 1048576 - adc_P;
-    p = (((p << 31) - var2) * 3125) / var1;
-    var1 = (((BME280_S64_t)dig_P9) * (p >> 13) * (p >> 13)) >> 25;
-    var2 = (((BME280_S64_t)dig_P8) * p) >> 19;
-    p = ((p + var1 + var2) >> 8) + (((BME280_S64_t)dig_P7) << 4);
-    return (BME280_U32_t)p;
-  }
-
-
-  // Returns humidity in %RH as unsigned 32 bit integer in Q22.10 format (22 integer and 10 fractional bits).
-  // Output value of “47445” represents 47445/1024 = 46.333 %RH
-  BME280_U32_t bme280_compensate_H_int32(BME280_S32_t adc_H)
-  {
-    BME280_S32_t v_x1_u32r;
-    v_x1_u32r = (t_fine - ((BME280_S32_t)76800));
-    v_x1_u32r = (((((adc_H << 14) - (((BME280_S32_t)dig_H4) << 20) - (((BME280_S32_t)dig_H5) * v_x1_u32r)) +
-                   ((BME280_S32_t)16384)) >> 15) * (((((((v_x1_u32r * ((BME280_S32_t)dig_H6)) >> 10) * (((v_x1_u32r * ((BME280_S32_t)dig_H3)) >> 11) + ((BME280_S32_t)32768))) >> 10) + ((BME280_S32_t)2097152)) *
-                       ((BME280_S32_t)dig_H2) + 8192) >> 14));
-    v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((BME280_S32_t)dig_H1)) >> 4));
-    v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
-    v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
-    return (BME280_U32_t)(v_x1_u32r >> 12);
-  }
-
-}
-
 AsyncWebServer server(8080);
-ClunetMulticast clunet(0x81, "Meteo");
+ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 
+//время получения последнего сообщения
+uint32_t TIME;
+//время получения последнего пакета данных (в том числе дубликаты) в мс
+uint32_t M = INVALID_M;
+//количество полученных дублирующих сообщений
+uint8_t R;
 
 int32_t T;
 uint32_t P;
 uint16_t H;
 uint16_t L;
 uint16_t VCC;
-
-time_t TIME;  //время получения последних данных
-uint32_t M = INVALID_M; //время получения последних данных в мс
-//количество полученных дублирующих сообщений
-uint8_t R;
 
 void reset() {
   T   = INVALID_T;
@@ -199,18 +98,14 @@ String rToString(boolean readable) {
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
-  
-  //SPIFFS.begin();
-  //ESPHTTPServer.begin(&SPIFFS);
-
+ 
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
 
   reset();
 
 
-WiFi.mode(WIFI_STA);
-
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pass);
   WiFi.config(ip, gateway, subnet);
 
@@ -253,18 +148,17 @@ WiFi.mode(WIFI_STA);
   vw_set_rx_inverted(1);
 
   vw_set_tx_pin(16);    //not neccesary
-
   vw_set_ptt_pin(0);    //not neccesary
 
   vw_setup(2000);  // Bits per sec
   vw_rx_start();   // Start the receiver PLL running
 
   if (clunet.connect()){
-    clunet.onMessage([](clunet_message* msg){
-    switch (msg->command) {
+    clunet.onPacketReceived([](clunet_packet* packet){
+    switch (packet->command) {
       case CLUNET_COMMAND_TEMPERATURE: {
-          if ((msg->size == 1 && msg->data[0] == 0)
-              || (msg->size == 2 && msg->data[0] == 1 && msg->data[1] == 2)) { //all devices or bmp/bme devices
+          if ((packet->size == 1 && packet->data[0] == 0)
+              || (packet->size == 2 && packet->data[0] == 1 && packet->data[1] == 2)) { //all devices or bmp/bme devices
 
             int16_t T16 = (int16_t)T;
             char buf[3 + sizeof(T16)];
@@ -273,46 +167,46 @@ WiFi.mode(WIFI_STA);
             buf[2] = 0; //device id
 
             memcpy(&buf[3], &T16, sizeof(T16));
-            clunet.send(msg->src_address, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
+            clunet.send(packet->src, CLUNET_COMMAND_TEMPERATURE_INFO, buf, sizeof(buf));
           }
         }
         break;
       case CLUNET_COMMAND_HUMIDITY:
-        if (msg->size == 0) {
-          clunet.send(msg->src_address, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
+        if (packet->size == 0) {
+          clunet.send(packet->src, CLUNET_COMMAND_HUMIDITY_INFO, (char*)&H, sizeof(H));
         }
         break;
       case CLUNET_COMMAND_PRESSURE:
-        if (msg->size == 0) {
-          clunet.send(msg->src_address, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
+        if (packet->size == 0) {
+          clunet.send(packet->src, CLUNET_COMMAND_PRESSURE_INFO, (char*)&P, sizeof(P));
         }
         break;
       case CLUNET_COMMAND_LIGHT_LEVEL: {
-          if (msg->size == 0) {
+          if (packet->size == 0) {
             char buf[3];
             buf[0] = 2; //значение люксометра
             memcpy(&buf[1], &L, 2);
-            clunet.send(msg->src_address, CLUNET_COMMAND_LIGHT_LEVEL_INFO, buf, sizeof(buf));
+            clunet.send(packet->src, CLUNET_COMMAND_LIGHT_LEVEL_INFO, buf, sizeof(buf));
           }
         }
         break;
       case CLUNET_COMMAND_VOLTAGE: {
-          if (msg->size == 0) {
-            clunet.send(msg->src_address, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
+          if (packet->size == 0) {
+            clunet.send(packet->src, CLUNET_COMMAND_VOLTAGE_INFO, (char*)&VCC, sizeof(VCC));
           }
         }
         break;
       case CLUNET_COMMAND_METEO: {
-          if (msg->size == 0) {
-            sendMeteoInfo(msg->src_address);
+          if (packet->size == 0) {
+            sendMeteoInfo(packet->src);
           }
         }
         break;
-        /*case CLUNET_COMMAND_DEBUG:{
-          uint32_t m = millis() - M;
-          clunet.send(msg->src_address, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
-          }
-          break;*/
+      /*case CLUNET_COMMAND_DEBUG:{
+        uint32_t m = millis() - M;
+        clunet.send(packet->src, CLUNET_COMMAND_DEBUG, (char*)&m, sizeof(m));
+        }
+        break;*/
       }
     });
   }
@@ -341,7 +235,7 @@ WiFi.mode(WIFI_STA);
       case 0: {
           String message;
           if (M == INVALID_M) {
-            message = "No data recieved";
+            message = "No data received";
           } else {
 
             message = "Time: " + timeToString(true);
@@ -442,40 +336,38 @@ void loop() {
     reset();
   }
 
-  if (vw_get_message(buf, &buflen)) { // Non-blocking
-    digitalWrite(2, LOW); // Flash a light to show received good message
-
-    BME280_S32_t ut = ((uint32_t)buf[3] << 12) | ((uint32_t)buf[4] << 4) | ((buf[5] >> 4) & 0x0F);
-    BME280_S32_t up = ((uint32_t)buf[0] << 12) | ((uint32_t)buf[1] << 4) | ((buf[2] >> 4) & 0x0F);
-    BME280_S32_t uh = ((uint32_t)buf[6] << 8) | (uint32_t)buf[7];
-
-    L = ((uint16_t)buf[8] << 8) | (uint16_t)buf[9];       //*1
-    if (L == INVALID_L) { //reserved value for error
-      L--;  //max valid value -> 65534
+  if (dm >= MIN_DELAY_BETWEEN_PACKETS){
+    digitalWrite(2, HIGH);  //led off
+    if (vw_get_message(buf, &buflen)) { // Non-blocking
+      digitalWrite(2, LOW); // Flash a light to show received good message
+  
+      BME280_S32_t ut = ((uint32_t)buf[3] << 12) | ((uint32_t)buf[4] << 4) | ((buf[5] >> 4) & 0x0F);
+      BME280_S32_t up = ((uint32_t)buf[0] << 12) | ((uint32_t)buf[1] << 4) | ((buf[2] >> 4) & 0x0F);
+      BME280_S32_t uh = ((uint32_t)buf[6] << 8) | (uint32_t)buf[7];
+  
+      L = ((uint16_t)buf[8] << 8) | (uint16_t)buf[9];       //*1
+      if (L == INVALID_L) { //reserved value for error
+        L--;  //max valid value -> 65534
+      }
+  
+      VCC = ((uint16_t)buf[10] << 8) | (uint16_t)buf[11];   //*100
+  
+      T = BME280_compensate_T_int32(ut);                             //*100
+      P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
+      H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
+  
+      if (dm > MAX_DELAY_BETWEEN_PACKETS) { //прошло больше секунды -> это не дублирующее сообщение
+        TIME = m;
+        R = 1;
+        sendMeteoInfo(CLUNET_ADDRESS_BROADCAST);
+      } else {
+        R++;
+      }
+  
+      M = m;
     }
-
-    VCC = ((uint16_t)buf[10] << 8) | (uint16_t)buf[11];   //*100
-
-    T = BME280_compensate_T_int32(ut);                             //*100
-    P = (BME280_compensate_P_int64(up) / 256) * 1000 / 133.322;    //*1000
-    H = (bme280_compensate_H_int32(uh) * 10) / 1024;               //*10
-
-    if (dm > MAX_DELAY_BETWEEN_PACKETS) { //прошло больше секунды -> это не дублирующее сообщение
-      TIME = now();
-      R = 1;
-      sendMeteoInfo(CLUNET_BROADCAST_ADDRESS);
-    } else {
-      R++;
-    }
-
-    M = m;
-
-    delay(100);
-    digitalWrite(2, HIGH);
   }
-
-
+  
   ArduinoOTA.handle();
- // ESPHTTPServer.handle();
   yield();
 }

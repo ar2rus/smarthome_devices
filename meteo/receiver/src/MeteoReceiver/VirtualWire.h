@@ -341,4 +341,3 @@ extern "C"
 /// Transmitter side of simple one-way transmitter->receiver pair using VirtualWire
 
 #endif
-
