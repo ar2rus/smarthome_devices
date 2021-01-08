@@ -1,47 +1,47 @@
 /**
-    Use 2.6.2 esp8266 core
-    lwip 2 Higher bandwidth; CPU 80 MHz
-    128K SPIFFS
+    Use 2.6.3 esp8266 core
+    lwip 1.4 Higher bandwidth; CPU 80 MHz
+    1M (FS: 128K)
 
-     dependencies:
-      https://github.com/PaulStoffregen/Time
-      https://github.com/gmag11/NtpClient
-      https://github.com/gmag11/FSBrowserNG
-
-      https://github.com/me-no-dev/ESPAsyncUDP
-      https://github.com/me-no-dev/ESPAsyncWebServer
-      https://github.com/arthurgargon/ClunetMulticast
+    dependencies:
+    https://github.com/me-no-dev/ESPAsyncWebServer
+    https://github.com/ar2rus/ClunetMulticast
 
  */
 
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 
-#include <FS.h>
-#include <FSWebServerLib.h>
 #include <ESPAsyncWebServer.h>
-
-#include <TimeLib.h>
-
 #include <ClunetMulticast.h>
 
+#include "KitchenLight.h"
+#include "Credentials.h"
+
+const char *ssid = AP_SSID;
+const char *pass = AP_PASSWORD;
+
+IPAddress ip(192, 168, 1, 122); //Node static IP
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
+
 AsyncWebServer server(8080);
-ClunetMulticast clunet(0x82, "KitchenLight");
-
-const char RELAY_0_ID = 1;
-const char BUTTON_ID = 3;
-
-const int BUTTON_PIN = 12;
-const int LIGHT_PIN = 14;
+ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 
 int button_state;
 int light_state = LOW;
 
-const int pwmrange = 255;
 int dimmer_value = 0;
 
 //fade-in
 unsigned long fade_in_start_time = 0;
 
 void setup() {
+  Serial.begin(115200);
+  Serial.println("Booting");
+
   pinMode(BUTTON_PIN, INPUT);
 
   pinMode(LIGHT_PIN, OUTPUT);
@@ -49,60 +49,74 @@ void setup() {
 
   button_state = digitalRead(BUTTON_PIN);
 
-  analogWriteRange(pwmrange);
-  analogWriteFreq(100);
+  analogWriteRange(PWM_RANGE);
+  analogWriteFreq(PWM_FREQUENCY);
 
 
-  Serial.begin(115200);
-  Serial.println("Booting");
+  WiFi.mode(WIFI_STA);
   
-  SPIFFS.begin();
-  ESPHTTPServer.begin(&SPIFFS);
+  WiFi.begin(ssid, pass);
+  WiFi.config(ip, gateway, subnet);
 
-    if (clunet.connect()){
-      clunet.onMessage([](clunet_message* msg){
-         switch (msg->command) {
-            case CLUNET_COMMAND_SWITCH:
-              if (msg->data[0] == 0xFF) { //info request
-                if (msg->size == 1) {
-                  switchResponse(msg->src_address);
-                }
-              } else {
-                if (msg->size == 2) {
-                  switch (msg->data[0]) {
-                    case 0x00:
-                    case 0x01:
-                    case 0x02:
-                      if (msg->data[1] == RELAY_0_ID) {
-                        switch_exec(msg->data[0], false);
-                      }
-                      break;
-                    case 0x03:
-                      switch_exec((msg->data[1] >> (RELAY_0_ID - 1)) & 0x01, false);
-                      break;
-                  }
-                  switchResponse(msg->src_address);
-                }
+  //Wifi connection
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    delay(1000);
+    ESP.restart();
+  }
+
+  ArduinoOTA.setHostname("kitchen-light");
+  
+  ArduinoOTA.onStart([]() {
+    Serial.println("ArduinoOTA start update");
+  });
+
+  ArduinoOTA.begin();
+  
+
+  if (clunet.connect()){
+    clunet.onPacketReceived([](clunet_packet* packet){
+       switch (packet->command) {
+          case CLUNET_COMMAND_SWITCH:
+            if (packet->data[0] == 0xFF) { //info request
+              if (packet->size == 1) {
+                switchResponse(packet->src);
               }
-              break;
-            case CLUNET_COMMAND_BUTTON:
-              if (msg->size == 0) {
-                buttonResponse(msg->src_address);
-              }
-              break;
-            case CLUNET_COMMAND_DIMMER:
-              if (msg->size == 1 && msg->data[0] == 0xFF) {
-                dimmerResponse(msg->src_address);
-              } else if (msg->size == 2) {
-                //у нас только один канал. Проверяем, что команда для него
-                if ((msg->data[0] >> (RELAY_0_ID - 1)) & 0x01) {
-                  dimmer_exec(msg->data[1], false);
-                  dimmerResponse(msg->src_address);
+            } else {
+              if (packet->size == 2) {
+                switch (packet->data[0]) {
+                  case 0x00:
+                  case 0x01:
+                  case 0x02:
+                    if (packet->data[1] == RELAY_0_ID) {
+                      switch_exec(packet->data[0], false);
+                    }
+                    break;
+                  case 0x03:
+                    switch_exec((packet->data[1] >> (RELAY_0_ID - 1)) & 0x01, false);
+                    break;
                 }
+                switchResponse(packet->src);
               }
-          }
-      });
-    }
+            }
+            break;
+          case CLUNET_COMMAND_BUTTON:
+            if (packet->size == 0) {
+              buttonResponse(packet->src);
+            }
+            break;
+          case CLUNET_COMMAND_DIMMER:
+            if (packet->size == 1 && packet->data[0] == 0xFF) {
+              dimmerResponse(packet->src);
+            } else if (packet->size == 2) {
+              //у нас только один канал. Проверяем, что команда для него
+              if ((packet->data[0] >> (RELAY_0_ID - 1)) & 0x01) {
+                dimmer_exec(packet->data[1], false);
+                dimmerResponse(packet->src);
+              }
+            }
+        }
+    });
+  }
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){  //toggle
     int r = 404;
@@ -173,10 +187,10 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
-   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
+  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
-
+  
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_response(request, 404);
   });
@@ -232,7 +246,7 @@ bool switch_exec(byte command, bool send_response) {
   bool r = switchExecute(command);
   if (r) {
     if (send_response) {
-      switchResponse(CLUNET_BROADCAST_ADDRESS);
+      switchResponse(CLUNET_ADDRESS_BROADCAST);
     }
     fade_in_stop(false);
   }
@@ -257,10 +271,10 @@ void dimmerResponse(unsigned char address) {
 }
 
 bool dimmerExecute(int value) {
-  if (value >= 0 && value <= pwmrange) {
+  if (value >= 0 && value <= PWM_RANGE) {
     dimmer_value = value;
     light_state = value > 0;
-    analogWrite(LIGHT_PIN, pwmrange - dimmer_value);
+    analogWrite(LIGHT_PIN, PWM_RANGE - dimmer_value);
     return true;
   }
   return false;
@@ -269,7 +283,7 @@ bool dimmerExecute(int value) {
 bool dimmer_exec(int value, bool send_response) {
   bool r = dimmerExecute(value);
   if (r && send_response) {
-    dimmerResponse(CLUNET_BROADCAST_ADDRESS);
+    dimmerResponse(CLUNET_ADDRESS_BROADCAST);
   }
   return r;
 }
@@ -286,7 +300,7 @@ bool fade_in_stop(bool send_response) {
   if (fade_in_start_time) {
     fade_in_start_time = 0;
     if (send_response) {
-      dimmerResponse(CLUNET_BROADCAST_ADDRESS);
+      dimmerResponse(CLUNET_ADDRESS_BROADCAST);
     }
     return true;
   }
@@ -300,11 +314,6 @@ void buttonResponse(unsigned char address) {
 
 unsigned long button_pressed_time = 0;
 
-const int delay_before_toggle = 25;
-const int delay_before_pwm = 500;
-const int pwm_down_up_cycle_time = 4000;
-const int pwm_down_up_cycle_time_2 = pwm_down_up_cycle_time / 2;
-
 void loop() {
   int button_tmp = digitalRead(BUTTON_PIN);
   unsigned long m = millis();
@@ -315,9 +324,9 @@ void loop() {
       if (!button_pressed_time) {
         button_pressed_time = m;
       }
-      if (m - button_pressed_time >= delay_before_toggle) { //HIGH->LOW
+      if (m - button_pressed_time >= DELAY_BEFORE_TOGGLE) { //HIGH->LOW
         button_state = button_tmp;  //LOW
-        buttonResponse(CLUNET_BROADCAST_ADDRESS);
+        buttonResponse(CLUNET_ADDRESS_BROADCAST);
         switch_toggle(true);
         if (!light_state) { //погасили
           button_pressed_time = 0;  //таймер и диммер не нужны
@@ -325,7 +334,7 @@ void loop() {
       }
     } else { //LOW->HIGH
       button_state = button_tmp; //HIGH
-      buttonResponse(CLUNET_BROADCAST_ADDRESS);
+      buttonResponse(CLUNET_ADDRESS_BROADCAST);
 
       if (button_pressed_time) {
         fade_in_stop(true);
@@ -338,22 +347,22 @@ void loop() {
   }
 
   if (button_pressed_time) {
-    if (m - button_pressed_time >= delay_before_pwm) {
+    if (m - button_pressed_time >= DELAY_BEFORE_PWM) {
       fade_in_start();
     }
   }
 
   //fade_in_update
   if (fade_in_start_time) {
-    int v0 = (m - fade_in_start_time) % pwm_down_up_cycle_time;
-    int v1 = v0 % pwm_down_up_cycle_time_2;
-    if (v0 >= pwm_down_up_cycle_time_2) { //up
-      dimmer_exec(pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
+    int v0 = (m - fade_in_start_time) % PWM_DOWN_UP_CYCLE_TIME;
+    int v1 = v0 % PWM_DOWN_UP_CYCLE_TIME_2;
+    if (v0 >= PWM_DOWN_UP_CYCLE_TIME_2) { //up
+      dimmer_exec(PWM_RANGE * v1 / (PWM_DOWN_UP_CYCLE_TIME_2 - 1), false);
     } else { //down
-      dimmer_exec(pwmrange - pwmrange * v1 / (pwm_down_up_cycle_time_2 - 1), false);
+      dimmer_exec(PWM_RANGE - PWM_RANGE * v1 / (PWM_DOWN_UP_CYCLE_TIME_2 - 1), false);
     }
   }
 
-  ESPHTTPServer.handle();
+  ArduinoOTA.handle();
   yield();
 }
