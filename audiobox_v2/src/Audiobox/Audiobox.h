@@ -1,8 +1,8 @@
 #ifndef Audiobox_h
 #define Audiobox_h
 
-#define CLUNET_AUDIOBOX_ADDRESS 0x84
-#define CLUNET_AUDIOBOX_NAME "Audiobox"
+#define CLUNET_DEVICE_ID 0x84
+#define CLUNET_DEVICE_NAME "Audiobox"
 
 #define VOLUME_DELAY_RESPONSE 150
 

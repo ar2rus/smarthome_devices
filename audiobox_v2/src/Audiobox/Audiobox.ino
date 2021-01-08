@@ -1,5 +1,5 @@
 /**
- * Use 2.5.2 esp8266 core
+ * Use 2.6.3 esp8266 core
  * lwip 1.4 Higher bandwidth; CPU 80 MHz
  * 1M (128K)
  * 
@@ -35,7 +35,7 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 AsyncWebServer server(80);
-ClunetMulticast clunet(CLUNET_AUDIOBOX_ADDRESS, CLUNET_AUDIOBOX_NAME);
+ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 
 lc75341 audio(14, 16, 12);
 
@@ -316,8 +316,8 @@ void setup() {
   irrecv.enableIRIn();
 
   if (clunet.connect()){
-    clunet.onMessage([](clunet_message* msg){
-      cmd(msg);
+    clunet.onPacketReceived([](clunet_packet* packet){
+      cmd(packet);
     });
   }
 
@@ -460,31 +460,31 @@ void channel(uint8_t ch){
 }
 
 void send_cmd(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
-  clunet_message tmp_msg;
-  tmp_msg.src_address = src_address;
-  tmp_msg.dst_address = dst_address;
-  tmp_msg.command = (char)command;
-  memcpy(&tmp_msg.data, data, size);
-  tmp_msg.size = (char)size;
+  clunet_packet packet;
+  packet.src = src_address;
+  packet.dst = dst_address;
+  packet.command = command;
+  memcpy(&packet.data, data, size);
+  packet.size = size;
   
-  cmd(&tmp_msg);
+  cmd(&packet);
 }
 
 //команда для себя без выдачи ответа
 void s_cmd(unsigned char command, char* data, unsigned char size){
-  send_cmd(CLUNET_AUDIOBOX_ADDRESS, CLUNET_AUDIOBOX_ADDRESS, command, data, size);
+  send_cmd(CLUNET_DEVICE_ID, CLUNET_DEVICE_ID, command, data, size);
 }
 
 //команда для себя с ответом всем
 void b_cmd(unsigned char command, char* data, unsigned char size){
-  send_cmd(CLUNET_AUDIOBOX_ADDRESS, CLUNET_BROADCAST_ADDRESS, command, data, size);
+  send_cmd(CLUNET_DEVICE_ID, CLUNET_ADDRESS_BROADCAST, command, data, size);
 }
 
-void cmd(clunet_message* m){
+void cmd(clunet_packet* packet){
   //в выключенном состоянии разрешаем только 
   //CLUNET_COMMAND_POWER и CLUNET_COMMAND_CHANNEL
   if (!power_state){
-    switch (m->command){
+    switch (packet->command){
       case CLUNET_COMMAND_POWER:
       case CLUNET_COMMAND_CHANNEL:
       case CLUNET_COMMAND_RC_BUTTON_PRESSED:
@@ -496,13 +496,13 @@ void cmd(clunet_message* m){
   
   char response = 0;
   
-  switch(m->command){
+  switch(packet->command){
     case CLUNET_COMMAND_POWER:
-    if (m->size == 1){
-      switch (m->data[0]){
+    if (packet->size == 1){
+      switch (packet->data[0]){
         case 0:
         case 1:
-          power(m->data[0]);
+          power(packet->data[0]);
           response = 5;
           break;
         case 2:
@@ -517,9 +517,9 @@ void cmd(clunet_message* m){
       break;
     
     case CLUNET_COMMAND_CHANNEL:
-    switch (m->size){
+    switch (packet->size){
       case 1:
-      switch (m->data[0]){
+      switch (packet->data[0]){
         case 0xFF:
           if (power_state){
             response = 1;
@@ -546,11 +546,11 @@ void cmd(clunet_message* m){
       }
       break;
       case 2:
-      switch(m->data[0]){
+      switch(packet->data[0]){
         case 0x00:
           response = check_power();
           if (!response){
-            audio.input(m->data[1] - 1);
+            audio.input(packet->data[1] - 1);
             
             check_fm_channel();
             response = 1;
@@ -561,9 +561,9 @@ void cmd(clunet_message* m){
     }
     break;
     case CLUNET_COMMAND_VOLUME:
-    switch (m->size){
+    switch (packet->size){
       case 1:
-      switch (m->data[0]){
+      switch (packet->data[0]){
         case 0xFF:
           response = 2;
           break;
@@ -578,13 +578,13 @@ void cmd(clunet_message* m){
       }
       break;
       case 2:
-      switch(m->data[0]){
+      switch(packet->data[0]){
         case 0x00:
-          audio.volume_percent(m->data[1]);
+          audio.volume_percent(packet->data[1]);
           response = 2;
           break;
         case 0x01:
-          audio.volume_dB(m->data[1]);
+          audio.volume_dB(packet->data[1]);
           response = 2;
           break;
       }
@@ -592,8 +592,8 @@ void cmd(clunet_message* m){
     }
     break;
     case CLUNET_COMMAND_MUTE:
-    if (m->size == 1){
-      switch(m->data[0]){
+    if (packet->size == 1){
+      switch(packet->data[0]){
         case 0:
           audio.volume_percent(0);
           response = 2;
@@ -614,9 +614,9 @@ void cmd(clunet_message* m){
     }
     break;
     case CLUNET_COMMAND_EQUALIZER:
-    switch(m->size){
+    switch(packet->size){
       case 1:
-      switch(m->data[0]){
+      switch(packet->data[0]){
         case 0x00:
           audio.equalizer_reset();
           response = 3;
@@ -629,16 +629,16 @@ void cmd(clunet_message* m){
       
       case 2:
       case 3:
-      switch(m->data[0]){
+      switch(packet->data[0]){
         case 0x01:  //gain
-        switch(m->data[1]){
+        switch(packet->data[1]){
           case 0x00:  //reset
             audio.gain_dB(0);
             response = 3;
             break;
           case 0x01:  //dB
-            if (m->size == 3){
-              audio.gain_dB(m->data[2]);
+            if (packet->size == 3){
+              audio.gain_dB(packet->data[2]);
               response = 3;
             }
             break;
@@ -654,14 +654,14 @@ void cmd(clunet_message* m){
         break;
         
         case 0x02:  //treble
-        switch(m->data[1]){
+        switch(packet->data[1]){
           case 0x00:  //reset
             audio.treble_dB(0);
             response = 3;
           break;
           case 0x01:  //dB
-            if (m->size == 3){
-              audio.treble_dB(m->data[2]);
+            if (packet->size == 3){
+              audio.treble_dB(packet->data[2]);
               response = 3;
             }
             break;
@@ -677,14 +677,14 @@ void cmd(clunet_message* m){
         break;
         
         case 0x03:  //bass
-        switch(m->data[1]){
+        switch(packet->data[1]){
           case 0x00:  //reset
             audio.bass_dB(0);
             response = 3;
             break;
           case 0x01:  //dB
-            if (m->size == 3){
-              audio.bass_dB(m->data[2]);
+            if (packet->size == 3){
+              audio.bass_dB(packet->data[2]);
               response = 3;
             }
           break;
@@ -703,11 +703,11 @@ void cmd(clunet_message* m){
     }
     break;
     case CLUNET_COMMAND_FM:
-    if (m->size > 0){
-      switch(m->data[0]){
+    if (packet->size > 0){
+      switch(packet->data[0]){
         case 0xFF:  //info
-          if (m->size == 2){
-            switch (m->data[1]){
+          if (packet->size == 2){
+            switch (packet->data[1]){
              case 0x00:
                 response = 10;
                 break;
@@ -717,23 +717,23 @@ void cmd(clunet_message* m){
           }
           break;
         case 0x00:  //freq
-          if (m->size == 3){
-            if (FM_select_frequency((m->data[2]<<8) | (m->data[1]))){ //check band limit
+          if (packet->size == 3){
+            if (FM_select_frequency((packet->data[2]<<8) | (packet->data[1]))){ //check band limit
               response = 10;
             }
           }
           break;
         case 0x01:  //saved channel
-          if (m->size == 2){
-            if (FM_select_channel(m->data[1])){
+          if (packet->size == 2){
+            if (FM_select_channel(packet->data[1])){
               response = 10;
             }
           }
           break;
         case 0x02:  //next saved
         case 0x03:  //prev saved
-        if (m->size == 1){
-          if (FM_select_next_channel(m->data[0] == 0x02)){
+        if (packet->size == 1){
+          if (FM_select_next_channel(packet->data[0] == 0x02)){
             response = 10;
           }
         }
@@ -754,65 +754,65 @@ void cmd(clunet_message* m){
           break;
         
         case 0x0A:
-          if (m->size == 3){
-            if (FM_control(m->data[1], m->data[2])){
+          if (packet->size == 3){
+            if (FM_control(packet->data[1], packet->data[2])){
               response = 11;
             }
           }
           break;
                 
         case 0xEA:  //request num saved channels
-          if (m->size == 1){
-            m->data[1] = FM_get_num_channels();
-            clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+          if (packet->size == 1){
+            packet->data[1] = FM_get_num_channels();
+            clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 2);
           }
           break;
         case 0xEB:  //get saved channel's frequency
-          if (m->size == 2){
+          if (packet->size == 2){
             
-            uint16_t* freq = (uint16_t*)(&m->data[2]);
-            *freq = FM_get_channel_frequency(m->data[1]);
-            clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 4);
+            uint16_t* freq = (uint16_t*)(&packet->data[2]);
+            *freq = FM_get_channel_frequency(packet->data[1]);
+            clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 4);
           }
           break;
         case 0xEC:  //add channel
-          switch(m->size){
+          switch(packet->size){
             case 1: { //current freq
               fm_channel_info* info = FM_channel_info();
-              m->data[1] = FM_add_channel(info->frequency);
-              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              packet->data[1] = FM_add_channel(info->frequency);
+              clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 2);
               }
               break;
             case 3: { //specified freq
-              uint16_t* f = (uint16_t*)&m->data[1];
-              m->data[1] = FM_add_channel(*f);
-              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              uint16_t* f = (uint16_t*)&packet->data[1];
+              packet->data[1] = FM_add_channel(*f);
+              clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 2);
               }
               break;
           }
           break;
         case 0xED:  //save channel
-          switch(m->size){
+          switch(packet->size){
             case 2: { //current freq
               fm_channel_info* info = FM_channel_info();
-              m->data[1] = FM_save_channel(m->data[1], info->frequency);
-              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              packet->data[1] = FM_save_channel(packet->data[1], info->frequency);
+              clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 2);
               }
               break;
             case 4: { //specified freq
-              uint16_t* f = (uint16_t*)&m->data[2];
-              m->data[1] = FM_save_channel(m->data[1], *f);
-              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              uint16_t* f = (uint16_t*)&packet->data[2];
+              packet->data[1] = FM_save_channel(packet->data[1], *f);
+              clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 2);
               }
               break;
           }
           break;
         case 0xEE:
-          if (m->size == 3){
-            if (m->data[1] == 0xEE && m->data[2] == 0xFF){
+          if (packet->size == 3){
+            if (packet->data[1] == 0xEE && packet->data[2] == 0xFF){
               FM_clear_channels();
-              m->data[1] = 1;
-              clunet.send(m->src_address, CLUNET_COMMAND_FM_INFO, m->data, 2);
+              packet->data[1] = 1;
+              clunet.send(packet->src, CLUNET_COMMAND_FM_INFO, packet->data, 2);
               break;
             }
           }
@@ -821,14 +821,14 @@ void cmd(clunet_message* m){
     }
     break;
     case CLUNET_COMMAND_RC_BUTTON_PRESSED:{
-      if (m->src_address == CLUNET_AUDIOBOX_ADDRESS){
-        clunet.broadcast_send(CLUNET_COMMAND_RC_BUTTON_PRESSED, m->data, m->size);
+      if (packet->src == CLUNET_DEVICE_ID){
+        clunet.send_broadcast(CLUNET_COMMAND_RC_BUTTON_PRESSED, packet->data, packet->size);
       }
       
-      if (m->data[0] == 0x00){  //nec
+      if (packet->data[0] == 0x00){  //nec
         char data[3];
-        if (m->data[1] == 0x02){
-          switch (m->data[2]){
+        if (packet->data[1] == 0x02){
+          switch (packet->data[2]){
             case 0x48:{
               data[0] = 2;
               b_cmd(CLUNET_COMMAND_POWER, data, 1);
@@ -906,7 +906,7 @@ void cmd(clunet_message* m){
             case 0x9a://мегаполис (103.6) ->ratio
             case 0x88://эхо москвы (99.1) ->brightness
             case 0xc2://вести fm (93.5)   ->exit
-              switch (m->data[2]){
+              switch (packet->data[2]){
                 case 0xda:
                   data[1] = 0x4A;
                   data[2] = 0x24;
@@ -930,8 +930,8 @@ void cmd(clunet_message* m){
           }
         }
 
-        if ((m->data[1] & (~_BV(7))) == 0x02){    //addresss == 0x02, repeat allowed
-          switch (m->data[2]){
+        if ((packet->data[1] & (~_BV(7))) == 0x02){    //addresss == 0x02, repeat allowed
+          switch (packet->data[2]){
             case 0x58:{
               delayedResponseCounterValue = millis();
               char data = 2;
@@ -951,19 +951,19 @@ void cmd(clunet_message* m){
     break;
   }
   
-  if (!(m->src_address == CLUNET_AUDIOBOX_ADDRESS && m->dst_address == CLUNET_AUDIOBOX_ADDRESS)){  //not s_cmd
+  if (!(packet->src == CLUNET_DEVICE_ID && packet->dst == CLUNET_DEVICE_ID)){  //not s_cmd
     char data[3];
     switch(response){
       case 1:{
         data[0] = audio.input_value() + 1;  //0 channel -> to 1 channel
-        clunet.send(m->dst_address, CLUNET_COMMAND_CHANNEL_INFO, data, 1);
+        clunet.send(packet->dst, CLUNET_COMMAND_CHANNEL_INFO, data, 1);
         saveInput(data[0]-1);
       }
       break;
       case 2:{
         data[0] = audio.volume_percent_value();
         data[1] = audio.volume_dB_value();
-        clunet.send(m->dst_address, CLUNET_COMMAND_VOLUME_INFO, data, 2);
+        clunet.send(packet->dst, CLUNET_COMMAND_VOLUME_INFO, data, 2);
         saveVolume(data[1]);
       }
       break;
@@ -971,23 +971,23 @@ void cmd(clunet_message* m){
         data[0] = audio.gain_dB_value();
         data[1] = audio.treble_dB_value();
         data[2] = audio.bass_dB_value();
-        clunet.send(m->dst_address, CLUNET_COMMAND_EQUALIZER_INFO, data, 3);
+        clunet.send(packet->dst, CLUNET_COMMAND_EQUALIZER_INFO, data, 3);
         saveEqualizer(data[0], data[1], data[2]);
       }
       break;
       case 5:
-        clunet.send(m->dst_address, CLUNET_COMMAND_POWER_INFO, (char*)&power_state, sizeof(power_state));
+        clunet.send(packet->dst, CLUNET_COMMAND_POWER_INFO, (char*)&power_state, sizeof(power_state));
         savePower(power_state);
         break;
       case 10:{
         fm_channel_info* info = FM_channel_info();
-        clunet.send(m->dst_address, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
+        clunet.send(packet->dst, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_channel_info));
         saveFMChannel(info);
       }
       break;
       case 11:{
         fm_state_info* info = FM_state_info();
-        clunet.send(m->dst_address, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
+        clunet.send(packet->dst, CLUNET_COMMAND_FM_INFO, (char*)info, sizeof(fm_state_info));
         saveFMControls(info);
       }
       break;
