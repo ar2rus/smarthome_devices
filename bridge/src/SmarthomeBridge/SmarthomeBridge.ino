@@ -11,6 +11,8 @@
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
 
+#include <time.h>
+
 #include "SmarthomeBridge.h"
 #include "Credentials.h"
 
@@ -55,6 +57,12 @@ uint8_t uart_send_message(char code, char* data, uint8_t length){
 
 int x = 0;
 
+
+void config_time(float timezone_hours_offset, int daylightOffset_sec, const char* server1, const char* server2, const char* server3) {
+  configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
+  //INFO("Timezone: %f; daylightOffset: %d", timezone_hours_offset, daylightOffset_sec);
+}
+
 void setup() {
   Serial1.begin(115200);
   Serial1.println("\n\nHello");
@@ -85,16 +93,18 @@ void setup() {
   ArduinoOTA.setHostname("smarthome-bridge");
   ArduinoOTA.begin();
 
+  config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
+
   if (clunet.connect()){
     clunet.onPacketSniff([](clunet_packet* packet){
-      Serial1.println("received multicast: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
+      //Serial1.println("received multicast: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
       if (CLUNET_MULTICAST_DEVICE(packet->src)){
         //Serial1.println("clunet: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
         //packet->src= 0; //TODO: kill me
         uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, 4 + packet->size);
-        Serial1.println("send uart: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
+        //Serial1.println("send uart: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
       }else{
-        Serial1.println("skip");
+        //Serial1.println("skip");
       }
     });
   }
@@ -133,9 +143,9 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
           //TODO: move to buffer at first
           clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size);
-          Serial1.println("send multicast: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
+          //Serial1.println("send multicast: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
         }else{
-          Serial1.println("skip"); 
+          //Serial1.println("skip"); 
         }
       }
       break;
@@ -190,7 +200,7 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
           
       if (uart_rx_data_len >= length+2){    //в буфере данных уже столько, сколько описано в поле length
         if (check_crc(uart_rx_message, length - 1) == uart_rx_message[length - 1]){ //проверка crc
-          Serial1.println("crc ok");
+          //Serial1.println("crc ok");
           if (f){
             //Serial1.println("Uart message received: code: " + String((int)uart_rx_message[1]) + "; length: " + String(length - 3));
             f(uart_rx_message[1], &uart_rx_message[2], length - 3);
