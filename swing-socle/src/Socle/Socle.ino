@@ -273,6 +273,10 @@ PT_THREAD(mirobo_toggle(pt_t *p)){
   PT_END(p);
 }
 
+void mirobo_toggle(){
+  tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
+}
+
 PT_THREAD(check_mirobo_status(pt_t *p)){
     PT_BEGIN(p);
     PT_SUBTHREAD(p, mirobo_connect);
@@ -416,7 +420,7 @@ void setup() {
   });
 
   server.on("/mirobo_start", HTTP_GET, [](AsyncWebServerRequest * request) {
-    tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
+    mirobo_toggle();
     request->send(200);
   });
 
@@ -476,6 +480,8 @@ void setup() {
 
   server.begin();
 
+  
+
   if (clunet.connect()){
     Serial.println("connected");
     clunet.onPacketReceived([](clunet_packet* packet){
@@ -486,7 +492,7 @@ void setup() {
             if (packet->size == 1) {
               switch (packet->data[0]){
                 case 0x01:{
-                  tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
+                  mirobo_toggle();
                   break;
                 }
                 case 0xFF:{
@@ -503,9 +509,24 @@ void setup() {
         }
         //mirobo_toggle by long press on kitchen button
         case CLUNET_COMMAND_BUTTON_INFO: {
-          if (packet->src == 0x1D){
+          if (packet->src == 0x1D){ //kitchen
             if (packet->size == 2 && packet->data[0] == 02 && packet->data[1] == 01){
-              tasker.once(TASKER_GROUP_MIIO, &mirobo_toggle);
+              mirobo_toggle();
+            }
+          }
+          break;
+        }
+        case CLUNET_COMMAND_RC_BUTTON_PRESSED: {
+          if (packet->src == 0x1D){ //kitchen
+            if (packet->size == 3 && packet->data[0] == 0 && packet->data[1] == 0){
+              switch (packet->data[2]){
+                case 0x08:
+                  servo_toggle(false);
+                  break;
+                case 0x50:
+                  mirobo_toggle();
+                  break;
+              }
             }
           }
           break;
