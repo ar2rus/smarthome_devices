@@ -10,11 +10,21 @@
 
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
+#include <MessageDecoder.h>
+
+#include <ArduinoJson.h>
 
 #include <time.h>
 
+#include "HexUtils.h"
+
 #include "SmarthomeBridge.h"
 #include "Credentials.h"
+
+#ifdef DEFAULT_MAX_SSE_CLIENTS
+  #undef DEFAULT_MAX_SSE_CLIENTS 
+  #define DEFAULT_MAX_SSE_CLIENTS 10
+#endif
 
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
@@ -24,8 +34,15 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 AsyncWebServer server(80);
+AsyncEventSource events("/events");
+
 ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
+long event_id = 0;
+LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete  m; });
+LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete  m; });
+
+LinkedList<clunet_timestamp_packet*> eventsQueue = LinkedList<clunet_timestamp_packet*>([](clunet_timestamp_packet *m){ delete  m; });
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
@@ -33,8 +50,16 @@ ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 
+uint8_t uart_can_send(uint8_t length){
+  return Serial.availableForWrite() >= length + 5;
+}
+
+uint8_t uart_can_send(clunet_packet* packet){
+  return uart_can_send(packet->len());
+}
+
 uint8_t uart_send_message(char code, char* data, uint8_t length){
-  if (Serial.availableForWrite() < length + 5){
+  if (!uart_can_send(length)){
     return 0;
   }
   
@@ -55,12 +80,47 @@ uint8_t uart_send_message(char code, char* data, uint8_t length){
   return 1;
 }
 
-int x = 0;
-
+uint8_t uart_send_message(clunet_packet* packet){
+  return uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, packet->len());
+}
 
 void config_time(float timezone_hours_offset, int daylightOffset_sec, const char* server1, const char* server2, const char* server3) {
   configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
-  //INFO("Timezone: %f; daylightOffset: %d", timezone_hours_offset, daylightOffset_sec);
+}
+
+AsyncWebServerRequest* request;
+int responseCommand;
+
+void _request(AsyncWebServerRequest* _request, uint8_t address, uint8_t command, char* data, uint8_t size,
+                int responseFilterCommand, long responseTimeout){
+//  if (request){
+//    _request->send(423, "text/plain", "resource locked");
+//    return;
+//  }
+  int requestId = clunet.request(address, command, data, size, 
+    [](clunet_packet* packet){
+      return responseCommand < 0 || packet->command==responseCommand;
+    }, responseTimeout);
+        
+  if (!requestId){
+    _request->send(423, "text/plain", "resource locked");
+    return;
+  }
+
+  request = _request;
+  responseCommand = responseFilterCommand;
+}
+
+void _response(int requestId, int numResponses){
+  StaticJsonDocument<64> doc;
+  doc["id"] = requestId;
+  doc["num"] = numResponses;
+  doc["memory"] = ESP.getFreeHeap();
+  
+  String json;
+  serializeJson(doc, json);
+  request->send(200, "application/json", json);
+  request = NULL;
 }
 
 void setup() {
@@ -97,23 +157,90 @@ void setup() {
 
   if (clunet.connect()){
     clunet.onPacketSniff([](clunet_packet* packet){
-      //Serial1.println("received multicast: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
       if (CLUNET_MULTICAST_DEVICE(packet->src)){
-        //Serial1.println("clunet: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
-        //packet->src= 0; //TODO: kill me
-        uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, 4 + packet->size);
-        //Serial1.println("send uart: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
-      }else{
-        //Serial1.println("skip");
+          uartQueue.add(packet->copy());
+      }
+
+      clunet_timestamp_packet* tp = (clunet_timestamp_packet*)malloc(sizeof(clunet_timestamp_packet) + packet->len());
+      time(&tp->timestamp);
+      packet->copy(&tp->packet);
+      eventsQueue.add(tp);
+    });
+    
+    clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
+      
+      DynamicJsonDocument doc(4196);
+      JsonObject root = doc.to<JsonObject>();
+      root["id"] = requestId;
+      root["memory"] = ESP.getFreeHeap();
+      JsonArray docArray = root.createNestedArray("responses");
+      
+      for(auto i = responses->begin(); i != responses->end(); ++i){
+        clunet_response* response = *i;
+        if (requestId == response->requestId){
+          //clunet_timestamp_response* tr = (clunet_timestamp_response*)malloc(sizeof(clunet_timestamp_response) + response->len());
+          //time(&tr->timestamp);
+          //response->copy(&tr->response);
+          fillMessageJsonObject(docArray.createNestedObject(), 0, response->packet);
+        }
+      }
+    
+      if (request){
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+        request = NULL;
       }
     });
   }
 
-  //TODO: debug
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
-      request->send(200, "text/plain", "value: " + String(x));
+  server.on("/command", HTTP_GET, [](AsyncWebServerRequest* request) {
+       if (!request->hasParam("c")){
+        request->send(400, "text/plain", "/command?c=command_id[&a=device_address][&d=hex_data]");
+        return;
+      }
+      int command = request->getParam("c")->value().toInt();
+      int address = request->hasParam("a") ? request->getParam("a")->value().toInt() : CLUNET_ADDRESS_BROADCAST;
+
+      int dataLen = 0;
+      char data[2 * CLUNET_PACKET_DATA_SIZE];
+      if (request->hasParam("d")){
+        String hexData = request->getParam("d")->value();
+        dataLen = hexStringToCharArray(data, (char*)hexData.c_str(), hexData.length());
+      }
+      clunet.send(address, command, data, dataLen);
+      request->send(200, "text/plain", "OK");
   });
 
+  server.on("/discovery", HTTP_GET, [](AsyncWebServerRequest* request) {
+    _request(request, CLUNET_ADDRESS_BROADCAST, CLUNET_COMMAND_DISCOVERY, NULL, 0, CLUNET_COMMAND_DISCOVERY_RESPONSE, 500);
+  });
+
+  server.on("/request", HTTP_GET, [](AsyncWebServerRequest* request) {
+    if (!request->hasParam("c")){
+      request->send(400, "text/plain", "/request?c=command_id[&a=device_address][&d=hex_data][&t=timeout_ms][&r=response_command_filter]");
+      return;
+    }
+    int command = request->getParam("c")->value().toInt();
+    int address = request->hasParam("a") ? request->getParam("a")->value().toInt() : CLUNET_ADDRESS_BROADCAST;
+    int responseTimeout = request->hasParam("t") ? request->getParam("t")->value().toInt() : 100;
+    int responseCommand = request->hasParam("r") ? request->getParam("r")->value().toInt() : -1;
+
+    int dataLen = 0;
+    char data[2 * CLUNET_PACKET_DATA_SIZE];
+    if (request->hasParam("d")){
+      String hexData = request->getParam("d")->value();
+      dataLen = hexStringToCharArray(data, (char*)hexData.c_str(), hexData.length());
+    }
+    _request(request, address, command, data, dataLen, responseCommand, responseTimeout);
+  });
+
+  events.onConnect([](AsyncEventSourceClient *client){
+     events.send("welcome");
+  });
+  
+  server.addHandler(&events);
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   server.begin();
 }
 
@@ -138,22 +265,14 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
     case UART_MESSAGE_CODE_CLUNET:
       if (data && length >= 4){
         clunet_packet* packet = (clunet_packet*)data;
-        
-        Serial1.println("received uart: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
-          //TODO: move to buffer at first
-          clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size);
-          //Serial1.println("send multicast: code: " + String(packet->command) + "; src: " + String(packet->src)+"; dst: " + String(packet->dst) + "; length: " + String(packet->size));
-        }else{
-          //Serial1.println("skip"); 
+           multicastQueue.add(packet->copy());
         }
       }
       break;
     case UART_MESSAGE_CODE_FIRMWARE:
       if (data && length >= 4){
         clunet_packet* packet = (clunet_packet*)data;
-        x = packet->command;
-        clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size);
       }
       break;
     case UART_MESSAGE_CODE_DEBUG:
@@ -223,11 +342,101 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
   }
 }
 
+void fillMessageData(JsonObject doc, clunet_packet* packet){
+    char buf[512];
+    JsonObject obj = doc.createNestedObject("obj");
+        
+    switch(packet->command){
+      case CLUNET_COMMAND_TEMPERATURE_INFO:{
+        getTemperatureInfo(packet->data, buf);
+        temperature_info* ti =(temperature_info*)buf;
+        JsonArray sensors = obj.createNestedArray("sensors");
+        for (int i=0; i<ti->num_sensors; i++){
+          JsonObject sensor = sensors.createNestedObject();
+          sensor["type"] = ti->sensors[i].type;
+          sensor["id"] = ti->sensors[i].id;
+          sensor["val"] = ti->sensors[i].value;
+        }
+      }
+      break;
+      case CLUNET_COMMAND_HUMIDITY_INFO:{
+        getHumidityInfo(packet->data, buf);
+        humidity_info* hi =(humidity_info*)buf;
+        obj["val"] = hi->value; 
+      }
+      break;
+      case CLUNET_COMMAND_SWITCH_INFO:{
+        JsonArray switches = obj.createNestedArray("switches");
+        for (int i=0; i<8; i++){
+          if (packet->data[0] & (1<<i)){
+            JsonObject _switch = switches.createNestedObject();
+            _switch["id"] = i+1;
+            _switch["val"] = 1;
+          }
+        }
+      }
+      break;
+    }
+    
+    int hexLen = 0;
+    char hex[256];
+    hexLen = charArrayToHexString(hex, packet->data, packet->size);
+    doc["hex"] = String(hex);
+}
+
+void fillMessageJsonObject(JsonObject doc, long timestamp, clunet_packet* packet){
+    doc["t"] = timestamp;
+    doc["c"] = packet->command;
+    doc["s"] = packet->src;
+    doc["d"] = packet->dst;
+
+//      int dataLen = 0;
+//      char data[256];
+//      dataLen = charArrayToHexString(data, packet->data, packet->size);
+//      doc["dt"] = String(data);
+//    }
+    if (packet->size){
+      fillMessageData(doc.createNestedObject("m"), packet);
+    }
+}
+
+#define DELAY_BETWEEN_UART_MESSAGES 5
+long uart_time = 0;
+
 void loop() {
   while (Serial.available() > 0 && uart_rx_data_len < UART_RX_BUF_LENGTH) {
     uart_rx_data[uart_rx_data_len++] = Serial.read();
   }
   analyze_uart_rx(on_uart_message);
+
+  while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front())){
+    long nt = millis();
+    if (nt - uart_time > DELAY_BETWEEN_UART_MESSAGES){
+     uart_time = nt;
+     clunet_packet* packet = uartQueue.front();
+     uart_send_message(packet);
+     uartQueue.remove(packet);
+    }
+  }
+
+  while (!multicastQueue.isEmpty()){
+    clunet_packet* packet = multicastQueue.front();
+    clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size);
+    multicastQueue.remove(packet);
+  }
+  
+  if (!eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
+    DynamicJsonDocument doc(4196);
+    while (!eventsQueue.isEmpty()){
+      clunet_timestamp_packet* tp = eventsQueue.front();
+      fillMessageJsonObject(doc.createNestedObject(), tp->timestamp, tp->packet);
+      eventsQueue.remove(tp);
+    }
+    
+    String json;
+    serializeJson(doc, json);
+    events.send(json.c_str(), "event", ++event_id);
+  }
   
   ArduinoOTA.handle();
   yield();

@@ -6,4 +6,14 @@
 
 #define LED_BLUE_PORT 5
 
+typedef struct{
+  long timestamp;
+  clunet_packet packet[];
+} clunet_timestamp_packet;
+
+typedef struct{
+  long timestamp;
+  clunet_response response[];
+} clunet_timestamp_response;
+
 #endif
