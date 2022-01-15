@@ -9,5 +9,15 @@
 #define RESET_ENERGY_BUTTON_PIN 0
 #define RESET_ENERGY_BUTTON_TIMEOUT 10000
 
+#define PZEM004_NO_SWSERIAL
+
+typedef struct {
+    float voltage;
+    float current;
+    float power;
+    float energy;
+    float frequency;
+    float pf;
+} pzemValues;
 
 #endif
