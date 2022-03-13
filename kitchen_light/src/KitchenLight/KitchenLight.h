@@ -4,6 +4,7 @@
 #define CLUNET_DEVICE_ID 0x82
 #define CLUNET_DEVICE_NAME "KitchenLight"
 
+#define TIMEZONE TZ_Europe_Samara
 
 #define RELAY_0_ID 1
 #define BUTTON_ID 3

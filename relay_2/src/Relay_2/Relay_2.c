@@ -22,7 +22,7 @@ void timer_systime_request( void (*f)(unsigned char seconds, unsigned char minut
 	//пришел запрос на получение нового значения текущего времени
 	//в параметре - функция ответа (асинхронно)
 	timer_systime_async_response = f;
-	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin clients only!!!
+	clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);
 }
 
 
@@ -216,7 +216,7 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_TIME_INFO:
 			if (timer_systime_async_response != NULL){
-				if (m->size == 7 /*&& m->src_address == CLUNET_SUPRADIN_ADDRESS*/){
+				if (m->size == 7 && CLUNET_MULTICAST_DEVICE(m->src_address)){
 					timer_systime_async_response(m->data[5], m->data[4], m->data[3], m->data[6]);
 					timer_systime_async_response = NULL;
 				}

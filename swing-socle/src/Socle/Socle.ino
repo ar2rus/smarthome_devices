@@ -1,7 +1,7 @@
 /**
- * Use 2.6.3 esp8266 core
- * lwip 1.4 Higher bandwidth; CPU 80 MHz
- * 1M (64K) !!!
+ * Use 2.7.4 esp8266 core
+ * lwip v2 Higher bandwidth; CPU 80 MHz
+ * 1M (none) !!! ->  not enough memory for 3.0+
  * 
  * dependencies:
  * ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
@@ -12,9 +12,8 @@
  */
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <TZ.h>
 
 #include <Servo.h>
 
@@ -36,6 +35,7 @@ const char *pass = AP_PASSWORD;
 IPAddress ip(192, 168, 1, 125);     //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsAddr(192, 168, 1, 1);
 
 AsyncWebServer server(80);
 
@@ -358,7 +358,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
 
   //Wifi connection
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -394,6 +394,7 @@ void setup() {
 
   ArduinoOTA.begin();
 
+  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
   server.on("/up", HTTP_GET, [](AsyncWebServerRequest * request) {
     char temp[16];
@@ -534,8 +535,6 @@ void setup() {
       }
     });
   }
-  
-  
 }
 
 void loop() {

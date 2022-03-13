@@ -351,7 +351,7 @@ extern "C" {
     timer1_isr_init();
     timer1_attachInterrupt(vw_Int_Handler);
     timer1_write((F_CPU / 256) / speed / 8);
-    timer1_enable(TIM_DIV265, TIM_EDGE, TIM_LOOP);
+    timer1_enable(TIM_DIV256, TIM_EDGE, TIM_LOOP);
 
     // Set up digital IO pins
     pinMode(vw_tx_pin, OUTPUT);

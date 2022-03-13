@@ -4,6 +4,8 @@
 #define CLUNET_ID 0x80
 #define CLUNET_DEVICE "SmarthomeBridge"
 
+#define TIMEZONE TZ_Europe_Samara
+
 #define LED_BLUE_PORT 5
 
 typedef struct{

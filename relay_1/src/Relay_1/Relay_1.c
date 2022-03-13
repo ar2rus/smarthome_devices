@@ -154,10 +154,8 @@ void heatfloor_program_response(unsigned char address, heatfloor_program* progra
 void (*heatfloor_systime_async_response)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) = NULL;
 
 void heatfloor_systime_request( void (*f)(unsigned char seconds, unsigned char minutes, unsigned char hours, unsigned char day_of_week) ){
-	//пришел запрос на получение нового значения текущего времени
-	//в параметре - функция ответа (асинхронно)
 	heatfloor_systime_async_response = f;
-	clunet_send_fairy(CLUNET_SUPRADIN_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);	//ask for supradin clients only!!!
+	clunet_send_fairy(CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_INFO, CLUNET_COMMAND_TIME, 0, 0);
 }
 
 void cmd(clunet_msg* m){
@@ -262,14 +260,6 @@ void cmd(clunet_msg* m){
 			}
 			break;
 		case CLUNET_COMMAND_TIME: {
-			//задержка добавлена специально в связи с багой в супрадин,
-			//которую на имеющихся ресурсах решить невозможно:
-			//при одновременном поступлении сообщений как по сети (от супрадин-клиентов) так и по клюнет
-			//клюнет сообщения затираются сетевыми в буфере клюнет (так как прослушиваются все входящие сообщения в том числе и свои (sniff))
-			//Решение видится лишь в добавлении стека входящих сообщений по клюнет, но для этого совершенно нет свободной ОЗУ.
-			//Следует отметить, что в рельности сообщения в сети clunet ходят, их лишь не видно через supradin
-			//_delay_ms(100);
- 			//send heatfloor current time for debug
 			heatfloor_datetime* dt = heatfloor_systime();
 			
 			char hd[7] = {0, 1, 1, dt->hours, dt->minutes, dt->seconds, dt->day_of_week};
@@ -278,7 +268,7 @@ void cmd(clunet_msg* m){
 			break;
 		case CLUNET_COMMAND_TIME_INFO:
 			if (heatfloor_systime_async_response != NULL){
-				if (m->size == 7 /*&& m->src_address == CLUNET_SUPRADIN_ADDRESS*/){
+				if (m->size == 7 && CLUNET_MULTICAST_DEVICE(m->src_address)){
 					heatfloor_systime_async_response(m->data[5], m->data[4], m->data[3], m->data[6]);
 					heatfloor_systime_async_response = NULL;
 				}

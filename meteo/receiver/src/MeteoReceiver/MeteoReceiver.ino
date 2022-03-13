@@ -1,18 +1,17 @@
 /**
-   Use 2.6.3 esp8266 core;
-   lwip v1.4 Higher bandwidth; CPU 80 MHz
-   1M (FS: 64K)
-
-   dependencies:
-   https://github.com/me-no-dev/ESPAsyncWebServer
-   https://github.com/ar2rus/ClunetMulticast
-      
+ * Use 3.0.2 esp8266 core
+ * lwip v2 Higher bandwidth; CPU 80 MHz
+ * 1M (FS: 64K)
+ *   
+ * dependencies:
+ * https://github.com/me-no-dev/ESPAsyncWebServer
+ * https://github.com/ar2rus/ClunetMulticast
+ *     
 */
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <TZ.h>
 
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
@@ -29,7 +28,7 @@ const char *pass = AP_PASSWORD;
 IPAddress ip(192, 168, 1, 121);     //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
-
+IPAddress dnsAddr(192, 168, 1, 1);
 
 AsyncWebServer server(8080);
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
@@ -107,7 +106,7 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
 
   //Wifi connection
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -143,6 +142,7 @@ void setup() {
 
   ArduinoOTA.begin();
 
+  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
   vw_set_rx_pin(14);
   vw_set_rx_inverted(1);

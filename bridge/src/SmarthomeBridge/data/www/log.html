@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+    <head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		
+		<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+		<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table.min.css">
+		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/sticky-header/bootstrap-table-sticky-header.css">
+		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/filter-control/bootstrap-table-filter-control.css">
+		
+		<script src="https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
+		<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table.min.js"></script>
+		
+		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/sticky-header/bootstrap-table-sticky-header.min.js"></script>
+		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/filter-control/bootstrap-table-filter-control.js"></script>
+		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/mobile/bootstrap-table-mobile.js"></script>
+		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table-locale-all.min.js"></script>
+	</head>
+
+    <body>
+		<table id="table" class="table small"></table>
+        <script>
+			function dateFormat(d){
+				return ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " +
+				("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2) + "." + ("00" + d.getMilliseconds()).slice(-3);
+			}
+			
+		
+			var $table = $('#table')
+
+			function addData($el, data){
+				$.each(data, function(index, value) {
+					$el.bootstrapTable('insertRow',{
+						index: 0,
+						row: value
+					});
+				}); 
+			}
+
+			function buildTable($el) {
+				var columns = [
+					{
+						field: 't',
+						valign: 'middle',
+						title: 'Time',
+						sortable: true,
+						order: 'desc',
+						formatter: function (val) {
+							return dateFormat(new Date(val * 1000))
+						},
+						width: 200
+					},
+					{
+						field: 's',
+						valign: 'middle',
+						title: 'Source',
+						sortable: true,
+						filterControl: 'select',
+						filterDataCollector: function (value) {
+							return value;
+						},
+						filterStrictSearch: true,
+						formatter: function (val) {
+						  return val
+						}
+					},
+					{
+						field: 'd',
+						valign: 'middle',
+						title: 'Destination',
+						sortable: true,
+						filterControl: 'select',
+						filterDataCollector: function (value) {
+							return value;
+						},
+						filterStrictSearch: true,
+						formatter: function (val) {
+						  return val
+						}
+					},
+					{
+						field: 'c',
+						valign: 'middle',
+						title: 'Command',
+						filterControl: 'select',
+						filterDataCollector: function (value) {
+							return value;
+						},
+						filterStrictSearch: true,
+						sortable: true,
+						formatter: function (val) {
+						  return val
+						}
+					},
+					{
+						field: 'm',
+						valign: 'middle',
+						title: 'Data',
+						formatter: function (val) {
+							if (val){
+								return val.hex
+							}else{
+								return "";
+							}
+						}
+					},
+					{
+						field: 'm',
+						valign: 'middle',
+						title: 'Message',
+						formatter: function (val) {
+							if (val && val.obj && val.obj.val){
+								return val.obj.val
+							}else{
+								return "";
+							}
+						}
+					}
+				];
+
+				$el.bootstrapTable({
+					locale: 'en',
+					
+					columns: columns,
+					search: true,
+					
+					filterControl: true,
+					filterControlVisible: false,
+					showFilterControlSwitch: true,
+					
+					sortName: 't',
+					sortOrder: 'asc',
+					
+					showRefresh: true,
+					onRefresh: function() {
+						$el.bootstrapTable('removeAll');
+					},
+					
+					showToggle: true,
+					mobileResponsive: true,
+					
+					stickyHeader: true,
+					
+					virtualScroll: true
+					
+				});
+				
+			}
+
+			$(function() {
+				buildTable($table);
+				
+				if (!!window.EventSource) {
+				  var source = new EventSource('/events');
+
+				  source.addEventListener('open', function(e) {
+					console.log("connected");
+				  }, false);
+
+				  source.addEventListener('error', function(e) {
+					if (e.target.readyState != EventSource.OPEN) {
+					  console.log("disconnected");
+					}
+				  }, false);
+
+				  source.addEventListener('event', function(e) {
+					console.log("event: " + e.lastEventId + ": " + e.data);
+					addData($table, JSON.parse(e.data));
+				  }, false);
+				  
+				  source.addEventListener('response', function(e) {
+					console.log("response: " + e.data);
+				  }, false);
+				}
+			})
+        </script>
+    </body>
+</html>

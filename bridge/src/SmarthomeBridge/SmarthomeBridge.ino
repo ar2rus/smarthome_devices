@@ -1,22 +1,26 @@
 /**
+ * Use 3.0.2 esp8266 core
+ * lwip v2 Higher bandwidth; CPU 80 MHz
  * Flash size: 4M (FS: 1Mb / OTA: 1019 Kb) !!!
  * 
  */
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <TZ.h>
 
 #include <ESPAsyncWebServer.h>
-#include <ClunetMulticast.h>
-#include <MessageDecoder.h>
-
 #include <ArduinoJson.h>
 
-#include <time.h>
+#include <LittleFS.h>
+#include <SPIFFSEditor.h>
 
-#include "HexUtils.h"
+#include <ClunetMulticast.h>
+#include <MessageDecoder.h>
+#include <HexUtils.h>
+
+#include "ClunetCommands.h"
+#include "ClunetDevices.h"
 
 #include "SmarthomeBridge.h"
 #include "Credentials.h"
@@ -32,6 +36,7 @@ const char *pass = AP_PASSWORD;
 IPAddress ip(192, 168, 1, 120);     //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsAddr(192, 168, 1, 1);
 
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
@@ -84,10 +89,6 @@ uint8_t uart_send_message(clunet_packet* packet){
   return uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, packet->len());
 }
 
-void config_time(float timezone_hours_offset, int daylightOffset_sec, const char* server1, const char* server2, const char* server3) {
-  configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
-}
-
 AsyncWebServerRequest* request;
 int responseCommand;
 
@@ -130,10 +131,15 @@ void setup() {
   Serial.begin(38400, SERIAL_8N1);
   Serial.println("Booting");
 
+  if (!LittleFS.begin()) {
+    Serial1.println("LittleFS mount failed");
+    return;
+  }
+
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
 
   pinMode(LED_BLUE_PORT, OUTPUT);  
   analogWrite(LED_BLUE_PORT, 12);
@@ -151,9 +157,15 @@ void setup() {
   Serial.setRxBufferSize(256);  //as default
 
   ArduinoOTA.setHostname("smarthome-bridge");
+  ArduinoOTA.onStart([]() {
+    Serial1.println("ArduinoOTA start update");
+    if (ArduinoOTA.getCommand() == U_FS) {
+      LittleFS.end();
+    }
+  });
   ArduinoOTA.begin();
 
-  config_time(4, 0, "pool.ntp.org", "time.nist.gov", NULL);
+  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
   if (clunet.connect()){
     clunet.onPacketSniff([](clunet_packet* packet){
@@ -162,7 +174,7 @@ void setup() {
       }
 
       clunet_timestamp_packet* tp = (clunet_timestamp_packet*)malloc(sizeof(clunet_timestamp_packet) + packet->len());
-      time(&tp->timestamp);
+      tp->timestamp = (long)time(NULL);
       packet->copy(&tp->packet);
       eventsQueue.add(tp);
     });
@@ -235,12 +247,47 @@ void setup() {
     _request(request, address, command, data, dataLen, responseCommand, responseTimeout);
   });
 
+  server.on("/registry/commands", HTTP_GET, [](AsyncWebServerRequest* request) {
+    DynamicJsonDocument doc(4096);
+    clunet_command cc;
+    for (const auto c : CLUNET_COMMANDS){
+      memcpy_P(&cc, &c, sizeof(clunet_command));
+      doc[String(c.code)] = FPSTR(c.name);
+    }
+
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    serializeJson(doc, *response);
+    request->send(response);
+  });
+
+  server.on("/registry/devices", HTTP_GET, [](AsyncWebServerRequest* request) {
+    DynamicJsonDocument doc(2048);
+    clunet_device cd;
+    for (const auto d : CLUNET_DEVICES){
+      memcpy_P(&cd, &d, sizeof(clunet_device));
+      doc[String(d.code)] = FPSTR(d.name);
+    }
+
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    serializeJson(doc, *response);
+    request->send(response);
+  });
+
   events.onConnect([](AsyncEventSourceClient *client){
      events.send("welcome");
   });
   
   server.addHandler(&events);
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+
+  server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html");
+
+  server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
+
+  server.onNotFound([](AsyncWebServerRequest *request){
+    request->send(404);
+  });
+  
   server.begin();
 }
 

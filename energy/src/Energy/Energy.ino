@@ -1,6 +1,6 @@
 /**
- * Use 2.6.3 esp8266 core
- * lwip 1.4 Higher bandwidth; CPU 80 MHz
+ * Use 3.0.2 esp8266 core
+ * lwip v2 Higher bandwidth; CPU 80 MHz
  * 4Mb/FS:2Mb/OTA:1019Kb !!!
  * 
  * dependencies:
@@ -8,17 +8,16 @@
  */
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <TZ.h>
 
 #include <ArduinoJson.h>
 #include <PZEM004Tv30.h>
 
+#include <ESPInputs.h>
+
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
-
-#include <ESPInputs.h>
 
 #include "Energy.h"
 #include "Credentials.h"
@@ -29,6 +28,7 @@ const char *pass = AP_PASSWORD;
 IPAddress ip(192, 168, 1, 126);     //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsAddr(192, 168, 1, 1);
 
 AsyncWebServer server(80);
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
@@ -38,25 +38,20 @@ Inputs inputs;
 PZEM004Tv30 pzem(Serial);
 pzemValues values;
 
-void config_time(float timezone_hours_offset, int daylightOffset_sec,
-                 const char* server1, const char* server2, const char* server3) {
-  configTime((int)(timezone_hours_offset * 3600), daylightOffset_sec, server1, server2, server3);
-}
-
 void setup() {
   Serial1.begin(115200);
   
   WiFi.mode(WIFI_STA);
   
   WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
 
   //Wifi connection
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     delay(1000);
     ESP.restart();
   }
-
+  
   ArduinoOTA.setHostname("energy-meter");
   
   ArduinoOTA.onStart([]() {
@@ -64,8 +59,8 @@ void setup() {
   });
 
   ArduinoOTA.begin();
- 
-  config_time(0, 0, "pool.ntp.org", "time.nist.gov", NULL);
+
+  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
   server.on("/voltage", HTTP_GET, [](AsyncWebServerRequest* request) {
      request->send(200, "text/plain", String(values.voltage, 1));  
@@ -93,7 +88,7 @@ void setup() {
                
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
     DynamicJsonDocument doc(128);
-    doc["time"] = time(NULL);
+    doc["time"] = (unsigned long)time(NULL);
     doc["voltage"] = values.voltage;
     doc["current"] = values.current;
     doc["power"] = values.power;

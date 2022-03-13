@@ -1,6 +1,6 @@
 /**
- * Use 2.6.3 esp8266 core
- * lwip 1.4 Higher bandwidth; CPU 80 MHz
+ * Use 3.0.2 esp8266 core
+ * lwip v2 Higher bandwidth; CPU 80 MHz
  * 1M (128K)
  * 
  * dependencies:
@@ -9,11 +9,8 @@
  */
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#include "Audiobox.h"
 #include "lc75341.h"
 
 #include <IRremoteESP8266.h>
@@ -21,8 +18,9 @@
 #include <IRutils.h>
 
 #include <ESPAsyncWebServer.h>
-
 #include <ClunetMulticast.h>
+
+#include "Audiobox.h"
 #include "Credentials.h"
 
 #include <EEPROM.h>
@@ -33,6 +31,7 @@ const char *pass = AP_PASSWORD;
 IPAddress ip(192, 168, 1, 124); //Node static IP
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsAddr(192, 168, 1, 1);
 
 AsyncWebServer server(80);
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
@@ -279,7 +278,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
 
   //Wifi connection
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {

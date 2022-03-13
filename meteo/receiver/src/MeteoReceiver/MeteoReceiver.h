@@ -4,6 +4,8 @@
 #define CLUNET_DEVICE_ID 0x81
 #define CLUNET_DEVICE_NAME "Meteo"
 
+#define TIMEZONE TZ_Europe_Samara
+
 //максимальное время использования полученных данных
 #define MESSAGE_USE_TIME 15*60*1000
 
@@ -99,8 +101,6 @@ extern "C" {
     v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
     return (BME280_U32_t)(v_x1_u32r >> 12);
   }
-
 }
-
 
 #endif

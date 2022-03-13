@@ -4,6 +4,8 @@
 #define CLUNET_ID 0x85
 #define CLUNET_DEVICE "SwingSocle"
 
+#define TIMEZONE TZ_Europe_Samara
+
 #define SERVO_PIN 13
 #define SERVO_STEP_DELAY 2
 #define SERVO_UP_ANGLE 15
@@ -37,7 +39,7 @@
 #define LED_BLUE_PORT 5
 
 
-#define MIROBO_CHECK_STATUS_PERIOD 5000
+#define MIROBO_CHECK_STATUS_PERIOD 2000
 #define MIROBO_MAX_GOING_HOME_PERIOD 180000
 
 

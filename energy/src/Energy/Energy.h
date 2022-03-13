@@ -4,6 +4,8 @@
 #define CLUNET_DEVICE_ID 0x86
 #define CLUNET_DEVICE_NAME "EnergyMeter"
 
+#define TIMEZONE TZ_Europe_Samara
+
 #define PZEM_UPDATE_TIMEOUT 250
 
 #define RESET_ENERGY_BUTTON_PIN 0
