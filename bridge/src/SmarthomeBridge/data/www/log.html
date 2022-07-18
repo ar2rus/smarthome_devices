@@ -167,13 +167,9 @@
 					}
 				  }, false);
 
-				  source.addEventListener('event', function(e) {
+				  source.addEventListener('DATA', function(e) {
 					console.log("event: " + e.lastEventId + ": " + e.data);
 					addData($table, JSON.parse(e.data));
-				  }, false);
-				  
-				  source.addEventListener('response', function(e) {
-					console.log("response: " + e.data);
 				  }, false);
 				}
 			})

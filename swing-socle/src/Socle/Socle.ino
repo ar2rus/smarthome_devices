@@ -1,7 +1,7 @@
 /**
  * Use 2.7.4 esp8266 core
  * lwip v2 Higher bandwidth; CPU 80 MHz
- * 1M (none) !!! ->  not enough memory for 3.0+
+ * 1M (none) !!! ->  not enough flash for 3.0+
  * 
  * dependencies:
  * ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer

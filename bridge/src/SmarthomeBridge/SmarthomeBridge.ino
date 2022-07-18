@@ -273,8 +273,12 @@ void setup() {
     request->send(response);
   });
 
+  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
+    ESP.restart();
+  });
+
   events.onConnect([](AsyncEventSourceClient *client){
-     events.send("welcome");
+     client->send("Welcome", "SERVICE", 0, 3000);
   });
   
   server.addHandler(&events);
@@ -402,14 +406,14 @@ void fillMessageData(JsonObject doc, clunet_packet* packet){
           JsonObject sensor = sensors.createNestedObject();
           sensor["type"] = ti->sensors[i].type;
           sensor["id"] = ti->sensors[i].id;
-          sensor["val"] = ti->sensors[i].value;
+          sensor["val"] = serialized(String(ti->sensors[i].value, 2));
         }
       }
       break;
       case CLUNET_COMMAND_HUMIDITY_INFO:{
         getHumidityInfo(packet->data, buf);
         humidity_info* hi =(humidity_info*)buf;
-        obj["val"] = hi->value; 
+        obj["val"] = serialized(String(hi->value, 2)); 
       }
       break;
       case CLUNET_COMMAND_SWITCH_INFO:{
@@ -482,7 +486,7 @@ void loop() {
     
     String json;
     serializeJson(doc, json);
-    events.send(json.c_str(), "event", ++event_id);
+    events.send(json.c_str(), "DATA", ++event_id);
   }
   
   ArduinoOTA.handle();

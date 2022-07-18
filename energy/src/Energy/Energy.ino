@@ -87,14 +87,18 @@ void setup() {
   });
                
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-    DynamicJsonDocument doc(128);
-    doc["time"] = (unsigned long)time(NULL);
-    doc["voltage"] = values.voltage;
-    doc["current"] = values.current;
-    doc["power"] = values.power;
+    DynamicJsonDocument doc(256);
+    
+    struct timeval tp;
+    gettimeofday(&tp, 0);
+    
+    doc["time"] = serialized(String(tp.tv_sec) + String(tp.tv_usec /1000UL));
+    doc["voltage"] = serialized(String(values.voltage, 1));
+    doc["current"] = serialized(String(values.current, 3));
+    doc["power"] = serialized(String(values.power, 1));
     doc["energy"] = values.energy;
-    doc["frequency"] = values.frequency;
-    doc["pf"] = values.pf;
+    doc["frequency"] = serialized(String(values.frequency, 1));
+    doc["pf"] = serialized(String(values.pf, 1));
 
     String json;
     serializeJson(doc, json);
