@@ -24,6 +24,22 @@
     <body>
 		<table id="table" class="table small"></table>
         <script>
+			var registry = {};
+			
+			function loadRegistries(){
+				function loadRegistry(url, name){
+					$.getJSON(url, function(data) {
+					  registry[name] = {};
+					  $.each(data, function(key, val) {
+						  registry[name][key] = val;
+					  });
+					});
+				}
+				
+				loadRegistry("/registry/commands", "commands");
+				loadRegistry("/registry/devices", "devices");
+			}
+		
 			function dateFormat(d){
 				return ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " +
 				("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2) + "." + ("00" + d.getMilliseconds()).slice(-3);
@@ -39,6 +55,22 @@
 						row: value
 					});
 				}); 
+			}
+			
+			function fmt_hex_value(hex, value){
+			  v = "[0x" + hex.toString(16).toUpperCase() + "]";
+				if (value != undefined){
+				  v += " " + value;
+				}
+				return v;
+			}
+			
+			function fmt_device(val){
+			  return fmt_hex_value(val, registry.devices[val]);
+			}
+			
+			function fmt_command(val){
+			  return fmt_hex_value(val, registry.commands[val]);
 			}
 
 			function buildTable($el) {
@@ -60,13 +92,10 @@
 						title: 'Source',
 						sortable: true,
 						filterControl: 'select',
-						filterDataCollector: function (value) {
-							return value;
-						},
+						filterDataCollector: fmt_device,
 						filterStrictSearch: true,
-						formatter: function (val) {
-						  return val
-						}
+						formatter: fmt_device,
+						searchFormatter: false
 					},
 					{
 						field: 'd',
@@ -74,27 +103,21 @@
 						title: 'Destination',
 						sortable: true,
 						filterControl: 'select',
-						filterDataCollector: function (value) {
-							return value;
-						},
+						filterDataCollector: fmt_device,
 						filterStrictSearch: true,
-						formatter: function (val) {
-						  return val
-						}
+						formatter: fmt_device,
+						searchFormatter: false
 					},
 					{
 						field: 'c',
 						valign: 'middle',
 						title: 'Command',
 						filterControl: 'select',
-						filterDataCollector: function (value) {
-							return value;
-						},
+						filterDataCollector: fmt_command,
 						filterStrictSearch: true,
 						sortable: true,
-						formatter: function (val) {
-						  return val
-						}
+						formatter: fmt_command,
+						searchFormatter: false
 					},
 					{
 						field: 'm',
@@ -152,6 +175,7 @@
 			}
 
 			$(function() {
+				loadRegistries();
 				buildTable($table);
 				
 				if (!!window.EventSource) {
