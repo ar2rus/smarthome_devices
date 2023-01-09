@@ -47,7 +47,7 @@ long event_id = 0;
 LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete  m; });
 LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete  m; });
 
-LinkedList<clunet_timestamp_packet*> eventsQueue = LinkedList<clunet_timestamp_packet*>([](clunet_timestamp_packet *m){ delete  m; });
+LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ delete  m; });
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
@@ -169,13 +169,20 @@ void setup() {
 
   if (clunet.connect()){
     clunet.onPacketSniff([](clunet_packet* packet){
+      
+      timeval tv;
+      gettimeofday(&tv, nullptr);
+      
       if (CLUNET_MULTICAST_DEVICE(packet->src)){
           uartQueue.add(packet->copy());
       }
 
-      clunet_timestamp_packet* tp = (clunet_timestamp_packet*)malloc(sizeof(clunet_timestamp_packet) + packet->len());
-      tp->timestamp = (long)time(NULL);
+      ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
       packet->copy(&tp->packet);
+      
+      tp->timestamp_sec = (uint32_t)tv.tv_sec;
+      tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
+      
       eventsQueue.add(tp);
     });
     
@@ -190,10 +197,7 @@ void setup() {
       for(auto i = responses->begin(); i != responses->end(); ++i){
         clunet_response* response = *i;
         if (requestId == response->requestId){
-          //clunet_timestamp_response* tr = (clunet_timestamp_response*)malloc(sizeof(clunet_timestamp_response) + response->len());
-          //time(&tr->timestamp);
-          //response->copy(&tr->response);
-          fillMessageJsonObject(docArray.createNestedObject(), 0, response->packet);
+          fillMessageJsonObject(docArray.createNestedObject(), 0, 0, response->packet);
         }
       }
     
@@ -435,17 +439,17 @@ void fillMessageData(JsonObject doc, clunet_packet* packet){
     doc["hex"] = String(hex);
 }
 
-void fillMessageJsonObject(JsonObject doc, long timestamp, clunet_packet* packet){
-    doc["t"] = timestamp;
+void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t timestamp_ms, clunet_packet* packet){
     doc["c"] = packet->command;
     doc["s"] = packet->src;
     doc["d"] = packet->dst;
 
-//      int dataLen = 0;
-//      char data[256];
-//      dataLen = charArrayToHexString(data, packet->data, packet->size);
-//      doc["dt"] = String(data);
-//    }
+    if (timestamp_sec){
+      char buf[4];
+      sprintf(buf, "%03d", timestamp_ms);
+      doc["t"] = String(timestamp_sec) + String(buf);
+    }
+
     if (packet->size){
       fillMessageData(doc.createNestedObject("m"), packet);
     }
@@ -479,8 +483,8 @@ void loop() {
   if (!eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
     DynamicJsonDocument doc(4196);
     while (!eventsQueue.isEmpty()){
-      clunet_timestamp_packet* tp = eventsQueue.front();
-      fillMessageJsonObject(doc.createNestedObject(), tp->timestamp, tp->packet);
+      ts_clunet_packet* tp = eventsQueue.front();
+      fillMessageJsonObject(doc.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
       eventsQueue.remove(tp);
     }
     

@@ -82,7 +82,7 @@
 						sortable: true,
 						order: 'desc',
 						formatter: function (val) {
-							return dateFormat(new Date(val * 1000))
+							return dateFormat(new Date(parseInt(val)))
 						},
 						width: 200
 					},
