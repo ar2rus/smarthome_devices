@@ -1,5 +1,5 @@
 /**
- * Use 3.0.2 esp8266 core
+ * Use 3.1.2 esp8266 core
  * lwip v2 Higher bandwidth; CPU 80 MHz
  * 1M (128K)
  * 
