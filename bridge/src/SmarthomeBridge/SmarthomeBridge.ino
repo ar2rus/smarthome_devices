@@ -99,8 +99,8 @@ void _request(AsyncWebServerRequest* _request, uint8_t address, uint8_t command,
 //    return;
 //  }
   int requestId = clunet.request(address, command, data, size, 
-    [](ts_clunet_packet* packet){
-      return responseCommand < 0 || packet->p.command==responseCommand;
+    [](clunet_packet* packet){
+      return responseCommand < 0 || packet->command==responseCommand;
     }, responseTimeout);
         
   if (!requestId){
@@ -186,7 +186,7 @@ void setup() {
       eventsQueue.add(tp);
     });
     
-    clunet.onResponseReceived([](int requestId, LinkedList<ts_clunet_response*>* responses){
+    clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
       
       DynamicJsonDocument doc(4196);
       JsonObject root = doc.to<JsonObject>();
@@ -439,7 +439,7 @@ void fillMessageData(JsonObject doc, clunet_packet* packet){
     doc["hex"] = String(hex);
 }
 
-void fillMessageJsonObject(JsonObject doc, ts_clunet_packet* packet){
+void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t timestamp_ms, clunet_packet* packet){
     doc["c"] = packet->command;
     doc["s"] = packet->src;
     doc["d"] = packet->dst;
