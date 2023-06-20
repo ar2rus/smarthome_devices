@@ -151,15 +151,16 @@ void led_red_error_2(){
   tasker.loop(TASKER_GROUP_LED_RED, &led_red_error_2);
 }
 
-PT_THREAD(servo_angle(pt_t *p, int angle)){
+PT_THREAD(servo_angle(pt_t *p, int angle, int step_delay)){
   int val = servo.read();
   PT_BEGIN(p);
   servo.write(val);
   servo_attach();
   while (val != angle){
-    servo.write(val + (angle > val ? 1 : -1));
-    PT_DELAY(p, SERVO_STEP_DELAY);
-    val = servo.read();
+    PT_DELAY(p, step_delay);
+    val += (angle > val ? 1 : -1);
+    servo.write(val);
+    //val = servo.read();
   }  
   clunet.send(CLUNET_ADDRESS_BROADCAST, CLUNET_COMMAND_SERVO_INFO, (char*)&angle, 2);
   PT_END(p);
@@ -172,8 +173,7 @@ PT_THREAD(servo_down(pt_t *p)){
     //предупреждение
     PT_SUBTHREAD(p, beep_warning);
     //опускаем
-    PT_SUBTHREAD(p, servo_angle, SERVO_DOWN_ANGLE);
-    //ждем немного после опускания
+    PT_SUBTHREAD(p, servo_angle, SERVO_DOWN_ANGLE, SERVO_STEP_DOWN_DELAY);
     PT_DELAY(p, SERVO_DOWN_TIMEOUT_DEFAULT);
   }
   //выключаем серву
@@ -197,7 +197,7 @@ PT_THREAD(servo_up(pt_t *p)){
     //предупреждение
     PT_SUBTHREAD(p, beep_warning);
     //поднимаем
-    PT_SUBTHREAD(p, servo_angle, SERVO_UP_ANGLE);
+    PT_SUBTHREAD(p, servo_angle, SERVO_UP_ANGLE, SERVO_STEP_UP_DELAY);
   }
   //в верхнем положении находимся не более timeout
   PT_WAIT(p, servo.read() != SERVO_UP_ANGLE, servo_up_timeout);
