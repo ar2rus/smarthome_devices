@@ -190,6 +190,12 @@ void cmd(clunet_msg* m){
 					case 0x02:
 						fan_button();			//переключение в ручном режиме
 						break;
+					case 0x03:
+						fan_on(0);
+						break;
+					case 0x04:
+						fan_on(1);
+						break;						
 					case 0xFF:
 						fanResponse(m->src_address);
 						break;

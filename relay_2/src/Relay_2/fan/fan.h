@@ -47,6 +47,11 @@
 #define FAN_ACTION_TRIGGER_OFF_AUTO 8
 //Таймаут таймера работы вентилятора
 #define FAN_ACTION_TIMER 9
+
+//Триггер включения ручного управления
+#define FAN_ACTION_TRIGGER_ON_MANUAL 10
+//Триггер выключения ручного управления
+#define FAN_ACTION_TRIGGER_OFF_MANUAL 11
 	
 struct fan_info_struct{
 	char mode;	//режим работы: 0 - только ручной; 1 - ручной и авто
@@ -97,6 +102,8 @@ void fan_info(struct fan_info_struct* i);
 /*состояния или режима работы вентилятора (для отладки)										    		   */
 /***********************************************************************************************************/
 void fan_set_on_state_changed(void (*f)(char mode, char state));
+	
+void fan_on(char on_);
 	
 #define FAN_H_
 

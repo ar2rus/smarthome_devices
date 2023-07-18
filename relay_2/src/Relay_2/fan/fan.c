@@ -83,6 +83,25 @@ void fan_refresh(char event_){
 				break;
 			}
 		break;
+		case FAN_ACTION_TRIGGER_ON_MANUAL:
+			fan_normal_humidity = 0;
+			switch(fan_state){
+				case FAN_STATE_WAITING:
+				case FAN_STATE_REQUIRED:
+					f_counter = 0;
+					fan_state_tmp = FAN_STATE_IN_PROGRESS_MANUAL;
+				break;
+			}
+		break;
+		case FAN_ACTION_TRIGGER_OFF_MANUAL:
+			fan_normal_humidity = 0;
+			switch(fan_state){
+				case FAN_STATE_IN_PROGRESS_AUTO:
+				case FAN_STATE_IN_PROGRESS_MANUAL:
+					fan_state_tmp = FAN_STATE_WAITING;
+				break;
+		}
+		break;		
 		case FAN_ACTION_SENSOR_RISED:
 			switch(fan_state){
 				case FAN_STATE_WAITING:
@@ -170,10 +189,15 @@ void fan_refresh(char event_){
 			break;
 		}
 	}else{	//шлем в любом случае сообщение, если был вызов команды установки режима
-		if ((event_==FAN_ACTION_ENABLE_AUTO) || (event_ == FAN_ACTION_DISABLE_AUTO)){
-			if (on_fan_state_changed){
-				(*on_fan_state_changed)(fan_auto_enabled, fan_state);
-			}
+		switch(event_){
+			case FAN_ACTION_ENABLE_AUTO:
+			case FAN_ACTION_DISABLE_AUTO:
+			case FAN_ACTION_TRIGGER_ON_MANUAL:
+			case FAN_ACTION_TRIGGER_OFF_MANUAL:
+				if (on_fan_state_changed){
+					(*on_fan_state_changed)(fan_auto_enabled, fan_state);
+				}
+			break;	
 		}
 	}
 }
@@ -261,6 +285,10 @@ void fan_mode(char enable){
 
 void fan_button(){
 	fan_refresh(FAN_ACTION_TRIGGER_TOGGLE_MANUAL);
+}
+
+void fan_on(char on_){
+	fan_refresh(on_ ? FAN_ACTION_TRIGGER_ON_MANUAL : FAN_ACTION_TRIGGER_OFF_MANUAL);
 }
 
 void fan_info(struct fan_info_struct* i){
