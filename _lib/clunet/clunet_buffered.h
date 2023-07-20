@@ -65,9 +65,9 @@ typedef struct {
 
 
 void clunet_buffered_init();
-char clunet_buffered_push(unsigned char src_address, unsigned char dst_address,
-	unsigned char command, char* data, unsigned char size);
 char clunet_buffered_is_empty();
+char clunet_buffered_push(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size);
+clunet_msg* clunet_buffered_peek();
 clunet_msg* clunet_buffered_pop();
 
 #endif /* CLUNET_BUFFERED_H_ */

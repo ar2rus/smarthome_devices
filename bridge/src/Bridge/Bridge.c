@@ -254,10 +254,14 @@ int main(void){
 	
 	while(1){
 		display.led_on = CLUNET_SENDING | CLUNET_READING;
-		if (!clunet_buffered_is_empty() && uart_ready_to_send()){
-			clunet_msg* msg = clunet_buffered_pop();
-			discovery_listen(msg);
-			uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)msg, 4 + msg->size);
+		if (uart_ready_to_send()){
+			clunet_msg* msg = clunet_buffered_peek();
+			if (msg){
+				if (uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)msg, 4 + msg->size)){
+					discovery_listen(msg);
+					clunet_buffered_pop();
+				}
+			}
 		}
 
 		analyze_uart_rx(on_uart_message);
@@ -289,12 +293,11 @@ int main(void){
 			
 			char new_button_value = BUTTON_READ;
 			if (new_button_value != button_value){
+				button_value = new_button_value;
 				if (!new_button_value){
 					discovery_broadcast();
 				}
-				button_value = new_button_value;
 			}
-			
 		}
 	}
 	

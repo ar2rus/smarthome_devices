@@ -43,3 +43,10 @@ clunet_msg* clunet_buffered_pop(){
 	}
 	return r;
 }
+
+clunet_msg* clunet_buffered_peek(){
+	if (!FIFO_IS_EMPTY(fifo)){
+		return &FIFO_FRONT(fifo);
+	}
+	return NULL;
+}
