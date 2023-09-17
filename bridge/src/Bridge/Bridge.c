@@ -252,6 +252,8 @@ int main(void){
 	clunet_buffered_init();
 	clunet_init();
 	
+	wdt_enable(WDTO_2S);
+	
 	while(1){
 		display.led_on = CLUNET_SENDING | CLUNET_READING;
 		if (uart_ready_to_send()){
@@ -299,6 +301,7 @@ int main(void){
 				}
 			}
 		}
+		wdt_reset();
 	}
 	
 	return 0;

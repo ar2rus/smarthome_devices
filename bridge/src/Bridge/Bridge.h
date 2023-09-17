@@ -13,6 +13,7 @@
 #include "clunet/clunet_buffered.h"
 
 #include <avr/interrupt.h>
+#include <avr/wdt.h>
 
 typedef enum{
 	OFF,
