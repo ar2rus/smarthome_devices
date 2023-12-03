@@ -13,7 +13,8 @@
 
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
-#include <TZ.h>
+//#include <TZ.h>
+#include <time.h>
 
 #include <Servo.h>
 
@@ -229,6 +230,11 @@ bool servo_toggle(bool force){
   }
 }
 
+void door_info(uint8_t address){
+  char door_state = servo.read() == SERVO_UP_ANGLE;
+  clunet.send(address, CLUNET_COMMAND_DOOR_INFO, &door_state, 1);
+}
+
 PT_THREAD(mirobo_connect(pt_t *p)){
     PT_BEGIN(p);
     if (!mirobo.isConnected()){
@@ -394,7 +400,8 @@ void setup() {
 
   ArduinoOTA.begin();
 
-  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
+//  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
+  configTime((int)(4 * 3600), 0, "pool.ntp.org", "time.nist.gov", NULL);
 
   server.on("/up", HTTP_GET, [](AsyncWebServerRequest * request) {
     char temp[16];
@@ -530,6 +537,24 @@ void setup() {
               }
             }
           }
+          break;
+        }
+        case CLUNET_COMMAND_DOOR: {
+          if (packet->size == 0){
+              door_info(packet->src);
+          } else if (packet->size == 1){
+              switch(packet->data[0]){
+                case 0x00:
+                  servo_down(false);
+                  break;
+                case 0x01:
+                  servo_up(false);
+                  break;
+                case 0x02:
+                  servo_toggle(false);
+                  break;
+              }
+            }
           break;
         }
       }

@@ -4,7 +4,7 @@
 #define CLUNET_ID 0x85
 #define CLUNET_DEVICE "SwingSocle"
 
-#define TIMEZONE TZ_Europe_Samara
+//#define TIMEZONE TZ_Europe_Samara
 
 #define SERVO_PIN 13
 
@@ -12,9 +12,9 @@
 #define SERVO_STEP_UP_DELAY 5
 #define SERVO_UP_TIMEOUT_DEFAULT 30000
 
-#define SERVO_DOWN_ANGLE 125
-#define SERVO_STEP_DOWN_DELAY 10
-#define SERVO_DOWN_TIMEOUT_DEFAULT 100
+#define SERVO_DOWN_ANGLE 130
+#define SERVO_STEP_DOWN_DELAY 5
+#define SERVO_DOWN_TIMEOUT_DEFAULT 500
 
 
 #define TASKER_GROUP_SERVO 1
