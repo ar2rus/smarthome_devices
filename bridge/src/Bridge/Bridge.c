@@ -234,6 +234,8 @@ void on_uart_message(unsigned char code, char* data, unsigned char length){
 int main(void){
 	cli();
 	
+	wdt_enable(WDTO_2S);
+	
 	TIMER_INIT;
 	ENABLE_TIMER_CMP_A;	//main loop timer 1ms
 	
@@ -251,8 +253,6 @@ int main(void){
 	clunet_set_on_data_received_sniff(clunet_data_received);
 	clunet_buffered_init();
 	clunet_init();
-	
-	wdt_enable(WDTO_2S);
 	
 	while(1){
 		display.led_on = CLUNET_SENDING | CLUNET_READING;
