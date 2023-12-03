@@ -44,10 +44,13 @@ AsyncEventSource events("/events");
 ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
 long event_id = 0;
-LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete  m; });
-LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete  m; });
+LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete m; });
+LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete m; });
 
-LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ delete  m; });
+LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ delete m; });
+
+LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>([](api_request *r){ delete r; });
+api_response* apiResponse = NULL;
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
@@ -89,39 +92,181 @@ uint8_t uart_send_message(clunet_packet* packet){
   return uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, packet->len());
 }
 
-AsyncWebServerRequest* request;
-int responseCommand;
 
-void _request(AsyncWebServerRequest* _request, uint8_t address, uint8_t command, char* data, uint8_t size,
-                int responseFilterCommand, long responseTimeout){
-//  if (request){
-//    _request->send(423, "text/plain", "resource locked");
-//    return;
-//  }
-  int requestId = clunet.request(address, command, data, size, 
-    [](clunet_packet* packet){
-      return responseCommand < 0 || packet->command==responseCommand;
-    }, responseTimeout);
-        
-  if (!requestId){
-    _request->send(423, "text/plain", "resource locked");
-    return;
-  }
+void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
+                int responseFilterCommand, long responseTimeout, bool _infoRequest, String _infoRequestId){
+    webRequest->client()->setRxTimeout(5);
+    api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
+    ar->webRequest = webRequest;
+    ar->info = _infoRequest;
+    if (_infoRequest){
+      strcpy(ar->infoId, _infoRequestId.c_str());
+    }
+    ar->address = address;
+    ar->command = command;
+    ar->responseFilterCommand = responseFilterCommand;
+    ar->responseTimeout = responseTimeout;
+    ar->size = size;
+    memcpy(ar->data, data, size);
+    apiRequestsQueue.add(ar);
 
-  request = _request;
-  responseCommand = responseFilterCommand;
+    ar->webRequest->onDisconnect([&ar](){
+      if (ar != NULL){
+        ar->webRequest = NULL;
+      }
+    });
 }
 
-void _response(int requestId, int numResponses){
-  StaticJsonDocument<64> doc;
-  doc["id"] = requestId;
-  doc["num"] = numResponses;
-  doc["memory"] = ESP.getFreeHeap();
-  
-  String json;
-  serializeJson(doc, json);
-  request->send(200, "application/json", json);
-  request = NULL;
+void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
+                int responseFilterCommand, long responseTimeout){
+    _request(webRequest, address, command, data, size, responseFilterCommand, responseTimeout, false, "");
+}
+
+int int_param(AsyncWebServerRequest* request, String param){
+    return request->getParam(param)->value().toInt();
+}
+
+int address_param(AsyncWebServerRequest* request){
+    return int_param(request, "a");
+}
+
+String id_param(AsyncWebServerRequest* request){
+    return request->getParam("id")->value();
+}
+
+void api_200(AsyncWebServerRequest* request){
+    request->send(200, "text/plain", "{\"body\": \"OK\"}");
+}
+
+void api_400(AsyncWebServerRequest* request, String params){
+    request->send(400, "text/plain", request->url() + "?" + params);
+}
+
+void api_dimmer_400(AsyncWebServerRequest* request){
+    api_400(request, "a=device_address&id=channel_id&value=[0:100]");
+}
+
+void _api_dimmer(int address, int channel_id, int value){
+    char data[] = {(char)channel_id, (char)map(value, 0, 100, 0, 255)};
+    clunet.send(address, CLUNET_COMMAND_DIMMER, data, 2);
+}
+
+void api_dimmer(AsyncWebServerRequest* request){
+    if (!request->hasParam("a") || !request->hasParam("id") || !request->hasParam("value")){
+        api_dimmer_400(request);
+        return;
+    }
+
+    int value = int_param(request, "value");
+    if (value <0 || value>100){
+        api_dimmer_400(request);
+        return;
+    }
+
+    _api_dimmer(address_param(request), id_param(request).toInt(), value);
+    api_200(request); 
+}
+
+void api_switch_400(AsyncWebServerRequest* request){
+    api_400(request, "a=device_address&id=channel_id&value=[0:1]");
+}
+
+void _api_switch(int address, int channel_id, int value){
+    char data[] = {(char)value, (char)channel_id};
+    clunet.send(address, CLUNET_COMMAND_SWITCH, data, 2);
+}
+
+void api_switch(AsyncWebServerRequest* request){
+    if (!request->hasParam("a") || !request->hasParam("id") || !request->hasParam("value")){
+        api_switch_400(request);
+        return;
+    }
+
+    int value = int_param(request, "value");
+    if (value <0 || value>1){
+        api_switch_400(request);
+        return;
+    }
+
+    _api_switch(address_param(request), id_param(request).toInt(), value);
+    api_200(request);
+}
+
+void api_fan_400(AsyncWebServerRequest* request){
+    api_400(request, "a=device_address&value=[0:1]");
+}
+
+void _api_fan(int address, int value){
+    char data = value ? 4 : 3;
+    clunet.send(address, CLUNET_COMMAND_FAN, &data, 1);
+}
+
+void api_fan(AsyncWebServerRequest* request){
+    if (!request->hasParam("a") || !request->hasParam("value")){
+        api_fan_400(request);
+        return;
+    }
+
+    int value = int_param(request, "value");
+    if (value <0 || value>1){
+        api_fan_400(request);
+        return;
+    }
+
+    _api_fan(address_param(request), value);
+    api_200(request);
+}
+
+void api_door_400(AsyncWebServerRequest* request){
+    api_400(request, "a=device_address&value=[0:1]");
+}
+
+void _api_door(int address, int value){
+    clunet.send(address, CLUNET_COMMAND_DOOR, (char*)&value, 1);
+}
+
+void api_door(AsyncWebServerRequest* request){
+    if (!request->hasParam("a") || !request->hasParam("value")){
+        api_door_400(request);
+        return;
+    }
+
+    int value = int_param(request, "value");
+    if (value <0 || value>1){
+        api_fan_400(request);
+        return;
+    }
+
+    _api_door(address_param(request), value);
+    api_200(request);
+}
+
+void info_switch_400(AsyncWebServerRequest* request){
+    api_400(request, "a=device_address&id=channel_id");
+}
+
+void info_switch(AsyncWebServerRequest* request){
+    if (!request->hasParam("a") || !request->hasParam("id")){
+        info_switch_400(request);
+        return;
+    }
+
+    char data = 0xFF;
+    _request(request, address_param(request), CLUNET_COMMAND_SWITCH, &data, 1, CLUNET_COMMAND_SWITCH_INFO, 250, true, id_param(request));
+}
+
+void info_fan_400(AsyncWebServerRequest* request){
+    api_400(request, "a=device_address");
+}
+
+void info_fan(AsyncWebServerRequest* request){
+    if (!request->hasParam("a")){
+        info_fan_400(request);
+        return;
+    }
+
+    char data = 0xFF;
+    _request(request, address_param(request), CLUNET_COMMAND_FAN, &data, 1, CLUNET_COMMAND_FAN_INFO, 250, true, "");
 }
 
 void setup() {
@@ -187,25 +332,37 @@ void setup() {
     });
     
     clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
-      
-      DynamicJsonDocument doc(4196);
-      JsonObject root = doc.to<JsonObject>();
-      root["id"] = requestId;
-      root["memory"] = ESP.getFreeHeap();
-      JsonArray docArray = root.createNestedArray("responses");
-      
-      for(auto i = responses->begin(); i != responses->end(); ++i){
-        clunet_response* response = *i;
-        if (requestId == response->requestId){
-          fillMessageJsonObject(docArray.createNestedObject(), 0, 0, response->packet);
+
+      if (apiResponse != NULL /**&& apiResponse->requestId == requestId**/){
+        if (apiResponse->webRequest != NULL){
+          DynamicJsonDocument doc(4196);
+          JsonObject root = doc.to<JsonObject>();
+          root["id"] = requestId;
+          root["memory"] = ESP.getFreeHeap();
+          JsonArray docArray;
+          if (!apiResponse->info){
+            docArray = root.createNestedArray("responses");
+          }
+
+          for(auto i = responses->begin(); i != responses->end(); ++i){
+            clunet_response* response = *i;
+            if (requestId == response->requestId){
+              if (apiResponse->info){
+                fillValueData(root, response->packet, apiResponse->infoId);
+                break;
+              }else{
+                fillMessageJsonObject(docArray.createNestedObject(), 0, 0, response->packet);
+              }
+            }
+          }
+
+          String json;
+          serializeJson(doc, json);
+          apiResponse->webRequest->send(200, "application/json", json);
         }
-      }
-    
-      if (request){
-        String json;
-        serializeJson(doc, json);
-        request->send(200, "application/json", json);
-        request = NULL;
+          delete apiResponse;
+          apiResponse = NULL;
+        
       }
     });
   }
@@ -250,6 +407,20 @@ void setup() {
     }
     _request(request, address, command, data, dataLen, responseCommand, responseTimeout);
   });
+
+
+  server.on("/api/switch", HTTP_GET, api_switch);
+  
+  server.on("/api/info/switch", HTTP_GET, info_switch);
+
+  server.on("/api/dimmer", HTTP_GET, api_dimmer);
+
+  server.on("/api/fan", HTTP_GET, api_fan);
+
+  server.on("/api/info/fan", HTTP_GET, info_fan);
+
+  server.on("/api/door", HTTP_GET, api_door);
+
 
   server.on("/registry/commands", HTTP_GET, [](AsyncWebServerRequest* request) {
     DynamicJsonDocument doc(4096);
@@ -398,8 +569,18 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
 }
 
 void fillMessageData(JsonObject doc, clunet_packet* packet){
+    if (packet->size){
+      int hexLen = 0;
+      char hex[256];
+      hexLen = charArrayToHexString(hex, packet->data, packet->size);
+      doc["hex"] = String(hex);
+
+      fillObjData(doc.createNestedObject("obj"), packet);
+    }
+}
+
+void fillObjData(JsonObject obj, clunet_packet* packet){
     char buf[512];
-    JsonObject obj = doc.createNestedObject("obj");
         
     switch(packet->command){
       case CLUNET_COMMAND_TEMPERATURE_INFO:{
@@ -432,11 +613,42 @@ void fillMessageData(JsonObject doc, clunet_packet* packet){
       }
       break;
     }
-    
-    int hexLen = 0;
-    char hex[256];
-    hexLen = charArrayToHexString(hex, packet->data, packet->size);
-    doc["hex"] = String(hex);
+}
+
+void fillValueData(JsonObject obj, clunet_packet* packet, char* cid){
+    char buf[512];
+    switch(packet->command){
+      case CLUNET_COMMAND_TEMPERATURE_INFO:{
+        getTemperatureInfo(packet->data, buf);
+        temperature_info* ti =(temperature_info*)buf;
+        for (int i=0; i<ti->num_sensors; i++){
+          if (strcmp(ti->sensors[i].id, cid)){
+            obj["type"] = ti->sensors[i].type;
+            obj["cid"] = ti->sensors[i].id;
+            obj["val"] = serialized(String(ti->sensors[i].value, 2));  
+            break;
+          }
+        }
+      }
+      break;
+      case CLUNET_COMMAND_HUMIDITY_INFO:{
+        getHumidityInfo(packet->data, buf);
+        humidity_info* hi =(humidity_info*)buf;
+        obj["val"] = serialized(String(hi->value, 2)); 
+      }
+      break;
+      case CLUNET_COMMAND_SWITCH_INFO: {
+        int intId = String(cid).toInt();
+        obj["cid"] = cid;
+        obj["value"] = (bool)(packet->data[0] & (1<<(intId-1)));
+      }
+      break;
+      case CLUNET_COMMAND_FAN_INFO: {
+        obj["mode"] = packet->data[0];
+        obj["value"] = (bool)(packet->data[1] == 3 || packet->data[1] == 4);
+      }
+      break;
+    }
 }
 
 void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t timestamp_ms, clunet_packet* packet){
@@ -491,6 +703,42 @@ void loop() {
     String json;
     serializeJson(doc, json);
     events.send(json.c_str(), "DATA", ++event_id);
+  }
+
+  if (apiResponse == NULL){
+    while (!apiRequestsQueue.isEmpty()){
+      api_request* ar = apiRequestsQueue.front();
+      if (ar->webRequest != NULL){
+        
+        apiResponse = (api_response*)malloc(sizeof(api_response));
+        apiResponse->webRequest = ar->webRequest;
+        apiResponse->info = ar->info;
+        if (apiResponse->info){
+          strcpy(apiResponse->infoId, ar->infoId);
+        }
+        apiResponse->responseFilterCommand = ar->responseFilterCommand;
+        apiResponse->requestId = clunet.request(ar->address, ar->command, ar->data, ar->size, [](clunet_packet* packet){
+            return apiResponse->responseFilterCommand < 0 || packet->command==apiResponse->responseFilterCommand;
+        }, ar->responseTimeout);
+        
+        if (apiResponse->requestId){
+          apiResponse->webRequest->onDisconnect([](){
+            if (apiResponse != NULL){
+              apiResponse->webRequest = NULL;
+            }
+          });
+       
+          apiRequestsQueue.remove(ar);
+        }else{
+          delete apiResponse;
+          apiResponse = NULL;   
+        }
+
+        break;
+      }else{
+        apiRequestsQueue.remove(ar);
+      }
+    }
   }
   
   ArduinoOTA.handle();
