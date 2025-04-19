@@ -23,6 +23,7 @@
 #include "Credentials.h"
 
 #include "heatfloor.h"
+#include "Fan.h"
 
 #include <ESPInputs.h>
 
@@ -31,6 +32,9 @@
 #include <time.h>
 
 Inputs inputs;
+
+// Создаем экземпляр класса управления вентилятором туалета
+Fan* toiletFan;
 
 bool oneWireEnabled = true;
 
@@ -128,13 +132,18 @@ AsyncWebServer server(8080);
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 
 void setup() {
-  //Serial.begin(115200);
-  //Serial.println("Booting");
+  Serial.begin(115200);
+  Serial.println("Booting");
 
   for (int i=0; i<RELAY_NUM; i++){
     pinMode(RELAY_PIN[i], OUTPUT);
     apply_relay_state(i);
   }
+  
+  // Инициализируем объект управления вентилятором с лямбда-функцией для управления реле
+  toiletFan = new Fan([](bool state) {
+    relay_state(RELAY_TOILET_FAN, state);
+  }, 30); // 30 минут по умолчанию
 
   WiFi.mode(WIFI_STA);
   
@@ -231,6 +240,42 @@ void setup() {
     ESP.restart();
   });
   
+  // Эндпоинт для управления вентилятором туалета
+  server.on("/fan", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (request->hasArg("state")) {
+      String stateArg = request->arg("state");
+      if (stateArg == "on") {
+        toiletFan->turnOn();
+        request->send(200, "text/plain", "Fan turned on");
+      } else if (stateArg == "off") {
+        toiletFan->turnOff();
+        request->send(200, "text/plain", "Fan turned off");
+      } else if (stateArg == "toggle") {
+        toiletFan->toggle();
+        String newState = toiletFan->getState() ? "on" : "off";
+        request->send(200, "text/plain", "Fan toggled: " + newState);
+      } else {
+        request->send(400, "text/plain", "Invalid state parameter");
+      }
+    } else if (request->hasArg("timer")) {
+      int minutes = request->arg("timer").toInt();
+      if (minutes > 0 && minutes <= 180) { // maximum 3 hours
+        toiletFan->turnOnWithTimer(minutes);
+        request->send(200, "text/plain", "Fan turned on for " + String(minutes) + " minutes");
+      } else {
+        request->send(400, "text/plain", "Invalid timer value");
+      }
+    } else {
+      // Return current status
+      String status = "Fan: " + String(toiletFan->getState() ? "on" : "off");
+      long remainingTime = toiletFan->getRemainingTime();
+      if (remainingTime > 0) {
+        status += ", time remaining: " + String(remainingTime) + " seconds";
+      }
+      request->send(200, "text/plain", status);
+    }
+  });
+  
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_response(request, 404);
   });
@@ -249,8 +294,9 @@ void setup() {
   DS18B20.begin();
   DS18B20.setResolution(12);
 
+  // Настройка обработчика кнопки для управления вентилятором
   inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t state){
-      relay_state(RELAY_TOILET_FAN, !relay_states[RELAY_TOILET_FAN]);
+      toiletFan->toggle(); // Переключить состояние вентилятора
   }); 
 
 }
@@ -313,6 +359,9 @@ void loop() {
   bathroomHeatfloorController->handle();
   bathroomHeatwallController->handle();
   toiletHeatfloorController->handle();
+
+  // Обработка таймера вентилятора туалета
+  toiletFan->handle();
 
   inputs.handle();
   
