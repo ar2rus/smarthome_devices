@@ -3,6 +3,8 @@
 
 using namespace std;
 #include <functional>
+#include <vector>
+#include <string>
 
 #define HEATFLOOR_MIN_TEMPERATURE 10
 #define HEATFLOOR_MAX_TEMPERATURE 45
@@ -23,6 +25,24 @@ struct FloorHeatingSchedule {
   }
 };
 
+// Структура с настройками теплого пола, включающая расписание и состояние
+// Используется только для инициализации
+struct FloorHeatingSettings {
+  std::vector<FloorHeatingSchedule> schedule;
+  bool enabled;
+  
+  FloorHeatingSettings() : enabled(true) {}
+  
+  FloorHeatingSettings(const std::vector<FloorHeatingSchedule>& _schedule, bool _enabled) 
+    : schedule(_schedule), enabled(_enabled) {}
+  
+  // Конструктор из массива расписаний
+  FloorHeatingSettings(const FloorHeatingSchedule* _scheduleArray, int _size, bool _enabled)
+    : enabled(_enabled) {
+    schedule.assign(_scheduleArray, _scheduleArray + _size);
+  }
+};
+
 struct FloorHeatingState {
   bool on;  // Глобальное включение/выключение системы
   bool relayState;  // Текущее состояние реле
@@ -32,16 +52,15 @@ struct FloorHeatingState {
 
 class FloorHeatingController {
   private:
-    
     FloorHeatingSchedule* schedule;
-    const int scheduleSize;
+    int scheduleSize;
     
     bool on;  // Глобальное включение/выключение системы
     bool relayState;  // Текущее состояние реле
     float currentTemperature;  // Текущая температура
     float desiredTemperature;  // Текущая целевая температура
     
-	  std::function<void(bool)> relayControl;
+    std::function<void(bool)> relayControl;
     std::function<float()> requestTemperature;
 
     void setRelay(bool newState);
@@ -49,12 +68,31 @@ class FloorHeatingController {
     float getDesiredTemperature(int hour, int minute, int dayOfWeek);
 
   public:
-    FloorHeatingController(FloorHeatingSchedule* _schedule, int _scheduleSize, std::function<float()> _requestTemperature, std::function<void(bool)> _relayControl);
+    // Конструктор с передачей настроек
+    FloorHeatingController(const FloorHeatingSettings& _settings, 
+                          std::function<float()> _requestTemperature, 
+                          std::function<void(bool)> _relayControl);
     
+    // Включение/выключение системы
     void setOn(bool enabled);
-	  void handle();
     
+    // Получение текущего состояния (включена/выключена)
+    bool isOn() const;
+    
+    // Основная функция обработки
+    void handle();
+    
+    // Получение текущего состояния для отображения
     void getState(FloorHeatingState* _state);
+    
+    // Применение настроек из структуры FloorHeatingSettings (для загрузки из ПЗУ)
+    void applySettings(const FloorHeatingSettings& _settings);
+    
+    // Получение текущих настроек в виде FloorHeatingSettings (для сохранения в ПЗУ)
+    FloorHeatingSettings getSettings() const;
+    
+    // Деструктор для освобождения памяти
+    ~FloorHeatingController();
 };
 
 #endif // FLOOR_HEATING_CONTROLLER_H

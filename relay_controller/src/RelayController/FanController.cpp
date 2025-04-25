@@ -1,8 +1,8 @@
-#include "Fan.h"
+#include "FanController.h"
 #include <Arduino.h>
 
 // Конструктор
-Fan::Fan(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes)
+FanController::FanController(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes)
   : relayControl(controlFunction), 
     isOn(false), 
     turnOffTime(0), 
@@ -13,25 +13,25 @@ Fan::Fan(std::function<void(bool)> controlFunction, unsigned long defaultDuratio
 }
 
 // Приватный метод для обновления состояния и вызова управляющей функции
-void Fan::updateState(bool state) {
+void FanController::updateState(bool state) {
   isOn = state;
   relayControl(state);
 }
 
 // Включить вентилятор навсегда
-void Fan::turnOn() {
+void FanController::turnOn() {
   timerActive = false;
   updateState(true);
 }
 
 // Выключить вентилятор
-void Fan::turnOff() {
+void FanController::turnOff() {
   timerActive = false;
   updateState(false);
 }
 
 // Включить вентилятор на определенное время
-void Fan::turnOnWithTimer(unsigned long durationMinutes) {
+void FanController::turnOnWithTimer(unsigned long durationMinutes) {
   timerActive = true;
   
   unsigned long duration = (durationMinutes > 0) ? 
@@ -43,7 +43,7 @@ void Fan::turnOnWithTimer(unsigned long durationMinutes) {
 }
 
 // Переключить состояние вентилятора
-void Fan::toggle() {
+void FanController::toggle() {
   if (isOn) {
     turnOff();
   } else {
@@ -52,19 +52,19 @@ void Fan::toggle() {
 }
 
 // Обработка таймера
-void Fan::handle() {
+void FanController::handle() {
   if (timerActive && isOn && millis() >= turnOffTime) {
     turnOff();
   }
 }
 
 // Получить текущее состояние вентилятора
-bool Fan::getState() const {
+bool FanController::getState() const {
   return isOn;
 }
 
 // Получить оставшееся время работы таймера (в секундах)
-long Fan::getRemainingTime() const {
+long FanController::getRemainingTime() const {
   if (timerActive && isOn) {
     long remaining = (turnOffTime - millis()) / 1000;
     return (remaining > 0) ? remaining : 0;

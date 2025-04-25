@@ -23,18 +23,25 @@
 #include "Credentials.h"
 
 #include "heatfloor.h"
-#include "Fan.h"
+#include "FanController.h"
 
 #include <ESPInputs.h>
 
 #include <ArduinoJson.h>
 
 #include <time.h>
+#include <LittleFS.h>  // Используем LittleFS
+
+#include <vector>
 
 Inputs inputs;
 
-// Создаем экземпляр класса управления вентилятором туалета
-Fan* toiletFan;
+// Массивы для настроек и контроллеров теплого пола
+FloorHeatingSettings heatingSettings[HEATING_CHANNELS_NUM];
+FloorHeatingController* heatingControllers[HEATING_CHANNELS_NUM];
+
+// Массив контроллеров вентиляторов
+FanController* fanControllers[FAN_CHANNELS_NUM];
 
 bool oneWireEnabled = true;
 
@@ -71,55 +78,6 @@ void apply_relay_state(int index){
   digitalWrite(RELAY_PIN[index], relay_states[index] ? HIGH : LOW);
 }
 
-FloorHeatingSchedule scheduleBathroomHeatfloor[] = {
-  {6, 30, 30.0, -2},
-  {7, 30, 30.0, -3},
-  {9, 30, 28.0, -1},
-  {19, 0, 30.0, -1},
-  {22, 30, 28.0, -1},
-};
-
-FloorHeatingController* bathroomHeatfloorController = new FloorHeatingController(scheduleBathroomHeatfloor, sizeof(scheduleBathroomHeatfloor) / sizeof(scheduleBathroomHeatfloor[0]), 
-[]() -> float {
-  return DS18B20_values[DS18B20_BATHROOM_HEATFLOOR];
-},
-[](bool state) {
-  relay_state(RELAY_BATHROOM_HEATFLOOR, state);
-});
-
-
-FloorHeatingSchedule scheduleBathroomHeatwall[] = {
-  {0, 0, 30, -1},
-  {10, 0, 28, -2},
-  {10, 0, 30, -3},
-  {17, 0, 30, -2},
-  {18, 30, 31, -1}
-};
-
-FloorHeatingController* bathroomHeatwallController = new FloorHeatingController(scheduleBathroomHeatwall, sizeof(scheduleBathroomHeatwall) / sizeof(scheduleBathroomHeatwall[0]), 
-[]() -> float {
-  return DS18B20_values[DS18B20_BATHROOM_HEATWALL];
-},
-[](bool state) {
-  relay_state(RELAY_BATHROOM_HEATWALL, state);
-});
-
-
-
-FloorHeatingSchedule scheduleToiletHeatfloor[] = {
-  {7, 0, 28.0, -1}
-};
-
-FloorHeatingController* toiletHeatfloorController = new FloorHeatingController(scheduleToiletHeatfloor, sizeof(scheduleToiletHeatfloor) / sizeof(scheduleToiletHeatfloor[0]), 
-[]() -> float {
-  return DS18B20_values[DS18B20_TOILET_HEATFLOOR];
-},
-[](bool state) {
-  relay_state(RELAY_TOILET_HEATFLOOR, state);
-});
-
-
-
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
@@ -128,22 +86,181 @@ IPAddress gateway(192, 168, 3, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dnsAddr(192, 168, 3, 1);
 
-AsyncWebServer server(8080);
+AsyncWebServer server(80); // Порт 80
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
+
+// Функция для загрузки настроек расписания из JSON
+void loadScheduleFromJson(JsonArray& array, std::vector<FloorHeatingSchedule>& schedule) {
+  schedule.clear();
+  for (size_t i = 0; i < array.size(); i++) {
+    FloorHeatingSchedule item;
+    item.hour = array[i]["hour"].as<int>();
+    item.minute = array[i]["minute"].as<int>();
+    item.temperature = array[i]["temperature"].as<float>();
+    item.dayOfWeek = array[i]["dayOfWeek"].as<int>();
+    schedule.push_back(item);
+  }
+}
+
+// Функция для сохранения расписания в JSON
+void saveScheduleToJson(JsonArray& array, const std::vector<FloorHeatingSchedule>& schedule) {
+  for (size_t i = 0; i < schedule.size(); i++) {
+    JsonObject item = array.createNestedObject();
+    item["hour"] = schedule[i].hour;
+    item["minute"] = schedule[i].minute;
+    item["temperature"] = schedule[i].temperature;
+    item["dayOfWeek"] = schedule[i].dayOfWeek;
+  }
+}
+
+// Функция для создания настроек FloorHeatingSettings из конфигурации канала
+FloorHeatingSettings createSettingsFromConfig(const HeatingChannelConfig& config, bool enabled = true) {
+  return FloorHeatingSettings(
+    config.defaultSchedule,
+    config.defaultScheduleSize,
+    enabled
+  );
+}
+
+void loadSettingFromConfig(){
+ for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    heatingSettings[i] = createSettingsFromConfig(HEATING_CHANNELS_CONFIG[i]);
+  }
+} 
+
+// Загрузка настроек теплого пола из файла
+void loadHeatfloorSettingsFromFile() {
+  // Инициализация настроек дефолтными значениями
+  loadSettingFromConfig();
+  
+  if (LittleFS.exists("/settings.json")) {
+    File settingsFile = LittleFS.open("/settings.json", "r");
+    if (settingsFile) {
+      Serial.println("Loading heatfloor settings from file");
+      
+      DynamicJsonDocument doc(2048);
+      DeserializationError error = deserializeJson(doc, settingsFile);
+      
+      if (!error) {
+        // Проверяем наличие массива каналов
+        if (doc.containsKey("channels") && doc["channels"].is<JsonArray>()) {
+          JsonArray channels = doc["channels"].as<JsonArray>();
+          
+          // Загружаем настройки из массива
+          for (int i = 0; i < min(HEATING_CHANNELS_NUM, (int)channels.size()); i++) {
+            JsonObject channelObj = channels[i].as<JsonObject>();
+            
+            // Проверяем, что это правильный канал, сравнивая имя
+            if (channelObj.containsKey("name") && String(channelObj["name"].as<const char*>()) == String(HEATING_CHANNELS_CONFIG[i].name)) {
+              if (channelObj.containsKey("schedule") && channelObj["schedule"].is<JsonArray>()) {
+                JsonArray scheduleArray = channelObj["schedule"].as<JsonArray>();
+                std::vector<FloorHeatingSchedule> schedule;
+                loadScheduleFromJson(scheduleArray, schedule);
+                heatingSettings[i].schedule = schedule;
+              }
+              
+              if (channelObj.containsKey("enabled")) {
+                heatingSettings[i].enabled = channelObj["enabled"].as<bool>();
+              }
+            }
+          }
+        }
+        
+        Serial.println("Heatfloor settings loaded successfully");
+      } else {
+        Serial.println("Failed to parse settings file");
+      }
+      
+      settingsFile.close();
+    }
+  } else {
+    // Создаем файл с дефолтными настройками
+    saveHeatfloorSettingsToFile();
+  }
+}
+
+// Сохранение настроек теплого пола в файл
+void saveHeatfloorSettingsToFile() {
+  DynamicJsonDocument doc(2048);
+  
+  // Создаем массив каналов
+  JsonArray channels = doc.createNestedArray("channels");
+  
+  // Получаем актуальные настройки и сохраняем в массив
+  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    if (heatingControllers[i] != nullptr) {
+      FloorHeatingSettings settings = heatingControllers[i]->getSettings();
+      
+      // Создаем объект для текущего канала
+      JsonObject channelObj = channels.createNestedObject();
+      
+      // Сохраняем идентификатор канала
+      channelObj["name"] = HEATING_CHANNELS_CONFIG[i].name;
+      channelObj["displayName"] = HEATING_CHANNELS_CONFIG[i].displayName;
+      channelObj["enabled"] = settings.enabled;
+      
+      // Создаем массив расписания
+      JsonArray scheduleArray = channelObj.createNestedArray("schedule");
+      saveScheduleToJson(scheduleArray, settings.schedule);
+    }
+  }
+  
+  File settingsFile = LittleFS.open("/settings.json", "w");
+  if (settingsFile) {
+    serializeJson(doc, settingsFile);
+    settingsFile.close();
+    Serial.println("Heatfloor settings saved to file");
+  } else {
+    Serial.println("Failed to create settings file");
+  }
+}
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
 
+  // Инициализируем выходы для реле
   for (int i=0; i<RELAY_NUM; i++){
     pinMode(RELAY_PIN[i], OUTPUT);
     apply_relay_state(i);
   }
+
+  // Инициализируем файловую систему LittleFS
+  if (!LittleFS.begin()) {
+    Serial.println("Failed to mount LittleFS");
+    
+    // Даже если не получилось загрузить LittleFS, инициализируем с дефолтными настройками
+    loadSettingFromConfig();
+  } else {
+    Serial.println("LittleFS mounted successfully");
+    // Загружаем настройки из файла
+    loadHeatfloorSettingsFromFile();
+  }
   
-  // Инициализируем объект управления вентилятором с лямбда-функцией для управления реле
-  toiletFan = new Fan([](bool state) {
-    relay_state(RELAY_TOILET_FAN, state);
-  }, 30); // 30 минут по умолчанию
+  // Инициализируем контроллеры теплого пола с загруженными настройками
+  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    const uint8_t sensorIndex = HEATING_CHANNELS_CONFIG[i].temperatureSensor;
+    const uint8_t relayIndex = HEATING_CHANNELS_CONFIG[i].relayPin;
+    
+    heatingControllers[i] = new FloorHeatingController(
+      heatingSettings[i],
+      [sensorIndex]() -> float {
+        return DS18B20_values[sensorIndex];
+      },
+      [relayIndex](bool state) {
+        relay_state(relayIndex, state);
+      }
+    );
+  }
+  
+  // Инициализируем объекты управления вентиляторами с лямбда-функциями
+  for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+    const uint8_t relayIndex = FAN_CHANNELS_CONFIG[i].relayPin;
+    
+    fanControllers[i] = new FanController([relayIndex](bool state) {
+      relay_state(relayIndex, state);
+    }, FAN_CHANNELS_CONFIG[i].defaultTimerMinutes);
+  }
 
   WiFi.mode(WIFI_STA);
   
@@ -176,6 +293,12 @@ void setup() {
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
+
+
+  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request){
+    ESP.restart();
+  });
+
 
   server.on("/t", HTTP_GET, [](AsyncWebServerRequest *request){
     DynamicJsonDocument doc(1024);
@@ -210,71 +333,418 @@ void setup() {
     request->send(200, "text/plain", String(relay_states[i]));
   });
 
-  server.on("/state", HTTP_GET, [](AsyncWebServerRequest *request){
-    //int v = request->arg("v").toInt();
+  // API для управления системой теплого пола
+  AsyncCallbackWebHandler* heatfloorControlHandler = new AsyncCallbackWebHandler();
+  heatfloorControlHandler->setUri("/api/heatfloor/control");
+  heatfloorControlHandler->setMethod(HTTP_POST);
+  heatfloorControlHandler->onRequest([](AsyncWebServerRequest *request) {});
+  
+  heatfloorControlHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    if (total > 0 && index == 0) {
+      // Выделяем память под весь буфер
+      request->_tempObject = malloc(total + 1);
+      if (request->_tempObject == NULL) {
+        request->send(500, "application/json", "{\"success\":false,\"message\":\"Недостаточно памяти\"}");
+        return;
+      }
+    }
+
+    // Копируем данные в буфер
+    if (request->_tempObject) {
+      memcpy((uint8_t*)request->_tempObject + index, data, len);
+      
+      // Если получены все данные, обрабатываем JSON
+      if (index + len == total) {
+        ((uint8_t*)request->_tempObject)[total] = '\0'; // Добавляем нулевой символ
+        String jsonStr = String((char*)request->_tempObject);
+        
+        DynamicJsonDocument doc(128);
+        DeserializationError error = deserializeJson(doc, jsonStr);
+        
+        bool success = false;
+        String message = "";
+        
+        if (!error) {
+          // Проверяем наличие параметров канала и состояния
+          if (doc.containsKey("channel") && doc.containsKey("state")) {
+            String channelName = doc["channel"].as<String>();
+            String state = doc["state"].as<String>();
+            bool enable = (state == "on");
+            
+            // Ищем канал по имени
+            bool found = false;
+            for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+              if (channelName == HEATING_CHANNELS_CONFIG[i].name) {
+                heatingControllers[i]->setOn(enable);
+                saveHeatfloorSettingsToFile(); // Сохраняем новое состояние в файл
+                message = String(HEATING_CHANNELS_CONFIG[i].displayName) + (enable ? " включен" : " выключен");
+                success = true;
+                found = true;
+                break;
+              }
+            }
+            
+            if (!found) {
+              message = "Неизвестный канал теплого пола: " + channelName;
+            }
+          } else {
+            message = "Отсутствуют необходимые параметры channel и state";
+          }
+        } else {
+          message = "Ошибка разбора JSON";
+        }
+        
+        // Формируем ответ
+        DynamicJsonDocument response(256);
+        response["success"] = success;
+        response["message"] = message;
+        
+        String responseStr;
+        serializeJson(response, responseStr);
+        request->send(success ? 200 : 400, "application/json", responseStr);
+        
+        // Освобождаем память
+        free(request->_tempObject);
+        request->_tempObject = NULL;
+      }
+    }
+  });
+  
+  server.addHandler(heatfloorControlHandler);
+  
+  // Эндпоинт для получения состояния вентилятора
+  server.on("/api/fan/state", HTTP_GET, [](AsyncWebServerRequest *request){
+    // Проверяем наличие параметра канала
+    bool success = true;
+    int fanIndex = FAN_TOILET_CHANNEL; // По умолчанию используем вентилятор туалета
+    FanController* targetFan = nullptr;
+    
+    if (request->hasArg("channel")) {
+      String fanId = request->arg("channel");
+      
+      // Ищем канал вентилятора по имени
+      bool found = false;
+      for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+        if (fanId == FAN_CHANNELS_CONFIG[i].name) {
+          fanIndex = i;
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        success = false;
+      }
+    }
+    
+    if (success) {
+      targetFan = fanControllers[fanIndex];
+      
+      // Формируем JSON о текущем состоянии конкретного вентилятора
+      DynamicJsonDocument doc(128);
+      doc["channel"] = FAN_CHANNELS_CONFIG[fanIndex].name;
+      doc["name"] = FAN_CHANNELS_CONFIG[fanIndex].displayName;
+      doc["on"] = targetFan->getState();
+      doc["remainingTime"] = targetFan->getRemainingTime();
+      
+      String responseStr;
+      serializeJson(doc, responseStr);
+      request->send(200, "application/json", responseStr);
+    } else {
+      request->send(404, "application/json", "{\"success\":false,\"message\":\"Вентилятор не найден\"}");
+    }
+  });
+  
+  // Обработчик для POST запросов к вентиляторам
+  AsyncCallbackWebHandler* newFanHandler = new AsyncCallbackWebHandler();
+  newFanHandler->setUri("/api/fan/control");
+  newFanHandler->setMethod(HTTP_POST);
+  newFanHandler->onRequest([](AsyncWebServerRequest *request) {});
+  
+  newFanHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    if (total > 0 && index == 0) {
+      // Выделяем память под весь буфер
+      request->_tempObject = malloc(total + 1);
+      if (request->_tempObject == NULL) {
+        request->send(500, "application/json", "{\"success\":false,\"message\":\"Недостаточно памяти\"}");
+        return;
+      }
+    }
+
+    // Копируем данные в буфер
+    if (request->_tempObject) {
+      memcpy((uint8_t*)request->_tempObject + index, data, len);
+      
+      // Если получены все данные, обрабатываем JSON
+      if (index + len == total) {
+        ((uint8_t*)request->_tempObject)[total] = '\0'; // Добавляем нулевой символ
+        String jsonStr = String((char*)request->_tempObject);
+        
+        DynamicJsonDocument doc(128);
+        DeserializationError error = deserializeJson(doc, jsonStr);
+        
+        bool success = false;
+        String message = "";
+        
+        if (!error) {
+          // Проверяем наличие идентификатора канала вентилятора
+          int fanIndex = FAN_TOILET_CHANNEL; // По умолчанию - вентилятор туалета
+          FanController* targetFan = nullptr;
+          
+          if (doc.containsKey("channel")) {
+            String fanId = doc["channel"].as<String>();
+            
+            // Ищем канал вентилятора по имени
+            bool found = false;
+            for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+              if (fanId == FAN_CHANNELS_CONFIG[i].name) {
+                fanIndex = i;
+                found = true;
+                break;
+              }
+            }
+            
+            if (!found) {
+              message = "Неизвестный канал вентилятора: " + fanId;
+              success = false;
+              
+              // Отправляем ответ об ошибке и освобождаем память
+              DynamicJsonDocument response(128);
+              response["success"] = success;
+              response["message"] = message;
+              
+              String responseStr;
+              serializeJson(response, responseStr);
+              request->send(400, "application/json", responseStr);
+              free(request->_tempObject);
+              request->_tempObject = NULL;
+              return;
+            }
+          }
+          
+          targetFan = fanControllers[fanIndex];
+          String fanName = FAN_CHANNELS_CONFIG[fanIndex].displayName;
+          
+          if (doc.containsKey("state")) {
+            String stateArg = doc["state"].as<String>();
+            if (stateArg == "on") {
+              targetFan->turnOn();
+              message = fanName + " включен";
+              success = true;
+            } else if (stateArg == "off") {
+              targetFan->turnOff();
+              message = fanName + " выключен";
+              success = true;
+            } else if (stateArg == "toggle") {
+              targetFan->toggle();
+              String newState = targetFan->getState() ? "включен" : "выключен";
+              message = fanName + " " + newState;
+              success = true;
+            } else {
+              message = "Неверный параметр состояния";
+            }
+          } else if (doc.containsKey("timer")) {
+            int minutes = doc["timer"].as<int>();
+            if (minutes > 0 && minutes <= 180) { // maximum 3 hours
+              targetFan->turnOnWithTimer(minutes);
+              message = fanName + " включен на " + String(minutes) + " минут";
+              success = true;
+            } else {
+              message = "Неверное значение таймера";
+            }
+          } else {
+            message = "Отсутствуют необходимые параметры";
+          }
+        } else {
+          message = "Ошибка разбора JSON";
+        }
+        
+        // Формируем ответ
+        DynamicJsonDocument response(128);
+        response["success"] = success;
+        response["message"] = message;
+        
+        String responseStr;
+        serializeJson(response, responseStr);
+        request->send(success ? 200 : 400, "application/json", responseStr);
+        
+        // Освобождаем память
+        free(request->_tempObject);
+        request->_tempObject = NULL;
+      }
+    }
+  });
+  
+  server.addHandler(newFanHandler);
+  
+  // API для получения текущих настроек теплого пола
+  server.on("/api/heatfloor/settings", HTTP_GET, [](AsyncWebServerRequest *request){
+    DynamicJsonDocument doc(2048);
+    
+    // Создаем массив каналов
+    JsonArray channels = doc.createNestedArray("channels");
+    
+    // Добавляем информацию о каждом канале
+    for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+      JsonObject channelObj = channels.createNestedObject();
+      
+      // Добавляем идентификатор и отображаемое имя канала
+      channelObj["name"] = HEATING_CHANNELS_CONFIG[i].name;
+      channelObj["displayName"] = HEATING_CHANNELS_CONFIG[i].displayName;
+      channelObj["enabled"] = heatingSettings[i].enabled;
+      
+      // Добавляем расписание
+      JsonArray scheduleArray = channelObj.createNestedArray("schedule");
+      saveScheduleToJson(scheduleArray, heatingSettings[i].schedule);
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+  
+  // API для получения текущего состояния отопления
+  server.on("/api/heatfloor/state", HTTP_GET, [](AsyncWebServerRequest *request){
+    DynamicJsonDocument doc(1024);
     
     FloorHeatingState _state;
     
-    bathroomHeatfloorController->getState(&_state);
-    String s = getStringState(&_state) + "\r\n";
+    // Формируем JSON с данными всех каналов
+    for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+      JsonObject channelObj = doc.createNestedObject(HEATING_CHANNELS_CONFIG[i].name);
+      heatingControllers[i]->getState(&_state);
+      
+      channelObj["on"] = _state.on;
+      if (_state.on) {
+        channelObj["relayState"] = _state.relayState;
+        channelObj["currentTemperature"] = _state.currentTemperature;
+        channelObj["desiredTemperature"] = _state.desiredTemperature;
+      }
+      channelObj["displayName"] = HEATING_CHANNELS_CONFIG[i].displayName;
+    }
     
-    bathroomHeatwallController->getState(&_state);
-    s += getStringState(&_state) + "\r\n";
-
-    toiletHeatfloorController->getState(&_state);
-    s += getStringState(&_state) + "\r\n";
-    
-    request->send(200, "text/plain", s);
-  });
-
-  server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request){
-    time_t t;
-    time(&t);
-    
-    struct tm* lt = localtime(&t);
-    
-    request->send(200, "text/plain", String(lt->tm_hour) + ":" + String(lt->tm_min) +":"+ String(lt->tm_sec));
-  });
-
-  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
-    ESP.restart();
+    String jsonOutput;
+    serializeJson(doc, jsonOutput);
+    request->send(200, "application/json", jsonOutput);
   });
   
-  // Эндпоинт для управления вентилятором туалета
-  server.on("/fan", HTTP_GET, [](AsyncWebServerRequest *request){
-    if (request->hasArg("state")) {
-      String stateArg = request->arg("state");
-      if (stateArg == "on") {
-        toiletFan->turnOn();
-        request->send(200, "text/plain", "Fan turned on");
-      } else if (stateArg == "off") {
-        toiletFan->turnOff();
-        request->send(200, "text/plain", "Fan turned off");
-      } else if (stateArg == "toggle") {
-        toiletFan->toggle();
-        String newState = toiletFan->getState() ? "on" : "off";
-        request->send(200, "text/plain", "Fan toggled: " + newState);
-      } else {
-        request->send(400, "text/plain", "Invalid state parameter");
+  // API для обновления настроек теплого пола
+  AsyncCallbackWebHandler* newUpdateSettingsHandler = new AsyncCallbackWebHandler();
+  newUpdateSettingsHandler->onRequest([](AsyncWebServerRequest *request) {
+    // Обрабатываем только POST запросы
+    if (request->method() != HTTP_POST) {
+      request->send(405, "text/plain", "Method Not Allowed");
+      return;
+    }
+    // Будем выполнять обработку в onBody
+  });
+
+  newUpdateSettingsHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    if (total > 0 && index == 0) {
+      // Выделяем память под весь буфер
+      request->_tempObject = malloc(total + 1);
+      if (request->_tempObject == NULL) {
+        request->send(500, "application/json", "{\"success\":false,\"message\":\"Not enough memory\"}");
+        return;
       }
-    } else if (request->hasArg("timer")) {
-      int minutes = request->arg("timer").toInt();
-      if (minutes > 0 && minutes <= 180) { // maximum 3 hours
-        toiletFan->turnOnWithTimer(minutes);
-        request->send(200, "text/plain", "Fan turned on for " + String(minutes) + " minutes");
-      } else {
-        request->send(400, "text/plain", "Invalid timer value");
+    }
+
+    // Копируем данные в буфер
+    if (request->_tempObject) {
+      memcpy((uint8_t*)request->_tempObject + index, data, len);
+      
+      // Если получены все данные, обрабатываем JSON
+      if (index + len == total) {
+        ((uint8_t*)request->_tempObject)[total] = '\0'; // Добавляем нулевой символ
+        String jsonStr = String((char*)request->_tempObject);
+        
+        DynamicJsonDocument doc(2048);
+        DeserializationError error = deserializeJson(doc, jsonStr);
+        
+        bool success = false;
+        String message = "Settings updated successfully";
+        
+        if (!error) {
+          // Обработка JSON с массивом channels
+          if (doc.containsKey("channels") && doc["channels"].is<JsonArray>()) {
+            JsonArray channels = doc["channels"].as<JsonArray>();
+            
+            // Обновляем настройки для каждого канала из массива
+            for (JsonObject channelObj : channels) {
+              if (channelObj.containsKey("name")) {
+                String channelName = channelObj["name"].as<String>();
+                
+                // Ищем индекс канала по имени
+                for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+                  if (channelName == HEATING_CHANNELS_CONFIG[i].name) {
+                    // Получаем текущие настройки канала
+                    FloorHeatingSettings tempSettings = heatingControllers[i]->getSettings();
+                    
+                    // Обновляем состояние включения
+                    if (channelObj.containsKey("enabled")) {
+                      tempSettings.enabled = channelObj["enabled"].as<bool>();
+                    }
+                    
+                    // Обновляем расписание
+                    if (channelObj.containsKey("schedule") && channelObj["schedule"].is<JsonArray>()) {
+                      JsonArray scheduleArray = channelObj["schedule"].as<JsonArray>();
+                      std::vector<FloorHeatingSchedule> schedule;
+                      loadScheduleFromJson(scheduleArray, schedule);
+                      tempSettings.schedule = schedule;
+                    }
+                    
+                    // Применяем настройки
+                    heatingControllers[i]->applySettings(tempSettings);
+                    
+                    // Обновляем глобальную настройку
+                    heatingSettings[i] = tempSettings;
+                    
+                    success = true;
+                    break;
+                  }
+                }
+              }
+            }
+          } else {
+            message = "Invalid JSON format: 'channels' array is required";
+            success = false;
+          }
+          
+          // Сохраняем настройки в LittleFS
+          if (success) {
+            saveHeatfloorSettingsToFile();
+          }
+        } else {
+          message = "Failed to parse JSON";
+          success = false;
+        }
+        
+        // Формируем ответ
+        DynamicJsonDocument response(256);
+        response["success"] = success;
+        response["message"] = message;
+        
+        String responseStr;
+        serializeJson(response, responseStr);
+        request->send(200, "application/json", responseStr);
+        
+        // Освобождаем память
+        free(request->_tempObject);
+        request->_tempObject = NULL;
       }
-    } else {
-      // Return current status
-      String status = "Fan: " + String(toiletFan->getState() ? "on" : "off");
-      long remainingTime = toiletFan->getRemainingTime();
-      if (remainingTime > 0) {
-        status += ", time remaining: " + String(remainingTime) + " seconds";
-      }
-      request->send(200, "text/plain", status);
     }
   });
+  
+  newUpdateSettingsHandler->setUri("/api/heatfloor/settings");
+  server.addHandler(newUpdateSettingsHandler);
+  
+  // Обработчик для корневого маршрута - отдаем index.html
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/index.html", "text/html");
+  });
+  
+  // Обработчик для загрузки статических файлов (CSS, JS, изображения)
+  server.serveStatic("/", LittleFS, "/");
   
   server.onNotFound( [](AsyncWebServerRequest *request) {
     server_response(request, 404);
@@ -282,11 +752,8 @@ void setup() {
 
   server.begin();
 
-
   pinMode(ONE_WIRE_SUPPLY_PIN, OUTPUT);
-  //digitalWrite(ONE_WIRE_SUPPLY_PIN, HIGH);  
   applyOneWireEnable();
-
 
   for (int i=0; i<ONE_WIRE_NUM_DEVICES; i++){
     DS18B20_values[i] = DEVICE_DISCONNECTED_C;
@@ -294,21 +761,10 @@ void setup() {
   DS18B20.begin();
   DS18B20.setResolution(12);
 
-  // Настройка обработчика кнопки для управления вентилятором
+  // Настройка обработчика кнопки для управления вентилятором туалета
   inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t state){
-      toiletFan->toggle(); // Переключить состояние вентилятора
+      fanControllers[FAN_TOILET_CHANNEL]->toggle(); // Переключить состояние вентилятора туалета
   }); 
-
-}
-
-
-String getStringState(FloorHeatingState* _state){
- if (_state->on){
-    String relay_state = _state->relayState ? "ON" : "OFF";
-    return relay_state + " " + String(_state->currentTemperature) + " / " + String(_state->desiredTemperature);
-  }else{
-    return "OFF";
-  }
 }
 
 bool isValidT(float t){
@@ -329,7 +785,6 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
       break;
   }
 }
-
 
 int prev_n = -1;
 
@@ -356,12 +811,19 @@ void loop() {
     }
   }
 
-  bathroomHeatfloorController->handle();
-  bathroomHeatwallController->handle();
-  toiletHeatfloorController->handle();
+  // Обработка всех каналов теплого пола
+  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    if (heatingControllers[i] != nullptr) {
+      heatingControllers[i]->handle();
+    }
+  }
 
-  // Обработка таймера вентилятора туалета
-  toiletFan->handle();
+  // Обработка таймеров всех вентиляторов
+  for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+    if (fanControllers[i] != nullptr) {
+      fanControllers[i]->handle();
+    }
+  }
 
   inputs.handle();
   

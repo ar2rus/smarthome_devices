@@ -1,9 +1,9 @@
-#ifndef FAN_H
-#define FAN_H
+#ifndef FANCONTROLLER_H
+#define FANCONTROLLER_H
 
 #include <functional>
 
-class Fan {
+class FanController {
   private:
     // Функция для управления реле вентилятора
     std::function<void(bool)> relayControl;
@@ -25,7 +25,7 @@ class Fan {
     
   public:
     // Конструктор принимает функцию для управления реле и время таймера по умолчанию
-    Fan(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes = 30);
+    FanController(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes = 30);
     
     // Включить вентилятор навсегда
     void turnOn();
@@ -49,4 +49,4 @@ class Fan {
     long getRemainingTime() const;
 };
 
-#endif // FAN_H 
+#endif // FANCONTROLLER_H 
