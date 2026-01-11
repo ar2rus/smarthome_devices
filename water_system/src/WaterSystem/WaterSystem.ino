@@ -27,9 +27,10 @@
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
-IPAddress ip(192, 168, 1, 123); //Node static IP
-IPAddress gateway(192, 168, 1, 1);
+IPAddress ip(192, 168, 3, 123); //Node static IP
+IPAddress gateway(192, 168, 3, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsAddr(192, 168, 3, 1);
 
 AsyncWebServer server(80);
 
@@ -55,7 +56,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
 
   WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
 
   //Wifi connection
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -144,6 +145,14 @@ void setup() {
       }else if (request->hasArg("test")){
           if (set_task(get_servo_test_task(task_queue_tmp, 10, 1000))){
              r = 200;
+          }
+      }else if(request->hasArg("angle")){
+          String arg = request->arg("angle");
+  
+          if (checkUintArg(arg)) {
+            int angle= arg.toInt();
+            servo_exec(angle);
+            r = 200;
           }
       }
     }
@@ -272,7 +281,7 @@ boolean pump_exec(char command) {
 }
 
 void servo_exec(int angle){
-  servo.attach(SERVO_PIN);
+  servo.attach(SERVO_PIN, 500, 2450);
   servo.write(angle);
   servoResponse(CLUNET_ADDRESS_BROADCAST, angle);
 }

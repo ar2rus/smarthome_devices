@@ -13,7 +13,7 @@ const char index_html[] PROGMEM = "<!DOCTYPE html><html lang='ru'><head><meta ch
 
 //POTS
 #define POT_COUNT 4
-static const int pot_angle[POT_COUNT] = {0, 60, 120, 180};
+static const int pot_angle[POT_COUNT] = {0, 52, 115, 180};
 
 //DELAYS
 #define SERVO_POS_TIME 1000
@@ -107,6 +107,7 @@ int get_water_task(Task* task, long* fill_time, int pot){
 
     if (can_water_pot(fill_time, pot)){           //проверяем можно ли уже лить в этот горшок
       get_delay_task(&task[i++], SERVO_POS_TIME);
+      get_servo_task(&task[i++], -1);   //detach servo
       get_water_time_check(&task[i++], pot);      //на всякий случай проверем еще раз
       get_water_time_save(&task[i++], pot);       //сохраняем время запуска помпы
       get_pump_task(&task[i++], 1);
@@ -114,8 +115,6 @@ int get_water_task(Task* task, long* fill_time, int pot){
       get_pump_task(&task[i++], 0);
       get_water_time_save(&task[i++], pot);     //сохраняем время остановки помпы (если доработали до конца)
 
-      get_servo_task(&task[i++], -1);   //detach servo
-      
       return i;
     }else{
      
