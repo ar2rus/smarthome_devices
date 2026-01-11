@@ -286,6 +286,21 @@ void setup() {
   if (clunet.connect()){
     clunet.onPacketReceived([](clunet_packet* packet){
        switch (packet->command) {
+        case CLUNET_COMMAND_FAN: {
+          if (packet->size == 0) {
+            fanControllers[FAN_BATHROOM_CHANNEL]->toggle();
+          }else if (packet->size == 1){
+            if (packet->data[0] == 0x00) {
+               fanControllers[FAN_BATHROOM_CHANNEL]->turnOff();
+            } else if (packet->data[0] == 0x01) {
+              fanControllers[FAN_BATHROOM_CHANNEL]->turnOn();
+            } else if (packet->data[0] == 0x02) {
+              fanControllers[FAN_BATHROOM_CHANNEL]->turnOnWithTimer();
+            }
+          }
+        
+        break;
+        }
        }
     });
   }
