@@ -1,0 +1,45 @@
+#ifndef HeatingController_h
+#define HeatingController_h
+
+#define CLUNET_DEVICE_ID 0x92
+#define CLUNET_DEVICE_NAME "HeatingController"
+
+#define TIMEZONE TZ_Europe_Samara
+
+#define ONE_WIRE_PIN 4
+
+#define ONE_WIRE_NUM_DEVICES 5
+#define ONE_WIRE_UPDATE_PERIOD 10
+
+#define DS18B20_NUM_REQUESTS (ONE_WIRE_NUM_DEVICES + 1)
+#define DS18B20_REQUEST_PERIOD ((ONE_WIRE_UPDATE_PERIOD * 1000) / DS18B20_NUM_REQUESTS)
+
+static const uint8_t DS18B20_DEVICES[ONE_WIRE_NUM_DEVICES][8] = {
+  { 0x28, 0x61, 0x64, 0x34, 0x2B, 0x70, 0xC4, 0xEA },
+  { 0x28, 0x83, 0xA5, 0x56, 0xB5, 0x01, 0x3C, 0xCD },
+  { 0x28, 0xD0, 0x77, 0x56, 0xB5, 0x01, 0x3C, 0x67 },
+  { 0x28, 0xB8, 0x21, 0x56, 0xB5, 0x01, 0x3C, 0x0C },
+  { 0x28, 0x61, 0x64, 0x34, 0x29, 0x4E, 0xF5, 0xB4 }
+};
+
+#define DS18B20_TOILET_HEATFLOOR 0
+#define DS18B20_BATHROOM_HEATFLOOR 1
+#define DS18B20_BATHROOM_HEATWALL 2
+#define DS18B20_BALCONY 3
+#define DS18B20_BEDROOM 4
+#define DS18B20_CHILDROOM 5
+#define DS18B20_LIVINGROOM 6
+
+
+#define RELAY_NUM 4
+
+// Индексы реле
+#define RELAY_BATHROOM_FAN 0
+#define RELAY_TOILET_FAN 1
+#define RELAY_BATHROOM_HEATWALL 2
+#define RELAY_BATHROOM_HEATFLOOR 3
+#define RELAY_TOILET_HEATFLOOR 4
+
+static const uint8_t RELAY_PIN[RELAY_NUM] = {13, 12, 5, 4};
+
+#endif
