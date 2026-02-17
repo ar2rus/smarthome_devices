@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Система управления теплым полом</title>
+    <title>Система управления отоплением</title>
     <style>
         body {
             font-family: 'Roboto', Arial, sans-serif;
@@ -176,6 +176,81 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+
+        /* Стили для блока реле */
+        .relayGroup {
+            margin-top: 6px;
+        }
+        .relayRow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px;
+            background-color: #f5f5f5;
+            border-radius: 6px;
+            margin-top: 6px;
+        }
+        .relayRow.on {
+            background-color: #e8f5e9;
+        }
+        .relayRow.off {
+            background-color: #ffebee;
+        }
+        .relayMeta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .relayName {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #2c3e50;
+        }
+        .relayTime {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .relayState {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 600;
+        }
+        .relayRoom {
+            margin-left: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        /* Стили для температуры */
+        .tempSummary {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .tempCard {
+            background-color: #f5f5f5;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        .tempLabel {
+            font-size: 0.8rem;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .tempValue {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .relayTemp {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-left: 6px;
+            font-size: 0.9rem;
+        }
         
         /* Стили для таблиц расписания */
         .scheduleTitle {
@@ -309,202 +384,67 @@
 </head>
 <body>
     <div class="container">
-        <!-- Теплый пол в ванной (полный блок) -->
+        <!-- Система управления отоплением -->
         <div class="channelContainer">
-            <h2 id="bathroomFloorTitle">Теплый пол в ванной</h2>
-            
-            <!-- Статус канала -->
-            <div class="channelStatus">
-                <div class="statusBox statusOff" id="bathroomFloorStatus">
-                    <span class="statusText">Загрузка данных...</span>
+            <h2>Система управления отоплением</h2>
+            <div class="tempSummary">
+                <div class="tempCard">
+                    <div class="tempLabel">Ввод теплоносителя</div>
+                    <div class="tempValue" id="tempInputValue">--.-°C</div>
                 </div>
-                <label class="switch">
-                    <input type="checkbox" id="bathroomFloorEnabled">
-                    <span class="slider round"></span>
-                </label>
             </div>
-            
-            <!-- Расписание канала -->
-            <div class="scheduleTitle" onclick="toggleSchedule('bathroomFloor')">
-                <h3>Расписание</h3>
-                <span class="toggleIcon" id="bathroomFloorToggle">▶</span>
-            </div>
-            <div class="scheduleContent collapsed" id="bathroomFloorContent">
-                <p class="scheduleHint">Нажмите на значение времени или температуры для редактирования</p>
-                <table id="bathroomFloorTable" class="scheduleTable">
-                    <tr>
-                        <th>День</th>
-                        <th>Время</th>
-                        <th>Температура</th>
-                        <th>Действия</th>
-                    </tr>
-                </table>
-                
-                <div class="addScheduleForm">
-                    <select id="bathroomFloorDay">
-                        <option value="0">Вс</option>
-                        <option value="1">Пн</option>
-                        <option value="2">Вт</option>
-                        <option value="3">Ср</option>
-                        <option value="4">Чт</option>
-                        <option value="5">Пт</option>
-                        <option value="6">Сб</option>
-                        <option value="-1">Ежедневно</option>
-                        <option value="-2">Будни</option>
-                        <option value="-3">Выходные</option>
-                    </select>
-                    <input type="number" id="bathroomFloorHour" min="0" max="23" placeholder="Час">
-                    <input type="number" id="bathroomFloorMinute" min="0" max="59" placeholder="Мин">
-                    <input type="number" id="bathroomFloorTemp" min="0" max="50" step="0.5" placeholder="°C">
-                    <button id="bathroomFloorAddButton">Добавить</button>
+            <div class="relayGroup">
+                <div class="relayRow off" id="relay1Row">
+                    <div class="relayMeta">
+                        <div class="relayName"><span id="relay1Name">Канал 1</span><span class="relayTemp" id="relay1Temp">--.-°C</span></div>
+                        <div class="relayState"><span id="relay1StateText">Отключено</span><span class="relayRoom" id="relay1Room">--.-°C</span></div>
+                        <div class="relayTime" id="relay1Time">00:00</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="relay1Toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="relayRow off" id="relay2Row">
+                    <div class="relayMeta">
+                        <div class="relayName"><span id="relay2Name">Канал 2</span><span class="relayTemp" id="relay2Temp">--.-°C</span></div>
+                        <div class="relayState"><span id="relay2StateText">Отключено</span><span class="relayRoom" id="relay2Room">--.-°C</span></div>
+                        <div class="relayTime" id="relay2Time">00:00</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="relay2Toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="relayRow off" id="relay3Row">
+                    <div class="relayMeta">
+                        <div class="relayName"><span id="relay3Name">Канал 3</span><span class="relayTemp" id="relay3Temp">--.-°C</span></div>
+                        <div class="relayState"><span id="relay3StateText">Отключено</span><span class="relayRoom" id="relay3Room">--.-°C</span></div>
+                        <div class="relayTime" id="relay3Time">00:00</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="relay3Toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="relayRow off" id="relay4Row">
+                    <div class="relayMeta">
+                        <div class="relayName"><span id="relay4Name">Канал 4</span><span class="relayTemp" id="relay4Temp">--.-°C</span></div>
+                        <div class="relayState"><span id="relay4StateText">Отключено</span><span class="relayRoom" id="relay4Room">--.-°C</span></div>
+                        <div class="relayTime" id="relay4Time">00:00</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="relay4Toggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
             </div>
         </div>
-        
-        <!-- Теплая стена в ванной (полный блок) -->
-        <div class="channelContainer">
-            <h2 id="bathroomWallTitle">Теплая стена в ванной</h2>
-            
-            <!-- Статус канала -->
-            <div class="channelStatus">
-                <div class="statusBox statusOff" id="bathroomWallStatus">
-                    <span class="statusText">Загрузка данных...</span>
-                </div>
-                <label class="switch">
-                    <input type="checkbox" id="bathroomWallEnabled">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            
-            <!-- Расписание канала -->
-            <div class="scheduleTitle" onclick="toggleSchedule('bathroomWall')">
-                <h3>Расписание</h3>
-                <span class="toggleIcon" id="bathroomWallToggle">▶</span>
-            </div>
-            <div class="scheduleContent collapsed" id="bathroomWallContent">
-                <p class="scheduleHint">Нажмите на значение времени или температуры для редактирования</p>
-                <table id="bathroomWallTable" class="scheduleTable">
-                    <tr>
-                        <th>День</th>
-                        <th>Время</th>
-                        <th>Температура</th>
-                        <th>Действия</th>
-                    </tr>
-                </table>
-                
-                <div class="addScheduleForm">
-                    <select id="bathroomWallDay">
-                        <option value="0">Вс</option>
-                        <option value="1">Пн</option>
-                        <option value="2">Вт</option>
-                        <option value="3">Ср</option>
-                        <option value="4">Чт</option>
-                        <option value="5">Пт</option>
-                        <option value="6">Сб</option>
-                        <option value="-1">Ежедневно</option>
-                        <option value="-2">Будни</option>
-                        <option value="-3">Выходные</option>
-                    </select>
-                    <input type="number" id="bathroomWallHour" min="0" max="23" placeholder="Час">
-                    <input type="number" id="bathroomWallMinute" min="0" max="59" placeholder="Мин">
-                    <input type="number" id="bathroomWallTemp" min="0" max="50" step="0.5" placeholder="°C">
-                    <button id="bathroomWallAddButton">Добавить</button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Теплый пол в туалете (полный блок) -->
-        <div class="channelContainer">
-            <h2 id="toiletFloorTitle">Теплый пол в туалете</h2>
-            
-            <!-- Статус канала -->
-            <div class="channelStatus">
-                <div class="statusBox statusOff" id="toiletFloorStatus">
-                    <span class="statusText">Загрузка данных...</span>
-                </div>
-                <label class="switch">
-                    <input type="checkbox" id="toiletFloorEnabled">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            
-            <!-- Расписание канала -->
-            <div class="scheduleTitle" onclick="toggleSchedule('toiletFloor')">
-                <h3>Расписание</h3>
-                <span class="toggleIcon" id="toiletFloorToggle">▶</span>
-            </div>
-            <div class="scheduleContent collapsed" id="toiletFloorContent">
-                <p class="scheduleHint">Нажмите на значение времени или температуры для редактирования</p>
-                <table id="toiletFloorTable" class="scheduleTable">
-                    <tr>
-                        <th>День</th>
-                        <th>Время</th>
-                        <th>Температура</th>
-                        <th>Действия</th>
-                    </tr>
-                </table>
-                
-                <div class="addScheduleForm">
-                    <select id="toiletFloorDay">
-                        <option value="0">Вс</option>
-                        <option value="1">Пн</option>
-                        <option value="2">Вт</option>
-                        <option value="3">Ср</option>
-                        <option value="4">Чт</option>
-                        <option value="5">Пт</option>
-                        <option value="6">Сб</option>
-                        <option value="-1">Ежедневно</option>
-                        <option value="-2">Будни</option>
-                        <option value="-3">Выходные</option>
-                    </select>
-                    <input type="number" id="toiletFloorHour" min="0" max="23" placeholder="Час">
-                    <input type="number" id="toiletFloorMinute" min="0" max="59" placeholder="Мин">
-                    <input type="number" id="toiletFloorTemp" min="0" max="50" step="0.5" placeholder="°C">
-                    <button id="toiletFloorAddButton">Добавить</button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Вентилятор туалета (полный блок) -->
-        <div class="channelContainer">
-            <h2 id="toiletFanTitle">Вентилятор туалета</h2>
-            
-            <!-- Статус канала -->
-            <div class="channelStatus">
-                <div class="statusBox statusOff" id="toiletFanStatus">
-                    <span class="statusText">Загрузка данных...</span>
-                </div>
-                <label class="switch">
-                    <input type="checkbox" id="toiletFanEnabled">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-        </div>
-        
-        <!-- Вентилятор ванной (полный блок) -->
-        <div class="channelContainer">
-            <h2 id="bathroomFanTitle">Вентилятор ванной</h2>
-            
-            <!-- Статус канала -->
-            <div class="channelStatus">
-                <div class="statusBox statusOff" id="bathroomFanStatus">
-                    <span class="statusText">Загрузка данных...</span>
-                </div>
-                <label class="switch">
-                    <input type="checkbox" id="bathroomFanEnabled">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-        </div>
-        
+
         <div id="message"></div>
     </div>
 
     <script>
-        // Глобальные переменные для отслеживания состояния соединения
-        let connectionLostTime = null;
-        let connectionCheckTimer = null;
-        
         // Локализуем тексты, используемые в уведомлениях
         function showMessage(text, type) {
             const messageElement = document.getElementById('message');
@@ -516,1010 +456,155 @@
                 messageElement.style.opacity = 0;
             }, 3000);
         }
-        
-        // Функция для загрузки текущего состояния теплого пола
-        function loadHeatingState() {
-            fetch('/api/heatfloor/state')
+
+        const relayChannels = [
+            { id: 'relay1', index: 0, name: 'Канал 1' },
+            { id: 'relay2', index: 1, name: 'Канал 2' },
+            { id: 'relay3', index: 2, name: 'Канал 3' },
+            { id: 'relay4', index: 3, name: 'Канал 4' }
+        ];
+
+        function formatElapsedMs(ms) {
+            const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function formatTemperature(value) {
+            if (value === null || value === undefined) {
+                return '--.-°C';
+            }
+            const numberValue = Number(value);
+            if (Number.isNaN(numberValue)) {
+                return '--.-°C';
+            }
+            return `${numberValue.toFixed(1)}°C`;
+        }
+
+        function updateRelayRow(channelId, isOn, elapsedMs, returnTemp, roomTemp) {
+            const row = document.getElementById(channelId + 'Row');
+            const timeElement = document.getElementById(channelId + 'Time');
+            const stateElement = document.getElementById(channelId + 'StateText');
+            const tempElement = document.getElementById(channelId + 'Temp');
+            const roomElement = document.getElementById(channelId + 'Room');
+
+            if (!row || !timeElement || !stateElement) {
+                return;
+            }
+
+            row.classList.toggle('on', isOn);
+            row.classList.toggle('off', !isOn);
+
+            stateElement.textContent = isOn ? 'Включено' : 'Отключено';
+            timeElement.textContent = formatElapsedMs(elapsedMs);
+            if (tempElement) {
+                tempElement.textContent = formatTemperature(returnTemp);
+            }
+            if (roomElement && roomTemp !== undefined) {
+                roomElement.textContent = formatTemperature(roomTemp);
+            }
+        }
+
+        function loadRelayState() {
+            fetch('/api/relay/state')
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Ошибка получения данных: ' + response.status);
+                        throw new Error('Ошибка получения данных реле: ' + response.status);
                     }
-                    
-                    // Сбрасываем таймер потери соединения, т.к. соединение восстановлено
-                    if (connectionLostTime !== null) {
-                        connectionLostTime = null;
-                        clearInterval(connectionCheckTimer);
-                        connectionCheckTimer = null;
-                    }
-                    
                     return response.json();
                 })
                 .then(data => {
-                    // Проверяем, что получены данные
-                    if (!data || Object.keys(data).length === 0) {
-                        throw new Error('Получены пустые данные');
+                    if (!data || !Array.isArray(data.channels)) {
+                        throw new Error('Некорректные данные реле');
                     }
-                    
-                    // Обработка данных для каждого канала
-                    for (const channelId in data) {
-                        const channel = data[channelId];
-                        
-                        // Если есть элемент для отображения статуса
-                        const statusElement = document.getElementById(channelId + 'Status');
-                        if (statusElement) {
-                            if (channel.on) {
-                                // Исключаем вентилятор туалета из этой обработки, т.к. для него отдельный API
-                                if (channelId !== 'toiletFan') {
-                                    const currentTemp = channel.currentTemperature.toFixed(1);
-                                    const desiredTemp = channel.desiredTemperature.toFixed(1);
-                                    const relayClass = channel.relayState ? 'relayOn' : 'relayOff';
-                                    const relayStatus = channel.relayState ? 'включено' : 'отключено';
-                                    
-                                    statusElement.innerHTML = `
-                                        <span class="statusText">
-                                            <div class="paramGrid">
-                                                <div class="paramBox">
-                                                    <span class="paramIcon">🌡️</span>
-                                                    <span class="paramLabel">Текущая t°C</span>
-                                                    <span class="paramValue">${currentTemp}</span>
-                                                </div>
-                                                <div class="paramBox">
-                                                    <span class="paramIcon">⚙️</span>
-                                                    <span class="paramLabel">Заданная t°C</span>
-                                                    <span class="paramValue">${desiredTemp}</span>
-                                                </div>
-                                                <div class="paramBox">
-                                                    <span class="paramIcon">⚡</span>
-                                                    <span class="paramLabel">Реле</span>
-                                                    <span class="paramValue ${relayClass}">${relayStatus}</span>
-                                                </div>
-                                            </div>
-                                        </span>`;
-                                    statusElement.classList.remove('statusOff', 'statusWaiting');
-                                    statusElement.classList.add('statusOn');
-                                }
-                            } else {
-                                // Исключаем вентилятор туалета из этой обработки, т.к. для него отдельный API
-                                if (channelId !== 'toiletFan') {
-                                    statusElement.innerHTML = '<span class="statusText">Отключено</span>';
-                                    statusElement.classList.remove('statusOn', 'statusWaiting');
-                                    statusElement.classList.add('statusOff');
-                                }
-                            }
-                        }
-                        
-                        // Обновляем состояние переключателей (кроме вентилятора)
-                        if (channelId !== 'toiletFan') {
-                            const checkbox = document.getElementById(channelId + 'Enabled');
-                            if (checkbox) {
-                                checkbox.checked = channel.on;
-                                checkbox.disabled = false; // Разблокируем переключатель после загрузки
-                            }
-                        }
+
+                    const inputElement = document.getElementById('tempInputValue');
+                    if (inputElement) {
+                        inputElement.textContent = formatTemperature(data.inputTemp);
                     }
+
+                    data.channels.forEach(channel => {
+                        const relay = relayChannels.find(item => item.index === channel.index);
+                        if (!relay) return;
+
+                        updateRelayRow(relay.id, !!channel.on, channel.elapsedMs || 0, channel.returnTemp, channel.roomTemp);
+
+                        const checkbox = document.getElementById(relay.id + 'Toggle');
+                        if (checkbox && !checkbox.disabled) {
+                            checkbox.checked = !!channel.on;
+                        }
+                    });
                 })
                 .catch(error => {
-                    console.error('Ошибка при загрузке состояния теплого пола:', error);
-                    
-                    // Устанавливаем время потери соединения, если оно еще не установлено
-                    if (connectionLostTime === null) {
-                        connectionLostTime = new Date();
-                        
-                        // Устанавливаем серый фон (состояние ожидания)
-                        document.querySelectorAll('[id$="Status"]').forEach(statusElement => {
-                            // Исключаем вентилятор туалета
-                            if (statusElement.id !== 'toiletFanStatus') {
-                                statusElement.innerHTML = '<span class="statusText">Ожидание соединения...</span>';
-                                statusElement.classList.remove('statusOn', 'statusOff');
-                                statusElement.classList.add('statusWaiting');
-                            }
-                        });
-                        
-                        // Блокируем переключатели (кроме вентилятора)
-                        document.querySelectorAll('[id$="Enabled"]').forEach(checkbox => {
-                            if (checkbox.id !== 'toiletFanEnabled') {
-                                checkbox.disabled = true;
-                            }
-                        });
-                        
-                        // Запускаем таймер проверки длительности потери соединения
-                        if (!connectionCheckTimer) {
-                            connectionCheckTimer = setInterval(() => {
-                                const now = new Date();
-                                const elapsedSeconds = (now - connectionLostTime) / 1000;
-                                
-                                // Если прошло более 60 секунд, показываем сообщение об ошибке соединения
-                                if (elapsedSeconds > 60) {
-                                    document.querySelectorAll('[id$="Status"]').forEach(statusElement => {
-                                        // Исключаем вентилятор туалета
-                                        if (statusElement.id !== 'toiletFanStatus') {
-                                            statusElement.innerHTML = '<span class="statusText">Ошибка соединения</span>';
-                                            statusElement.classList.remove('statusOn', 'statusWaiting');
-                                            statusElement.classList.add('statusOff');
-                                        }
-                                    });
-                                    
-                                    // Очищаем таймер, т.к. уже показали ошибку
-                                    clearInterval(connectionCheckTimer);
-                                    connectionCheckTimer = null;
-                                }
-                            }, 5000); // Проверяем каждые 5 секунд
-                        }
-                    }
+                    console.error('Ошибка при загрузке состояния реле:', error);
                 });
         }
-        
-        // Функция для загрузки состояния всех вентиляторов
-        function loadFanState() {
-            // Загружаем состояние вентилятора туалета
-            loadFanChannelState('toiletFan');
-            
-            // Загружаем состояние вентилятора ванной
-            loadFanChannelState('bathroomFan');
-        }
-        
-        // Функция для загрузки состояния конкретного вентилятора
-        function loadFanChannelState(channelId) {
-            fetch(`/api/fan/state?channel=${channelId}`)
+
+        function toggleRelay(index, channelId) {
+            const checkbox = document.getElementById(channelId + 'Toggle');
+            const intendedState = checkbox ? checkbox.checked : false;
+
+            fetch(`/api/relay/toggle?index=${index}`)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`Ошибка получения данных о вентиляторе ${channelId}: ${response.status}`);
+                        throw new Error('Ошибка управления реле: ' + response.status);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    // Проверяем, что получены данные
-                    if (!data) {
-                        throw new Error(`Получены пустые данные о вентиляторе ${channelId}`);
+                    if (!data || !data.success) {
+                        throw new Error('Некорректный ответ управления реле');
                     }
-                    
-                    const statusElement = document.getElementById(`${channelId}Status`);
-                    const checkbox = document.getElementById(`${channelId}Enabled`);
-                    
-                    if (statusElement) {
-                        if (data.on) {
-                            const remainingTime = data.remainingTime || 0;
-                            const remainingMinutes = Math.floor(remainingTime / 60);
-                            const remainingSeconds = Math.floor(remainingTime % 60);
-                            const timeStr = `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-                            
-                            statusElement.innerHTML = `
-                                <span class="statusText">
-                                    <div class="paramGrid">
-                                        <div class="paramBox">
-                                            <span class="paramIcon">⏱️</span>
-                                            <span class="paramLabel">Оставшееся время</span>
-                                            <span class="paramValue">${timeStr}</span>
-                                        </div>
-                                        <div class="paramBox">
-                                            <span class="paramIcon">⚡</span>
-                                            <span class="paramLabel">Статус</span>
-                                            <span class="paramValue relayOn">включено</span>
-                                        </div>
-                                    </div>
-                                </span>`;
-                            statusElement.classList.remove('statusOff', 'statusWaiting');
-                            statusElement.classList.add('statusOn');
-                        } else {
-                            statusElement.innerHTML = '<span class="statusText">Отключено</span>';
-                            statusElement.classList.remove('statusOn', 'statusWaiting');
-                            statusElement.classList.add('statusOff');
-                        }
-                    }
-                    
-                    // Обновляем состояние переключателя только если он не заблокирован
-                    // (это позволяет избежать мерцания при переключении)
+
+                    updateRelayRow(channelId, !!data.on, data.elapsedMs || 0, data.returnTemp, undefined);
+
                     if (checkbox) {
-                        // Обновляем состояние только если элемент не заблокирован (идет переключение)
-                        if (!checkbox.disabled) {
-                            checkbox.checked = data.on;
-                        }
-                        // Разблокируем переключатель в любом случае
+                        checkbox.checked = !!data.on;
                         checkbox.disabled = false;
                     }
+
+                    loadRelayState();
                 })
                 .catch(error => {
-                    console.error(`Ошибка при загрузке состояния вентилятора ${channelId}:`, error);
-                    
-                    const statusElement = document.getElementById(`${channelId}Status`);
-                    if (statusElement) {
-                        statusElement.innerHTML = '<span class="statusText">Ошибка соединения</span>';
-                        statusElement.classList.remove('statusOn', 'statusWaiting');
-                        statusElement.classList.add('statusOff');
-                    }
-                    
-                    const checkbox = document.getElementById(`${channelId}Enabled`);
+                    console.error('Ошибка при переключении реле:', error);
+
                     if (checkbox) {
-                        checkbox.disabled = false; // Разблокируем на всякий случай
-                    }
-                });
-        }
-        
-        // Функция для переключения вентилятора
-        function toggleFan(channelId) {
-            // Блокируем переключатель на время запроса
-            const checkbox = document.getElementById(`${channelId}Enabled`);
-            if (checkbox) {
-                checkbox.disabled = true;
-            }
-            
-            // Формируем JSON объект для отправки с параметром toggle
-            const requestData = {
-                channel: channelId,
-                state: "toggle"
-            };
-            
-            fetch('/api/fan/control', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`Ошибка управления вентилятором ${channelId}: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`Результат переключения вентилятора ${channelId}:`, data);
-                    
-                    // Проверяем успешность операции
-                    if (data.success) {
-                        // Просто показываем сообщение, которое пришло с сервера
-                        showMessage(data.message, 'success');
-                        
-                        // Немедленно загружаем актуальное состояние
-                        loadFanChannelState(channelId);
-                    } else {
-                        showMessage('Ошибка: ' + (data.message || 'неизвестная ошибка'), 'error');
-                        
-                        // В случае ошибки все равно пытаемся узнать актуальное состояние
-                        setTimeout(() => loadFanChannelState(channelId), 1000);
-                    }
-                })
-                .catch(error => {
-                    console.error(`Ошибка при переключении вентилятора ${channelId}:`, error);
-                    
-                    // Восстанавливаем переключатель (просто убираем блокировку)
-                    const checkbox = document.getElementById(`${channelId}Enabled`);
-                    if (checkbox) {
+                        checkbox.checked = !intendedState;
                         checkbox.disabled = false;
                     }
-                    
-                    // Устанавливаем состояние "ошибка соединения" в блоке статуса
-                    const statusElement = document.getElementById(`${channelId}Status`);
-                    if (statusElement) {
-                        statusElement.innerHTML = '<span class="statusText">Ошибка соединения</span>';
-                        statusElement.classList.remove('statusOn', 'statusWaiting');
-                        statusElement.classList.add('statusOff');
-                    }
-                    
-                    showMessage(`Ошибка управления вентилятором ${channelId}`, 'error');
+
+                    showMessage('Ошибка управления реле', 'error');
                 });
         }
-        
-        // Функция для загрузки настроек теплого пола
-        function loadHeatingSettings() {
-            fetch('/api/heatfloor/settings')
-                .then(response => response.json())
-                .then(data => {
-                    // Проверяем, что есть массив каналов
-                    if (data.channels && Array.isArray(data.channels)) {
-                        // Обрабатываем каждый канал из массива
-                        data.channels.forEach(channel => {
-                            if (!channel.name) return;
-                            
-                            const channelId = channel.name;
-                            const displayName = channel.displayName || channelId;
-                            const enabled = channel.enabled || false;
-                            const schedule = channel.schedule || [];
-                            
-                            // Устанавливаем заголовок
-                            const titleElement = document.getElementById(channelId + 'Title');
-                            if (titleElement) {
-                                titleElement.textContent = displayName;
-                            }
-                            
-                            // Обновляем расписание для канала
-                            updateScheduleTable(channelId, schedule);
-                            
-                            // Обновляем статус включения, сохраняя текущее состояние чекбокса
-                            const checkbox = document.getElementById(channelId + 'Enabled');
-                            if (checkbox) {
-                                // Если чекбокс уже существует, проверяем изменилось ли его состояние
-                                // Если мы в процессе обработки ответа на обновление настроек, не меняем состояние
-                                const isUpdatingSettings = document.querySelector('[id$="Enabled"]:disabled');
-                                if (!isUpdatingSettings) {
-                                    checkbox.checked = enabled;
-                                }
-                            }
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.error('Ошибка при загрузке настроек теплого пола:', error);
-                });
-        }
-        
-        // Функция для отправки запроса на включение/выключение канала теплого пола
-        function toggleHeatingChannel(channelId, enabled) {
-            // Блокируем переключатель на время запроса
-            const checkbox = document.getElementById(channelId + 'Enabled');
-            if (checkbox) {
-                checkbox.disabled = true;
-            }
-            
-            const state = enabled ? 'on' : 'off';
-            
-            // Формируем JSON объект для отправки
-            const requestData = {
-                channel: channelId,
-                state: state
-            };
-            
-            fetch('/api/heatfloor/control', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Ошибка получения данных: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('Результат переключения:', data);
-                    
-                    if (data.success) {
-                        // Просто показываем сообщение, которое пришло с сервера
-                        showMessage(data.message, 'success');
-                    } else {
-                        showMessage('Ошибка: ' + (data.message || 'неизвестная ошибка'), 'error');
-                    }
-                    
-                    // Обновим состояние через 1 секунду
-                    setTimeout(loadHeatingState, 1000);
-                })
-                .catch(error => {
-                    console.error('Ошибка при переключении канала теплого пола:', error);
-                    
-                    // Восстанавливаем предыдущее состояние переключателя
-                    if (checkbox) {
-                        checkbox.checked = !enabled;
-                        checkbox.disabled = false;
-                    }
-                    
-                    // Устанавливаем состояние "ошибка соединения" в блоке статуса
-                    const statusElement = document.getElementById(channelId + 'Status');
-                    if (statusElement) {
-                        statusElement.innerHTML = '<span class="statusText">Ошибка соединения</span>';
-                        statusElement.classList.remove('statusOn');
-                        statusElement.classList.add('statusOff');
-                    }
-                    
-                    showMessage('Ошибка при переключении канала теплого пола: ' + error.message, 'error');
-                });
-        }
-        
-        // Обновление отображения расписания
-        function updateScheduleTable(channelId, schedule) {
-            const tableId = channelId + 'Table';
-            const table = document.getElementById(tableId);
-            if (!table) return;
-            
-            // Очищаем существующие строки, кроме заголовка
-            const rows = table.getElementsByTagName('tr');
-            while (rows.length > 1) {
-                table.deleteRow(1);
-            }
-            
-            // Добавляем строки для каждого элемента расписания
-            schedule.forEach((item, index) => {
-                const row = table.insertRow();
-                
-                // День недели
-                const dayCell = row.insertCell();
-                dayCell.textContent = getDayName(item.dayOfWeek);
-                
-                // Время с возможностью редактирования
-                const timeCell = row.insertCell();
-                const timeDisplay = document.createElement('span');
-                timeDisplay.textContent = formatTime(item.hour, item.minute);
-                timeDisplay.className = 'timeDisplay';
-                timeDisplay.onclick = function() {
-                    // Скрываем текстовое отображение и показываем поле ввода
-                    timeDisplay.style.display = 'none';
-                    timeInput.style.display = 'inline-block';
-                    timeInput.focus();
-                    timeInput.select();
-                };
-                
-                // Создаем поле ввода для редактирования времени
-                const timeInput = document.createElement('input');
-                timeInput.type = 'time';
-                timeInput.value = formatTimeInput(item.hour, item.minute);
-                timeInput.className = 'timeInput';
-                timeInput.style.display = 'none';
-                
-                // Обработчики для сохранения изменений
-                timeInput.onblur = function() {
-                    // Скрываем поле ввода и показываем текст
-                    timeInput.style.display = 'none';
-                    timeDisplay.style.display = 'inline-block';
-                    
-                    // Сохраняем изменения только если значение изменилось
-                    const [hours, minutes] = timeInput.value.split(':').map(Number);
-                    if (!isNaN(hours) && !isNaN(minutes) && 
-                        (hours !== item.hour || minutes !== item.minute)) {
-                        saveTimeChange(channelId, index, timeInput.value);
-                    }
-                };
-                
-                timeInput.onkeydown = function(event) {
-                    if (event.key === 'Enter') {
-                        // Скрываем поле ввода и показываем текст
-                        timeInput.style.display = 'none';
-                        timeDisplay.style.display = 'inline-block';
-                        
-                        // Сохраняем изменения только если значение изменилось
-                        const [hours, minutes] = timeInput.value.split(':').map(Number);
-                        if (!isNaN(hours) && !isNaN(minutes) && 
-                            (hours !== item.hour || minutes !== item.minute)) {
-                            saveTimeChange(channelId, index, timeInput.value);
-                        }
-                    } else if (event.key === 'Escape') {
-                        // Отмена изменений
-                        timeInput.style.display = 'none';
-                        timeDisplay.style.display = 'inline-block';
-                    }
-                };
-                
-                timeCell.appendChild(timeDisplay);
-                timeCell.appendChild(timeInput);
-                
-                // Температура с возможностью редактирования
-                const tempCell = row.insertCell();
-                const tempDisplay = document.createElement('span');
-                tempDisplay.textContent = item.temperature.toFixed(1) + '°C';
-                tempDisplay.className = 'tempDisplay';
-                tempDisplay.onclick = function() {
-                    // Скрываем текстовое отображение и показываем поле ввода
-                    tempDisplay.style.display = 'none';
-                    tempInput.style.display = 'inline-block';
-                    tempInput.focus();
-                    tempInput.select();
-                };
-                
-                // Создаем поле ввода для редактирования температуры
-                const tempInput = document.createElement('input');
-                tempInput.type = 'number';
-                tempInput.value = item.temperature;
-                tempInput.min = 10;
-                tempInput.max = 45;
-                tempInput.step = 0.5;
-                tempInput.className = 'tempInput';
-                tempInput.style.display = 'none';
-                
-                // Обработчики для сохранения изменений
-                tempInput.onblur = function() {
-                    // Скрываем поле ввода и показываем текст
-                    tempInput.style.display = 'none';
-                    tempDisplay.style.display = 'inline-block';
-                    
-                    // Сохраняем изменения только если значение изменилось
-                    const newValue = parseFloat(tempInput.value);
-                    if (!isNaN(newValue) && Math.abs(newValue - item.temperature) >= 0.01) {
-                        saveTemperatureChange(channelId, index, newValue);
-                    }
-                };
-                
-                tempInput.onkeydown = function(event) {
-                    if (event.key === 'Enter') {
-                        // Скрываем поле ввода и показываем текст
-                        tempInput.style.display = 'none';
-                        tempDisplay.style.display = 'inline-block';
-                        
-                        // Сохраняем изменения только если значение изменилось
-                        const newValue = parseFloat(tempInput.value);
-                        if (!isNaN(newValue) && Math.abs(newValue - item.temperature) >= 0.01) {
-                            saveTemperatureChange(channelId, index, newValue);
-                        }
-                    } else if (event.key === 'Escape') {
-                        // Отмена изменений
-                        tempInput.style.display = 'none';
-                        tempDisplay.style.display = 'inline-block';
-                    }
-                };
-                
-                tempCell.appendChild(tempDisplay);
-                tempCell.appendChild(tempInput);
-                
-                // Кнопки удаления
-                const actionsCell = row.insertCell();
-                const deleteButton = document.createElement('button');
-                deleteButton.textContent = '🗑️';
-                deleteButton.className = 'deleteButton';
-                deleteButton.onclick = function() {
-                    if (confirm('Вы уверены, что хотите удалить этот элемент расписания?')) {
-                        deleteScheduleItem(channelId, index);
-                    }
-                };
-                actionsCell.appendChild(deleteButton);
+
+        function setupRelayControls() {
+            relayChannels.forEach(relay => {
+                const nameElement = document.getElementById(relay.id + 'Name');
+                if (nameElement) {
+                    nameElement.textContent = relay.name;
+                }
+
+                const checkbox = document.getElementById(relay.id + 'Toggle');
+                if (checkbox) {
+                    checkbox.checked = false;
+                    checkbox.disabled = false;
+                    checkbox.addEventListener('change', function() {
+                        this.disabled = true;
+                        toggleRelay(relay.index, relay.id);
+                    });
+                }
+
+                updateRelayRow(relay.id, false, 0, null, null);
             });
+
+            loadRelayState();
+            setInterval(loadRelayState, 1000);
         }
-        
-        // Функция для сохранения изменения температуры
-        function saveTemperatureChange(channelId, index, newTemperature) {
-            // Проверка валидности значения
-            if (isNaN(newTemperature) || newTemperature < 10 || newTemperature > 45) {
-                showMessage('Некорректная температура. Допустимый диапазон: 10-45°C', 'error');
-                // Перезагружаем настройки для восстановления исходных значений
-                loadHeatingSettings();
-                return;
-            }
-            
-            // Сохраняем состояние включения канала до обновления
-            const checkbox = document.getElementById(channelId + 'Enabled');
-            const previousState = checkbox ? checkbox.checked : false;
-            
-            // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
-                .then(response => response.json())
-                .then(data => {
-                    // Находим канал в массиве
-                    let channelData = null;
-                    let channelObj = null;
-                    
-                    if (data.channels && Array.isArray(data.channels)) {
-                        channelObj = data.channels.find(ch => ch.name === channelId);
-                        if (channelObj && Array.isArray(channelObj.schedule)) {
-                            channelData = channelObj.schedule;
-                        }
-                    }
-                    
-                    if (!channelData || !channelData[index]) {
-                        showMessage('Не удалось найти элемент расписания', 'error');
-                        return;
-                    }
-                    
-                    // Проверяем, изменилось ли значение
-                    if (Math.abs(channelData[index].temperature - newTemperature) < 0.01) {
-                        console.log('Температура не изменилась, запрос не отправляется');
-                        return;
-                    }
-                    
-                    // Обновляем температуру
-                    channelData[index].temperature = newTemperature;
-                    
-                    // Используем сохраненное состояние включения
-                    const enabled = previousState;
-                    console.log(`Сохраняем состояние канала ${channelId}: ${enabled ? 'включен' : 'выключен'}`);
-                    
-                    // Подготавливаем данные для отправки
-                    const updatedData = {
-                        channels: [
-                            {
-                                name: channelId,
-                                enabled: enabled, // Используем состояние, которое было до редактирования
-                                schedule: channelData
-                            }
-                        ]
-                    };
-                    
-                    // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(updatedData)
-                    });
-                })
-                .then(response => {
-                    if (!response) return null; // Если запрос не был отправлен
-                    return response.json();
-                })
-                .then(result => {
-                    if (!result) return; // Если запрос не был отправлен
-                    
-                    if (result.success) {
-                        showMessage('Температура успешно обновлена', 'success');
-                        loadHeatingSettings();
-                    } else {
-                        showMessage('Ошибка при обновлении: ' + result.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Ошибка при обновлении температуры:', error);
-                    showMessage('Ошибка при обновлении температуры', 'error');
-                });
-        }
-        
-        // Функция для удаления элемента расписания
-        function deleteScheduleItem(channelId, index) {
-            // Сохраняем состояние включения канала до обновления
-            const checkbox = document.getElementById(channelId + 'Enabled');
-            const previousState = checkbox ? checkbox.checked : false;
-            
-            // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
-                .then(response => response.json())
-                .then(data => {
-                    // Находим канал в массиве
-                    let channelData = null;
-                    let channelObj = null;
-                    
-                    if (data.channels && Array.isArray(data.channels)) {
-                        channelObj = data.channels.find(ch => ch.name === channelId);
-                        if (channelObj && Array.isArray(channelObj.schedule)) {
-                            channelData = channelObj.schedule;
-                        }
-                    }
-                    
-                    if (!channelData) {
-                        showMessage('Не удалось получить данные расписания', 'error');
-                        return;
-                    }
-                    
-                    // Удаляем элемент
-                    channelData.splice(index, 1);
-                    
-                    // Используем сохраненное состояние включения
-                    const enabled = previousState;
-                    console.log(`Сохраняем состояние канала ${channelId}: ${enabled ? 'включен' : 'выключен'}`);
-                    
-                    // Подготавливаем данные для отправки в новом формате
-                    const updatedData = {
-                        channels: [
-                            {
-                                name: channelId,
-                                enabled: enabled, // Используем состояние, которое было до редактирования
-                                schedule: channelData
-                            }
-                        ]
-                    };
-                    
-                    // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(updatedData)
-                    });
-                })
-                .then(response => {
-                    if (!response) return null; // Если запрос не был отправлен
-                    return response.json();
-                })
-                .then(result => {
-                    if (!result) return; // Если запрос не был отправлен
-                    
-                    if (result.success) {
-                        showMessage('Расписание успешно обновлено', 'success');
-                        loadHeatingSettings();
-                    } else {
-                        showMessage('Ошибка при обновлении расписания: ' + result.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Ошибка при удалении элемента расписания:', error);
-                    showMessage('Ошибка при удалении элемента расписания', 'error');
-                });
-        }
-        
-        // Функция добавления новой записи в расписание
-        function addScheduleItem(channelId) {
-            const daySelect = document.getElementById(channelId + 'Day');
-            const hourInput = document.getElementById(channelId + 'Hour');
-            const minuteInput = document.getElementById(channelId + 'Minute');
-            const tempInput = document.getElementById(channelId + 'Temp');
-            
-            if (!daySelect || !hourInput || !minuteInput || !tempInput) {
-                showMessage('Не найдены необходимые элементы формы', 'error');
-                return;
-            }
-            
-            const day = parseInt(daySelect.value);
-            const hour = parseInt(hourInput.value);
-            const minute = parseInt(minuteInput.value);
-            const temp = parseFloat(tempInput.value);
-            
-            // Валидация
-            if (isNaN(day) || isNaN(hour) || isNaN(minute) || isNaN(temp)) {
-                showMessage('Пожалуйста, заполните все поля корректно', 'error');
-                return;
-            }
-            
-            if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-                showMessage('Неверное время. Допустимый диапазон: 0-23 часов, 0-59 минут', 'error');
-                return;
-            }
-            
-            // Сохраняем состояние включения канала до обновления
-            const checkbox = document.getElementById(channelId + 'Enabled');
-            const previousState = checkbox ? checkbox.checked : false;
-            
-            // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
-                .then(response => response.json())
-                .then(data => {
-                    // Находим канал в массиве
-                    let channelData = [];
-                    
-                    if (data.channels && Array.isArray(data.channels)) {
-                        const channelObj = data.channels.find(ch => ch.name === channelId);
-                        if (channelObj) {
-                            channelData = Array.isArray(channelObj.schedule) ? channelObj.schedule : [];
-                        }
-                    }
-                    
-                    // Добавляем новый элемент
-                    channelData.push({
-                        dayOfWeek: day,
-                        hour: hour,
-                        minute: minute,
-                        temperature: temp
-                    });
-                    
-                    // Используем сохраненное состояние включения
-                    const enabled = previousState;
-                    console.log(`Сохраняем состояние канала ${channelId}: ${enabled ? 'включен' : 'выключен'}`);
-                    
-                    // Подготавливаем данные для отправки в новом формате
-                    const updatedData = {
-                        channels: [
-                            {
-                                name: channelId,
-                                enabled: enabled, // Используем состояние, которое было до редактирования
-                                schedule: channelData
-                            }
-                        ]
-                    };
-                    
-                    // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(updatedData)
-                    });
-                })
-                .then(response => response.json())
-                .then(result => {
-                    if (result.success) {
-                        // Очищаем поля формы после успешного добавления
-                        daySelect.selectedIndex = 0; // Сбрасываем на первый элемент
-                        hourInput.value = '';
-                        minuteInput.value = '';
-                        tempInput.value = '';
-                        
-                        showMessage('Расписание успешно обновлено', 'success');
-                        loadHeatingSettings();
-                    } else {
-                        showMessage('Ошибка при обновлении расписания: ' + result.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Ошибка при добавлении элемента расписания:', error);
-                    showMessage('Ошибка при добавлении элемента расписания', 'error');
-                });
-        }
-        
-        // Функция для сохранения изменения времени
-        function saveTimeChange(channelId, index, newTime) {
-            // Извлекаем часы и минуты из строки времени (формат HH:MM)
-            const [hours, minutes] = newTime.split(':').map(Number);
-            
-            // Проверка валидности значения
-            if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-                showMessage('Некорректное время. Используйте формат ЧЧ:ММ (0-23 часов, 0-59 минут)', 'error');
-                // Перезагружаем настройки для восстановления исходных значений
-                loadHeatingSettings();
-                return;
-            }
-            
-            // Сохраняем состояние включения канала до обновления
-            const checkbox = document.getElementById(channelId + 'Enabled');
-            const previousState = checkbox ? checkbox.checked : false;
-            
-            // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
-                .then(response => response.json())
-                .then(data => {
-                    // Находим канал в массиве
-                    let channelData = null;
-                    let channelObj = null;
-                    
-                    if (data.channels && Array.isArray(data.channels)) {
-                        channelObj = data.channels.find(ch => ch.name === channelId);
-                        if (channelObj && Array.isArray(channelObj.schedule)) {
-                            channelData = channelObj.schedule;
-                        }
-                    }
-                    
-                    if (!channelData || !channelData[index]) {
-                        showMessage('Не удалось найти элемент расписания', 'error');
-                        return;
-                    }
-                    
-                    // Проверяем, изменилось ли значение
-                    if (channelData[index].hour === hours && channelData[index].minute === minutes) {
-                        console.log('Время не изменилось, запрос не отправляется');
-                        return;
-                    }
-                    
-                    // Обновляем время
-                    channelData[index].hour = hours;
-                    channelData[index].minute = minutes;
-                    
-                    // Используем сохраненное состояние включения
-                    const enabled = previousState;
-                    console.log(`Сохраняем состояние канала ${channelId}: ${enabled ? 'включен' : 'выключен'}`);
-                    
-                    // Подготавливаем данные для отправки
-                    const updatedData = {
-                        channels: [
-                            {
-                                name: channelId,
-                                enabled: enabled, // Используем состояние, которое было до редактирования
-                                schedule: channelData
-                            }
-                        ]
-                    };
-                    
-                    // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(updatedData)
-                    });
-                })
-                .then(response => {
-                    if (!response) return null; // Если запрос не был отправлен
-                    return response.json();
-                })
-                .then(result => {
-                    if (!result) return; // Если запрос не был отправлен
-                    
-                    if (result.success) {
-                        showMessage('Время успешно обновлено', 'success');
-                        loadHeatingSettings();
-                    } else {
-                        showMessage('Ошибка при обновлении: ' + result.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Ошибка при обновлении времени:', error);
-                    showMessage('Ошибка при обновлении времени', 'error');
-                });
-        }
-        
-        // Функция для сворачивания/разворачивания блока расписания
-        function toggleSchedule(id) {
-            const content = document.getElementById(id + 'Content');
-            const toggleIcon = document.getElementById(id + 'Toggle');
-            
-            if (content.classList.contains('collapsed')) {
-                // Разворачиваем блок
-                content.classList.remove('collapsed');
-                toggleIcon.textContent = '▼';
-                toggleIcon.style.transform = 'rotate(0deg)';
-            } else {
-                // Сворачиваем блок
-                content.classList.add('collapsed');
-                toggleIcon.textContent = '▶';
-                toggleIcon.style.transform = 'rotate(0deg)';
-            }
-        }
-        
-        // Вспомогательные функции
-        function getDayName(dayOfWeek) {
-            // Специальные коды дней
-            if (dayOfWeek === -1) return "Ежедневно";
-            if (dayOfWeek === -2) return "Будни";
-            if (dayOfWeek === -3) return "Выходные";
-            
-            // Проверка на dayOfWeek от 0 до 6
-            // В системе: 0 = воскресенье, 1 = понедельник и т.д.
-            const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-            
-            if (dayOfWeek >= 0 && dayOfWeek < days.length) {
-                return days[dayOfWeek];
-            }
-            
-            return 'Неизвестно';
-        }
-        
-        function formatTime(hour, minute) {
-            return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        }
-        
-        function formatTimeInput(hour, minute) {
-            return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        }
-        
+
         // Функция для установки обработчиков событий
         function setupEventHandlers() {
-            // Делаем все переключатели неактивными при старте
-            document.querySelectorAll('[id$="Enabled"]').forEach(checkbox => {
-                checkbox.disabled = true;
-            });
-            
-            // Регистрируем обработчики событий переключения каналов
-            document.querySelectorAll('[id$="Enabled"]').forEach(checkbox => {
-                const channelId = checkbox.id.replace('Enabled', '');
-                
-                if (channelId === 'toiletFan' || channelId === 'bathroomFan') {
-                    // Особая обработка для вентиляторов
-                    checkbox.addEventListener('change', function() {
-                        // Делаем переключатель неактивным на время выполнения запроса
-                        this.disabled = true;
-                        // Вызываем функцию переключения с соответствующим каналом
-                        toggleFan(channelId);
-                    });
-                } else {
-                    // Обычная обработка для теплого пола
-                    checkbox.addEventListener('change', function() {
-                        // Делаем переключатель неактивным на время выполнения запроса
-                        this.disabled = true;
-                        toggleHeatingChannel(channelId, this.checked);
-                    });
-                }
-            });
-            
-            // Регистрируем обработчики событий для кнопок добавления расписания
-            document.querySelectorAll('[id$="AddButton"]').forEach(button => {
-                const channelId = button.id.replace('AddButton', '');
-                button.addEventListener('click', function() {
-                    addScheduleItem(channelId);
-                });
-            });
-            
-            // Инициализация с сервера
-            loadHeatingSettings();
-            loadHeatingState();
-            loadFanState(); // Загружаем состояние вентиляторов
-            
-            // Настраиваем периодическое обновление состояния
-            setInterval(loadHeatingState, 2000); // Обновление теплого пола каждые 2 секунды
-            setInterval(loadFanState, 1000); // Обновление вентиляторов каждую секунду
-            
-            // Таймер для проверки активности переключателей (на случай если что-то пошло не так)
-            setInterval(() => {
-                // Если соединение не потеряно или была ошибка более минуты назад, проверяем соединение
-                if (!connectionLostTime || (new Date() - connectionLostTime) / 1000 > 60) {
-                    // Проверяем соединение с сервером перед разблокировкой
-                    fetch('/api/heatfloor/state')
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error('Сервер недоступен');
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            // Если соединение восстановлено, разблокируем переключатели
-                            const checkboxes = document.querySelectorAll('[id$="Enabled"]');
-                            if (Array.from(checkboxes).every(cb => cb.disabled)) {
-                                console.log('Соединение восстановлено, разблокируем переключатели');
-                                // Запускаем нормальное обновление данных
-                                loadHeatingState();
-                            }
-                        })
-                        .catch(error => {
-                            console.log('Соединение с сервером отсутствует:', error);
-                            // Оставляем переключатели заблокированными
-                        });
-                }
-            }, 5000); // Проверка каждые 5 секунд
+            setupRelayControls();
         }
         
         // Инициализация при загрузке страницы
