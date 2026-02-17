@@ -6,7 +6,11 @@
 FloorHeatingController::FloorHeatingController(const FloorHeatingSettings& _settings, 
                                               std::function<float()> _requestTemperature, 
                                               std::function<void(bool)> _relayControl)
-  : requestTemperature(_requestTemperature), relayControl(_relayControl), relayState(false) {
+  : requestTemperature(_requestTemperature),
+    relayControl(_relayControl),
+    relayState(false),
+    currentTemperature(0.0f),
+    desiredTemperature(0.0f) {
   
   // Копируем расписание из settings в локальные поля
   scheduleSize = _settings.schedule.size();
@@ -37,23 +41,19 @@ float FloorHeatingController::getDesiredTemperature(int hour, int minute, int da
 }
 
 void FloorHeatingController::handle() {
-  if (!on) {
-    setRelay(false);
-    return;
-  }
-    
   time_t t;
   time(&t);
   struct tm* lt = localtime(&t);
   
-  desiredTemperature = getDesiredTemperature(lt->tm_hour, lt->tm_min, lt->tm_wday);
-  if (desiredTemperature == 0.0) {
+  desiredTemperature = on ? getDesiredTemperature(lt->tm_hour, lt->tm_min, lt->tm_wday) : 0.0f;
+  currentTemperature = getCurrentTemperature();
+
+  if (!on) {
     setRelay(false);
     return;
   }
   
-  currentTemperature = getCurrentTemperature();
-  if (currentTemperature == 0.0) {
+  if (desiredTemperature == 0.0f || currentTemperature == 0.0f) {
     setRelay(false);
     return;
   }

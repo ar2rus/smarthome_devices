@@ -7,7 +7,32 @@
 #define CLUNET_DEVICE_ID 0x90
 #define CLUNET_DEVICE_NAME "RelayController"
 
-#define TIMEZONE TZ_Europe_Samara
+#define DEFAULT_TIMEZONE_ID "Europe/Samara"
+
+enum TimeZoneKey {
+  TZKEY_UTC,
+  TZKEY_Europe_Kaliningrad,
+  TZKEY_Europe_Moscow,
+  TZKEY_Europe_Samara,
+  TZKEY_Asia_Yekaterinburg,
+  TZKEY_Asia_Omsk,
+  TZKEY_Asia_Krasnoyarsk,
+  TZKEY_Asia_Irkutsk,
+  TZKEY_Asia_Yakutsk,
+  TZKEY_Asia_Vladivostok,
+  TZKEY_Asia_Magadan,
+  TZKEY_Asia_Kamchatka,
+  TZKEY_America_New_York,
+  TZKEY_America_Chicago,
+  TZKEY_America_Denver,
+  TZKEY_America_Los_Angeles
+};
+
+struct TimeZoneOption {
+  const char* id;
+  const char* label;
+  TimeZoneKey key;
+};
 
 #define BUTTON_PIN 2
 #define BUTTON_TIMEOUT 50

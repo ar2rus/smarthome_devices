@@ -88,6 +88,85 @@ IPAddress dnsAddr(192, 168, 50, 1);
 
 AsyncWebServer server(80); // Порт 80
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
+bool littleFsAvailable = false;
+
+static const char* NTP_SERVER_1 = "pool.ntp.org";
+static const char* NTP_SERVER_2 = "time.nist.gov";
+static const char* TIME_SETTINGS_FILE = "/time.json";
+static const long MIN_VALID_EPOCH = 1609459200; // 2021-01-01
+
+static const TimeZoneOption TIME_ZONES[] = {
+  { "UTC", "UTC", TZKEY_UTC },
+  { "Europe/Kaliningrad", "Europe/Kaliningrad", TZKEY_Europe_Kaliningrad },
+  { "Europe/Moscow", "Europe/Moscow", TZKEY_Europe_Moscow },
+  { "Europe/Samara", "Europe/Samara", TZKEY_Europe_Samara },
+  { "Asia/Yekaterinburg", "Asia/Yekaterinburg", TZKEY_Asia_Yekaterinburg },
+  { "Asia/Omsk", "Asia/Omsk", TZKEY_Asia_Omsk },
+  { "Asia/Krasnoyarsk", "Asia/Krasnoyarsk", TZKEY_Asia_Krasnoyarsk },
+  { "Asia/Irkutsk", "Asia/Irkutsk", TZKEY_Asia_Irkutsk },
+  { "Asia/Yakutsk", "Asia/Yakutsk", TZKEY_Asia_Yakutsk },
+  { "Asia/Vladivostok", "Asia/Vladivostok", TZKEY_Asia_Vladivostok },
+  { "Asia/Magadan", "Asia/Magadan", TZKEY_Asia_Magadan },
+  { "Asia/Kamchatka", "Asia/Kamchatka", TZKEY_Asia_Kamchatka },
+  { "America/New_York", "America/New_York", TZKEY_America_New_York },
+  { "America/Chicago", "America/Chicago", TZKEY_America_Chicago },
+  { "America/Denver", "America/Denver", TZKEY_America_Denver },
+  { "America/Los_Angeles", "America/Los_Angeles", TZKEY_America_Los_Angeles }
+};
+
+static const size_t TIME_ZONES_COUNT = sizeof(TIME_ZONES) / sizeof(TIME_ZONES[0]);
+
+String currentTimeZoneId = DEFAULT_TIMEZONE_ID;
+
+String formatDeviceId(const uint8_t* address) {
+  char buffer[17];
+  snprintf(
+    buffer,
+    sizeof(buffer),
+    "%02X%02X%02X%02X%02X%02X%02X%02X",
+    address[0], address[1], address[2], address[3],
+    address[4], address[5], address[6], address[7]
+  );
+  return String(buffer);
+}
+
+const char* getPosixTimeZone(TimeZoneKey key) {
+  switch (key) {
+    case TZKEY_Europe_Kaliningrad:
+      return TZ_Europe_Kaliningrad;
+    case TZKEY_Europe_Moscow:
+      return TZ_Europe_Moscow;
+    case TZKEY_Europe_Samara:
+      return TZ_Europe_Samara;
+    case TZKEY_Asia_Yekaterinburg:
+      return TZ_Asia_Yekaterinburg;
+    case TZKEY_Asia_Omsk:
+      return TZ_Asia_Omsk;
+    case TZKEY_Asia_Krasnoyarsk:
+      return TZ_Asia_Krasnoyarsk;
+    case TZKEY_Asia_Irkutsk:
+      return TZ_Asia_Irkutsk;
+    case TZKEY_Asia_Yakutsk:
+      return TZ_Asia_Yakutsk;
+    case TZKEY_Asia_Vladivostok:
+      return TZ_Asia_Vladivostok;
+    case TZKEY_Asia_Magadan:
+      return TZ_Asia_Magadan;
+    case TZKEY_Asia_Kamchatka:
+      return TZ_Asia_Kamchatka;
+    case TZKEY_America_New_York:
+      return TZ_America_New_York;
+    case TZKEY_America_Chicago:
+      return TZ_America_Chicago;
+    case TZKEY_America_Denver:
+      return TZ_America_Denver;
+    case TZKEY_America_Los_Angeles:
+      return TZ_America_Los_Angeles;
+    case TZKEY_UTC:
+    default:
+      return "UTC0";
+  }
+}
 
 // Функция для загрузки настроек расписания из JSON
 void loadScheduleFromJson(JsonArray& array, std::vector<FloorHeatingSchedule>& schedule) {
@@ -110,6 +189,100 @@ void saveScheduleToJson(JsonArray& array, const std::vector<FloorHeatingSchedule
     item["minute"] = schedule[i].minute;
     item["temperature"] = schedule[i].temperature;
     item["dayOfWeek"] = schedule[i].dayOfWeek;
+  }
+}
+
+const TimeZoneOption* findTimeZoneById(const String& id) {
+  for (size_t i = 0; i < TIME_ZONES_COUNT; i++) {
+    if (id == TIME_ZONES[i].id) {
+      return &TIME_ZONES[i];
+    }
+  }
+  return nullptr;
+}
+
+const TimeZoneOption* getDefaultTimeZone() {
+  const TimeZoneOption* zone = findTimeZoneById(DEFAULT_TIMEZONE_ID);
+  if (zone != nullptr) {
+    return zone;
+  }
+  return &TIME_ZONES[0];
+}
+
+bool applyTimeZoneById(const String& id) {
+  const TimeZoneOption* zone = findTimeZoneById(id);
+  if (zone == nullptr) {
+    return false;
+  }
+  currentTimeZoneId = zone->id;
+  configTime(getPosixTimeZone(zone->key), NTP_SERVER_1, NTP_SERVER_2);
+  return true;
+}
+
+void loadTimeSettingsFromFile() {
+  currentTimeZoneId = DEFAULT_TIMEZONE_ID;
+  if (!littleFsAvailable) {
+    return;
+  }
+
+  if (!LittleFS.exists(TIME_SETTINGS_FILE)) {
+    return;
+  }
+
+  File settingsFile = LittleFS.open(TIME_SETTINGS_FILE, "r");
+  if (!settingsFile) {
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  DeserializationError error = deserializeJson(doc, settingsFile);
+  settingsFile.close();
+
+  if (error) {
+    return;
+  }
+
+  if (doc.containsKey("timezone")) {
+    String tzId = doc["timezone"].as<String>();
+    if (findTimeZoneById(tzId) != nullptr) {
+      currentTimeZoneId = tzId;
+    }
+  }
+}
+
+void saveTimeSettingsToFile() {
+  if (!littleFsAvailable) {
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  doc["timezone"] = currentTimeZoneId;
+
+  File settingsFile = LittleFS.open(TIME_SETTINGS_FILE, "w");
+  if (!settingsFile) {
+    return;
+  }
+
+  serializeJson(doc, settingsFile);
+  settingsFile.close();
+}
+
+void appendTimePayload(DynamicJsonDocument& doc) {
+  time_t now = time(nullptr);
+  bool valid = now > MIN_VALID_EPOCH;
+
+  doc["epoch"] = static_cast<long>(now);
+  doc["timeZone"] = currentTimeZoneId;
+  doc["valid"] = valid;
+
+  if (valid) {
+    struct tm timeInfo;
+    localtime_r(&now, &timeInfo);
+    char timeBuffer[16];
+    strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", &timeInfo);
+    doc["time"] = timeBuffer;
+  } else {
+    doc["time"] = "";
   }
 }
 
@@ -226,7 +399,8 @@ void setup() {
   }
 
   // Инициализируем файловую систему LittleFS
-  if (!LittleFS.begin()) {
+  littleFsAvailable = LittleFS.begin();
+  if (!littleFsAvailable) {
     Serial.println("Failed to mount LittleFS");
     
     // Даже если не получилось загрузить LittleFS, инициализируем с дефолтными настройками
@@ -236,6 +410,8 @@ void setup() {
     // Загружаем настройки из файла
     loadHeatfloorSettingsFromFile();
   }
+
+  loadTimeSettingsFromFile();
   
   // Инициализируем контроллеры теплого пола с загруженными настройками
   for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
@@ -281,7 +457,9 @@ void setup() {
 
   ArduinoOTA.begin();
 
-  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
+  if (!applyTimeZoneById(currentTimeZoneId)) {
+    applyTimeZoneById(getDefaultTimeZone()->id);
+  }
   
   if (clunet.connect()){
     clunet.onPacketReceived([](clunet_packet* packet){
@@ -335,6 +513,117 @@ void setup() {
     
     request->send(200, "application/json", json);
   });
+
+  server.on("/api/temperatures", HTTP_GET, [](AsyncWebServerRequest *request){
+    DynamicJsonDocument doc(1024);
+    JsonArray sensors = doc.createNestedArray("sensors");
+    
+    for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
+      JsonObject sensorObj = sensors.createNestedObject();
+      sensorObj["id"] = formatDeviceId(DS18B20_DEVICES[i]);
+      if (isValidT(DS18B20_values[i])) {
+        sensorObj["temperature"] = DS18B20_values[i];
+      } else {
+        sensorObj["temperature"] = nullptr;
+      }
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  server.on("/api/time", HTTP_GET, [](AsyncWebServerRequest *request){
+    DynamicJsonDocument doc(256);
+    appendTimePayload(doc);
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  server.on("/api/timezones", HTTP_GET, [](AsyncWebServerRequest *request){
+    DynamicJsonDocument doc(2048);
+    doc["current"] = currentTimeZoneId;
+    JsonArray zones = doc.createNestedArray("zones");
+
+    for (size_t i = 0; i < TIME_ZONES_COUNT; i++) {
+      JsonObject zoneObj = zones.createNestedObject();
+      zoneObj["id"] = TIME_ZONES[i].id;
+      zoneObj["label"] = TIME_ZONES[i].label;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  AsyncCallbackWebHandler* timeZoneHandler = new AsyncCallbackWebHandler();
+  timeZoneHandler->setUri("/api/timezone");
+  timeZoneHandler->setMethod(HTTP_POST);
+  timeZoneHandler->onRequest([](AsyncWebServerRequest *request) {});
+
+  timeZoneHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    if (total > 0 && index == 0) {
+      request->_tempObject = malloc(total + 1);
+      if (request->_tempObject == NULL) {
+        request->send(500, "application/json", "{\"success\":false,\"message\":\"Недостаточно памяти\"}");
+        return;
+      }
+    }
+
+    if (request->_tempObject) {
+      memcpy((uint8_t*)request->_tempObject + index, data, len);
+
+      if (index + len == total) {
+        ((uint8_t*)request->_tempObject)[total] = '\0';
+        String jsonStr = String((char*)request->_tempObject);
+
+        DynamicJsonDocument doc(256);
+        DeserializationError error = deserializeJson(doc, jsonStr);
+
+        bool success = false;
+        String message = "";
+
+        if (!error) {
+          String tzId = "";
+          if (doc.containsKey("id")) {
+            tzId = doc["id"].as<String>();
+          } else if (doc.containsKey("timeZone")) {
+            tzId = doc["timeZone"].as<String>();
+          }
+
+          if (tzId.length() > 0) {
+            if (applyTimeZoneById(tzId)) {
+              saveTimeSettingsToFile();
+              success = true;
+              message = "Таймзона обновлена";
+            } else {
+              message = "Неизвестная таймзона";
+            }
+          } else {
+            message = "Отсутствует параметр id";
+          }
+        } else {
+          message = "Ошибка разбора JSON";
+        }
+
+        DynamicJsonDocument response(512);
+        response["success"] = success;
+        response["message"] = message;
+        appendTimePayload(response);
+
+        String responseStr;
+        serializeJson(response, responseStr);
+        request->send(success ? 200 : 400, "application/json", responseStr);
+
+        free(request->_tempObject);
+        request->_tempObject = NULL;
+      }
+    }
+  });
+
+  server.addHandler(timeZoneHandler);
 
   server.on("/ow", HTTP_GET, [](AsyncWebServerRequest *request){
     oneWireEnable(!oneWireEnabled);
@@ -774,7 +1063,7 @@ void setup() {
     DS18B20_values[i] = DEVICE_DISCONNECTED_C;
   }
   DS18B20.begin();
-  DS18B20.setResolution(12);
+  DS18B20.setResolution(10);
 
   // Настройка обработчика кнопки для управления вентилятором туалета
   inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t state){

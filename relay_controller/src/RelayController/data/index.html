@@ -37,6 +37,51 @@
             font-size: 0.9rem;
             color: #2c3e50;
         }
+        .topBar {
+            background-color: #fff;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .topBar h1 {
+            margin: 0 0 6px;
+        }
+        .timePanel {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .currentTimeBlock {
+            display: flex;
+            flex-direction: column;
+            min-width: 140px;
+        }
+        .timeLabel {
+            font-size: 11px;
+            color: #777;
+            margin-bottom: 3px;
+        }
+        #currentTime {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .timeZoneBlock {
+            display: flex;
+            flex-direction: column;
+            min-width: 160px;
+            flex: 1;
+        }
+        #timeZoneSelect {
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            background-color: #fff;
+        }
         
         /* Стили для контейнера канала */
         .channelContainer {
@@ -309,6 +354,19 @@
 </head>
 <body>
     <div class="container">
+        <div class="topBar">
+            <h1>Система управления теплым полом</h1>
+            <div class="timePanel">
+                <div class="currentTimeBlock">
+                    <div class="timeLabel">Текущее время</div>
+                    <div id="currentTime">--:--:--</div>
+                </div>
+                <div class="timeZoneBlock">
+                    <label for="timeZoneSelect" class="timeLabel">Таймзона</label>
+                    <select id="timeZoneSelect"></select>
+                </div>
+            </div>
+        </div>
         <!-- Теплый пол в ванной (полный блок) -->
         <div class="channelContainer">
             <h2 id="bathroomFloorTitle">Теплый пол в ванной</h2>
@@ -504,6 +562,12 @@
         // Глобальные переменные для отслеживания состояния соединения
         let connectionLostTime = null;
         let connectionCheckTimer = null;
+        let deviceTimeOffsetMs = 0;
+        let deviceTimeZoneId = '';
+        let deviceTimeValid = false;
+        let timeTicker = null;
+        let timeSyncTimer = null;
+        let lastDeviceTimeText = '--:--:--';
         
         // Локализуем тексты, используемые в уведомлениях
         function showMessage(text, type) {
@@ -551,7 +615,8 @@
                                 // Исключаем вентилятор туалета из этой обработки, т.к. для него отдельный API
                                 if (channelId !== 'toiletFan') {
                                     const currentTemp = channel.currentTemperature.toFixed(1);
-                                    const desiredTemp = channel.desiredTemperature.toFixed(1);
+                                    const desiredTempValue = channel.desiredTemperature;
+                                    const desiredTemp = desiredTempValue > 0 ? desiredTempValue.toFixed(1) : '—';
                                     const relayClass = channel.relayState ? 'relayOn' : 'relayOff';
                                     const relayStatus = channel.relayState ? 'включено' : 'отключено';
                                     
@@ -1446,9 +1511,188 @@
         function formatTimeInput(hour, minute) {
             return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
         }
+
+        function updateCurrentTimeDisplay() {
+            const timeElement = document.getElementById('currentTime');
+            if (!timeElement) return;
+
+            if (!deviceTimeValid) {
+                timeElement.textContent = '--:--:--';
+                return;
+            }
+
+            const now = new Date(Date.now() + deviceTimeOffsetMs);
+            const localTimeZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+                ? Intl.DateTimeFormat().resolvedOptions().timeZone
+                : '';
+
+            if (!deviceTimeZoneId || deviceTimeZoneId === localTimeZone) {
+                timeElement.textContent = now.toLocaleTimeString('ru-RU');
+                return;
+            }
+
+            if (typeof Intl !== 'undefined' && typeof Intl.DateTimeFormat === 'function') {
+                try {
+                    const formatter = new Intl.DateTimeFormat('ru-RU', {
+                        timeZone: deviceTimeZoneId,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                    timeElement.textContent = formatter.format(now);
+                    return;
+                } catch (error) {
+                    // fallback ниже
+                }
+            }
+
+            timeElement.textContent = lastDeviceTimeText || '--:--:--';
+        }
+
+        function startTimeTicker() {
+            if (timeTicker) {
+                clearInterval(timeTicker);
+            }
+            updateCurrentTimeDisplay();
+            timeTicker = setInterval(updateCurrentTimeDisplay, 1000);
+        }
+
+        function applyDeviceTimeSync(data) {
+            if (!data) return;
+            const epoch = Number(data.epoch);
+            if (!isNaN(epoch)) {
+                deviceTimeOffsetMs = epoch * 1000 - Date.now();
+            }
+            if (typeof data.valid === 'boolean') {
+                deviceTimeValid = data.valid;
+            } else if (!isNaN(epoch)) {
+                deviceTimeValid = epoch > 1609459200;
+            }
+            if (data.timeZone) {
+                deviceTimeZoneId = data.timeZone;
+            }
+            if (data.time) {
+                lastDeviceTimeText = data.time;
+            }
+            const timeZoneSelect = document.getElementById('timeZoneSelect');
+            if (timeZoneSelect && deviceTimeZoneId) {
+                for (const option of timeZoneSelect.options) {
+                    if (option.value === deviceTimeZoneId) {
+                        timeZoneSelect.value = deviceTimeZoneId;
+                        break;
+                    }
+                }
+            }
+            startTimeTicker();
+        }
+
+        function loadDeviceTime() {
+            fetch('/api/time')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка получения времени');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    applyDeviceTimeSync(data);
+                })
+                .catch(error => {
+                    console.error('Ошибка получения времени:', error);
+                    updateCurrentTimeDisplay();
+                });
+        }
+
+        function loadTimeZones() {
+            const timeZoneSelect = document.getElementById('timeZoneSelect');
+            if (!timeZoneSelect) return;
+            timeZoneSelect.disabled = true;
+
+            fetch('/api/timezones')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка получения таймзон');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    timeZoneSelect.innerHTML = '';
+                    const zones = Array.isArray(data.zones) ? data.zones : [];
+                    zones.forEach(zone => {
+                        const option = document.createElement('option');
+                        option.value = zone.id;
+                        option.textContent = zone.label || zone.id;
+                        timeZoneSelect.appendChild(option);
+                    });
+                    const hasCurrent = data.current && zones.some(zone => zone.id === data.current);
+                    if (hasCurrent) {
+                        deviceTimeZoneId = data.current;
+                        timeZoneSelect.value = data.current;
+                    } else if (zones.length > 0) {
+                        deviceTimeZoneId = zones[0].id;
+                        timeZoneSelect.value = zones[0].id;
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки таймзон:', error);
+                    timeZoneSelect.innerHTML = '<option value="">Нет данных</option>';
+                })
+                .finally(() => {
+                    timeZoneSelect.disabled = false;
+                });
+        }
+
+        function setDeviceTimeZone(timeZoneId) {
+            const timeZoneSelect = document.getElementById('timeZoneSelect');
+            if (!timeZoneSelect) return;
+            timeZoneSelect.disabled = true;
+
+            fetch('/api/timezone', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: timeZoneId })
+            })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        applyDeviceTimeSync(result);
+                        showMessage('Таймзона обновлена', 'success');
+                    } else {
+                        showMessage('Ошибка изменения таймзоны: ' + (result.message || 'неизвестно'), 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка изменения таймзоны:', error);
+                    showMessage('Ошибка изменения таймзоны', 'error');
+                })
+                .finally(() => {
+                    timeZoneSelect.disabled = false;
+                });
+        }
+
+        function initTimeControls() {
+            loadTimeZones();
+            loadDeviceTime();
+            if (timeSyncTimer) {
+                clearInterval(timeSyncTimer);
+            }
+            timeSyncTimer = setInterval(loadDeviceTime, 60000);
+
+            const timeZoneSelect = document.getElementById('timeZoneSelect');
+            if (timeZoneSelect) {
+                timeZoneSelect.addEventListener('change', () => {
+                    if (timeZoneSelect.value) {
+                        setDeviceTimeZone(timeZoneSelect.value);
+                    }
+                });
+            }
+        }
         
         // Функция для установки обработчиков событий
         function setupEventHandlers() {
+            initTimeControls();
             // Делаем все переключатели неактивными при старте
             document.querySelectorAll('[id$="Enabled"]').forEach(checkbox => {
                 checkbox.disabled = true;
