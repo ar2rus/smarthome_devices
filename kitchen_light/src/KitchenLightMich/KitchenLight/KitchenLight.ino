@@ -22,10 +22,10 @@
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
-IPAddress ip(192, 168, 3, 122); //Node static IP
-IPAddress gateway(192, 168, 3, 1);
+IPAddress ip(192, 168, 50, 122); //Node static IP
+IPAddress gateway(192, 168, 50, 1);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress dnsAddr(192, 168, 3, 1);
+IPAddress dnsAddr(192, 168, 50, 1);
 
 AsyncWebServer server(8080);
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);

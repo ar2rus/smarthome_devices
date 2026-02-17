@@ -54,10 +54,10 @@ void apply_relay_state(int index){
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
-IPAddress ip(192, 168, 3, 127); //Node static IP
-IPAddress gateway(192, 168, 3, 1);
+IPAddress ip(192, 168, 50, 127); //Node static IP
+IPAddress gateway(192, 168, 50, 1);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress dnsAddr(192, 168, 3, 1);
+IPAddress dnsAddr(192, 168, 50, 1);
 
 AsyncWebServer server(80); // Порт 80
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
