@@ -3,3 +3,4 @@ Credentials.h
 **/target/*
 **/Debug/*
 **/.vs/*
+.DS_Store
