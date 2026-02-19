@@ -60,22 +60,58 @@ unsigned long lastMqttPublish = 0;
 unsigned long lastMqttReconnect = 0;
 
 HumidityAutoController::Params humParams;
+void publishHumidityControllerEvent(HumidityAutoController::State state);
+String humidityControllerPayload(unsigned long nowMs);
 
 HumidityAutoController humidityCtrl(
   humParams,
-  []() {
-    char data = 0x02;
-    clunet.send(0x90, CLUNET_COMMAND_FAN, &data, 1);
+  [](HumidityAutoController::State state, unsigned long) {
+    if (state == HumidityAutoController::State::TRIGGERED) {
+      char data = 0x02;
+      clunet.send(0x90, CLUNET_COMMAND_FAN, &data, 1);
+    }
+    publishHumidityControllerEvent(state);
   }
 );
 
-void publishSht31Meta() {
+String sht31Meta() {
   String payload = "{";
-  payload += "\"location\":\"" + String(MQTT_SENSOR_LOCATION) + "\",";
   payload += "\"type\":\"SHT31\",";
-  payload += "\"units\":{\"temperature\":\"C\",\"humidity\":\"%\"}";
+  payload += "\"units\":{";
+  payload += "\"temperature\":\"C\",";
+  payload += "\"humidity\":\"%\",";
+  payload += "\"raw_temperature\":\"C\",";
+  payload += "\"raw_humidity\":\"%\"";
+  payload += "},";
+  payload += "\"fields\":{";
+  payload += "\"temperature\":\"corrected\",";
+  payload += "\"humidity\":\"corrected\",";
+  payload += "\"raw_temperature\":\"raw\",";
+  payload += "\"raw_humidity\":\"raw\"";
   payload += "}";
-  mqttClient.publish(MQTT_TOPIC_SHT31_META, payload.c_str(), true);
+  payload += "}";
+  return payload;
+}
+
+String deviceMeta() {
+  String payload = "{";
+  payload += "\"location\":\"" + String(MQTT_SENSOR_LOCATION) + "\"";
+  payload += "}";
+  return payload;
+}
+
+void publishDeviceMeta() {
+  if (mqttClient.connected()) {
+    String payload = deviceMeta();
+    mqttClient.publish(MQTT_TOPIC_DEVICE_META, payload.c_str(), true);
+  }
+}
+
+void publishSht31Meta() {
+  if (mqttClient.connected()) {
+    String payload = sht31Meta();
+    mqttClient.publish(MQTT_TOPIC_SHT31_META, payload.c_str(), true);
+  }
 }
 
 bool connectMqtt() {
@@ -91,6 +127,7 @@ bool connectMqtt() {
 
   if (connected) {
     mqttClient.publish(MQTT_TOPIC_STATUS, "online", true);
+    publishDeviceMeta();
     publishSht31Meta();
   }
   return connected;
@@ -121,25 +158,27 @@ unsigned long currentTimestampSec(unsigned long nowMs) {
   return nowMs / 1000UL;
 }
 
-void publishSht31State(float temperature, float humidity, float rawTemperature, float rawHumidity, unsigned long nowMs) {
-  unsigned long timestampSec = currentTimestampSec(nowMs);
-
+String sht31State(float temperature, float humidity, float rawTemperature, float rawHumidity, unsigned long nowMs) {
   String payload = "{";
   payload += "\"temperature\":" + String(temperature, 2) + ",";
   payload += "\"humidity\":" + String(humidity, 2) + ",";
   payload += "\"raw_temperature\":" + String(rawTemperature, 2) + ",";
   payload += "\"raw_humidity\":" + String(rawHumidity, 2) + ",";
-  payload += "\"timestamp\":" + String(timestampSec);
+  payload += "\"timestamp\":" + String(currentTimestampSec(nowMs));
   payload += "}";
-
-  mqttClient.publish(MQTT_TOPIC_SHT31_STATE, payload.c_str(), true);
+  return payload;
 }
 
-void publishHumidityControllerState(unsigned long nowMs) {
-  unsigned long timestampSec = currentTimestampSec(nowMs);
+void publishSht31State(float temperature, float humidity, float rawTemperature, float rawHumidity, unsigned long nowMs) {
+  if (mqttClient.connected()) {
+    String payload = sht31State(temperature, humidity, rawTemperature, rawHumidity, nowMs);
+    mqttClient.publish(MQTT_TOPIC_SHT31_STATE, payload.c_str(), true);
+  }
+}
 
+String humidityControllerState(unsigned long nowMs) {
   String payload = "{";
-  payload += "\"state\":\"" + String(humidityCtrl.stateString()) + "\",";
+  payload += "\"state\":\"" + String(HumidityAutoController::stateString(humidityCtrl.state())) + "\",";
   payload += "\"raw\":" + String(humidityCtrl.raw(), 2) + ",";
   payload += "\"filtered\":" + String(humidityCtrl.filtered(), 2) + ",";
   payload += "\"baseline\":" + String(humidityCtrl.baseline(), 2) + ",";
@@ -147,10 +186,29 @@ void publishHumidityControllerState(unsigned long nowMs) {
   payload += "\"growth_rate\":" + String(humidityCtrl.growthRate(nowMs), 3) + ",";
   payload += "\"confirm_ms\":" + String(humidityCtrl.confirmTime(nowMs)) + ",";
   payload += "\"cooldown_ms\":" + String(humidityCtrl.cooldownLeft(nowMs)) + ",";
-  payload += "\"timestamp\":" + String(timestampSec);
+  payload += "\"timestamp\":" + String(currentTimestampSec(nowMs));
   payload += "}";
+  return payload;
+}
 
-  mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER, payload.c_str(), true);
+void publishHumidityControllerState(unsigned long nowMs) {
+  if (mqttClient.connected()) {
+    String payload = humidityControllerState(nowMs);
+    mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER_STATE, payload.c_str(), true);
+  }
+}
+
+void publishHumidityControllerEvent(HumidityAutoController::State state) {
+  if (mqttClient.connected()) {
+    const char* stateName = HumidityAutoController::stateString(state);
+    mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER_EVENT, stateName, false);
+  }
+}
+
+void publishButtonPressEvent() {
+  if (mqttClient.connected()) {
+    mqttClient.publish(MQTT_TOPIC_BUTTON_EVENT, "PRESS", false);
+  }
 }
 
 void setup() {
@@ -181,6 +239,7 @@ void setup() {
 
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setKeepAlive(30);
+  mqttClient.setBufferSize(512);
   connectMqtt();
   
   if (clunet.connect()){
@@ -207,25 +266,6 @@ void setup() {
     ESP.restart();
   });
 
-// Эндпоинт для получения статистики влажности
-server.on("/humidity_stats", HTTP_GET, [](AsyncWebServerRequest *request){
-  unsigned long now = millis();
-
-  String response = "{";
-  response += "\"state\":\"" + String(humidityCtrl.stateString()) + "\",";
-  response += "\"raw\":" + String(humidityCtrl.raw(), 2) + ",";
-  response += "\"filtered\":" + String(humidityCtrl.filtered(), 2) + ",";
-  response += "\"baseline\":" + String(humidityCtrl.baseline(), 2) + ",";
-  response += "\"delta\":" + String(humidityCtrl.delta(), 2) + ",";
-  response += "\"growth_rate\":" + String(humidityCtrl.growthRate(now), 3) + ",";
-  response += "\"confirm_ms\":" + String(humidityCtrl.confirmTime(now)) + ",";
-  response += "\"cooldown_ms\":" + String(humidityCtrl.cooldownLeft(now));
-  response += "}";
-
-  request->send(200, "application/json", response);
-});
-
-
   // Обработчик для корневого маршрута - отдаем index.html
 //  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
 //    request->send(LittleFS, "/index.html", "text/html");
@@ -241,8 +281,9 @@ server.on("/humidity_stats", HTTP_GET, [](AsyncWebServerRequest *request){
   server.begin();
 
   // Настройка обработчика кнопки для управления вентилятором туалета
-  inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t state){
+  inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t){
       clunet.send(0x90, CLUNET_COMMAND_FAN, NULL, 0);
+      publishButtonPressEvent();
   });
 
   if (!sht31.begin(0x44)) { // Адрес по умолчанию для SHT31
@@ -298,6 +339,7 @@ void loop() {
   inputs.handle();
 
   unsigned long t_now = millis();
+  
   if (WiFi.status() == WL_CONNECTED) {
     if (!mqttClient.connected()) {
       if (t_now - lastMqttReconnect >= mqttReconnectPeriodMs) {

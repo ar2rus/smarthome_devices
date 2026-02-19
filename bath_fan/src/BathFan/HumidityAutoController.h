@@ -16,16 +16,19 @@ public:
     int bufferSize = 100;
   };
 
-  using TriggerCallback = std::function<void(void)>;
-
   enum class State {
     IDLE,
     HUMIDITY_RISING,
     TRIGGERED
   };
 
-  HumidityAutoController(const Params& params, TriggerCallback cb)
-    : params_(params), onTrigger_(cb)
+  using StateChangeCallback = std::function<void(State, unsigned long)>;
+
+  HumidityAutoController(
+    const Params& params,
+    StateChangeCallback stateChangeCb = nullptr
+  )
+    : params_(params), onStateChange_(stateChangeCb)
   {
     buffer_ = new Reading[params_.bufferSize];
   }
@@ -66,8 +69,8 @@ public:
 
   State state() const { return state_; }
 
-  const char* stateString() const {
-    switch (state_) {
+  static const char* stateString(State state) {
+    switch (state) {
       case State::IDLE: return "IDLE";
       case State::HUMIDITY_RISING: return "HUMIDITY_RISING";
       case State::TRIGGERED: return "TRIGGERED";
@@ -82,7 +85,7 @@ private:
   };
 
   Params params_;
-  TriggerCallback onTrigger_;
+  StateChangeCallback onStateChange_;
 
   Reading* buffer_;
   int bufIndex_ = 0;
@@ -154,27 +157,34 @@ private:
       case State::IDLE:
         if (d >= params_.triggerDelta && rate >= params_.triggerRate) {
           riseConfirmStart_ = now;
-          state_ = State::HUMIDITY_RISING;
+          setState(State::HUMIDITY_RISING, now);
         }
         break;
 
       case State::HUMIDITY_RISING:
         if (!(d >= params_.triggerDelta && rate >= params_.triggerRate)) {
-          state_ = State::IDLE;
+          setState(State::IDLE, now);
           riseConfirmStart_ = 0;
         } else if (now - riseConfirmStart_ >= params_.confirmMs) {
-          onTrigger_();
           lastTrigger_ = now;
           hasTriggeredOnce_ = true;
-          state_ = State::TRIGGERED;
+          setState(State::TRIGGERED, now);
         }
         break;
 
       case State::TRIGGERED:
         if (now >= lastTrigger_ + params_.cooldownMs) {
-          state_ = State::IDLE;
+          setState(State::IDLE, now);
         }
         break;
+    }
+  }
+
+  void setState(State newState, unsigned long nowMs) {
+    if (state_ == newState) return;
+    state_ = newState;
+    if (onStateChange_) {
+      onStateChange_(state_, nowMs);
     }
   }
 };
