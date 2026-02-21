@@ -28,4 +28,6 @@
 #define MQTT_TOPIC_FAN_BATHROOM_ON "home/relay-controller/fan-controller/fan-bathroom/set/on"
 #define MQTT_TOPIC_FAN_BATHROOM_TOGGLE "home/relay-controller/fan-controller/fan-bathroom/set/toggle"
 
+#define FAN_BATHROOM_ON_DURATION_MINUTES 30
+
 #endif

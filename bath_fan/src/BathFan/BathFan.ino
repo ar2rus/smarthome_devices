@@ -211,7 +211,8 @@ void publishButtonPressEvent() {
 
 void publishFanOnCommand() {
   if (mqttClient.connected()) {
-    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_ON, "1", false);
+    String payload = "{\"durationMinutes\":" + String(FAN_BATHROOM_ON_DURATION_MINUTES) + "}";
+    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_ON, payload.c_str(), false);
   }
 }
 
