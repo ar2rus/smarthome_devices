@@ -6,15 +6,15 @@
     dependencies:
     https://github.com/me-no-dev/ESPAsyncWebServer
     https://github.com/ar2rus/ClunetMulticast
+    PubSubClient
 
  */
 
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
-#include <TZ.h>
-
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
+#include <PubSubClient.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -24,6 +24,7 @@
 
 #include "heatfloor.h"
 #include "FanController.h"
+#include "OneWireWatchdog.h"
 
 #include <ESPInputs.h>
 
@@ -43,27 +44,49 @@ FloorHeatingController* heatingControllers[HEATING_CHANNELS_NUM];
 // Массив контроллеров вентиляторов
 FanController* fanControllers[FAN_CHANNELS_NUM];
 
-bool oneWireEnabled = true;
+static const long MIN_VALID_EPOCH = 1609459200; // 2021-01-01
 
-void oneWireEnable(bool enabled){
-  if (oneWireEnabled != enabled){
-    oneWireEnabled = enabled;
-    applyOneWireEnable();
+bool oneWirePowerEnabled = false;
+bool ds18b20NeedsRequest = true;
+
+void publishMqttOneWireState(bool enabled, time_t transitionTs);
+
+void applyOneWireEnable(bool enabled){
+  if (oneWirePowerEnabled != enabled) {
+    oneWirePowerEnabled = enabled;
+    digitalWrite(ONE_WIRE_SUPPLY_PIN, enabled ? HIGH : LOW);
+
+    if (enabled) {
+      // After power restore the sensors need a fresh conversion request.
+      ds18b20NeedsRequest = true;
+    }
+
+    publishMqttOneWireState(enabled, time(nullptr));
   }
-}
-
-void applyOneWireEnable(){
-  digitalWrite(ONE_WIRE_SUPPLY_PIN, oneWireEnabled ? HIGH : LOW);
 }
 
 OneWire oneWire(ONE_WIRE_PIN);
 DallasTemperature DS18B20(&oneWire);
 
-float DS18B20_values[ONE_WIRE_NUM_DEVICES];
+struct DS18B20Reading {
+  float temperature;
+  time_t timestamp;
 
-int DS18B20_errors[ONE_WIRE_NUM_DEVICES];
-long DS18B20_last[ONE_WIRE_NUM_DEVICES];
-long DS18B20_unavailables[ONE_WIRE_NUM_DEVICES];
+  bool hasValue() const {
+    return timestamp > 0;
+  }
+
+  bool hasActualValue() const {
+    static const time_t ACTUAL_VALUE_MAX_AGE_SEC = 30 * 60;
+    if (!hasValue()) {
+      return false;
+    }
+    time_t now = time(nullptr);
+    return now >= timestamp && (now - timestamp) <= ACTUAL_VALUE_MAX_AGE_SEC;
+  }
+};
+
+DS18B20Reading DS18B20_values[ONE_WIRE_NUM_DEVICES];
 
 bool relay_states[RELAY_NUM];
 
@@ -81,40 +104,37 @@ void apply_relay_state(int index){
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
-IPAddress ip(192, 168, 50, 129); //Node static IP
-IPAddress gateway(192, 168, 50, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dnsAddr(192, 168, 50, 1);
+IPAddress ip DEVICE_STATIC_IP;
+IPAddress gateway DEVICE_GATEWAY_IP;
+IPAddress subnet DEVICE_SUBNET_MASK;
+IPAddress dnsAddr DEVICE_DNS_IP;
 
 AsyncWebServer server(80); // Порт 80
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 bool littleFsAvailable = false;
 
+WiFiClient mqttTransport;
+PubSubClient mqttClient(mqttTransport);
+
 static const char* NTP_SERVER_1 = "pool.ntp.org";
 static const char* NTP_SERVER_2 = "time.nist.gov";
 static const char* TIME_SETTINGS_FILE = "/time.json";
-static const long MIN_VALID_EPOCH = 1609459200; // 2021-01-01
 
-static const TimeZoneOption TIME_ZONES[] = {
-  { "UTC", "UTC", TZKEY_UTC },
-  { "Europe/Kaliningrad", "Europe/Kaliningrad", TZKEY_Europe_Kaliningrad },
-  { "Europe/Moscow", "Europe/Moscow", TZKEY_Europe_Moscow },
-  { "Europe/Samara", "Europe/Samara", TZKEY_Europe_Samara },
-  { "Asia/Yekaterinburg", "Asia/Yekaterinburg", TZKEY_Asia_Yekaterinburg },
-  { "Asia/Omsk", "Asia/Omsk", TZKEY_Asia_Omsk },
-  { "Asia/Krasnoyarsk", "Asia/Krasnoyarsk", TZKEY_Asia_Krasnoyarsk },
-  { "Asia/Irkutsk", "Asia/Irkutsk", TZKEY_Asia_Irkutsk },
-  { "Asia/Yakutsk", "Asia/Yakutsk", TZKEY_Asia_Yakutsk },
-  { "Asia/Vladivostok", "Asia/Vladivostok", TZKEY_Asia_Vladivostok },
-  { "Asia/Magadan", "Asia/Magadan", TZKEY_Asia_Magadan },
-  { "Asia/Kamchatka", "Asia/Kamchatka", TZKEY_Asia_Kamchatka },
-  { "America/New_York", "America/New_York", TZKEY_America_New_York },
-  { "America/Chicago", "America/Chicago", TZKEY_America_Chicago },
-  { "America/Denver", "America/Denver", TZKEY_America_Denver },
-  { "America/Los_Angeles", "America/Los_Angeles", TZKEY_America_Los_Angeles }
-};
 
-static const size_t TIME_ZONES_COUNT = sizeof(TIME_ZONES) / sizeof(TIME_ZONES[0]);
+static const unsigned long ONE_WIRE_WATCHDOG_RESET_OFF_MS = 30UL * 1000UL;
+static const unsigned long ONE_WIRE_WATCHDOG_GRACE_MS = 2 * ONE_WIRE_UPDATE_PERIOD * 1000UL;
+
+static const unsigned long MQTT_RECONNECT_PERIOD_MS = 5000;
+
+unsigned long lastMqttReconnect = 0;
+
+OneWireWatchdog oneWireWatchdog(
+  ONE_WIRE_WATCHDOG_GRACE_MS,
+  ONE_WIRE_WATCHDOG_RESET_OFF_MS,
+  [](bool enabled) {
+    applyOneWireEnable(enabled);
+  }
+);
 
 String currentTimeZoneId = DEFAULT_TIMEZONE_ID;
 
@@ -130,42 +150,107 @@ String formatDeviceId(const uint8_t* address) {
   return String(buffer);
 }
 
-const char* getPosixTimeZone(TimeZoneKey key) {
-  switch (key) {
-    case TZKEY_Europe_Kaliningrad:
-      return TZ_Europe_Kaliningrad;
-    case TZKEY_Europe_Moscow:
-      return TZ_Europe_Moscow;
-    case TZKEY_Europe_Samara:
-      return TZ_Europe_Samara;
-    case TZKEY_Asia_Yekaterinburg:
-      return TZ_Asia_Yekaterinburg;
-    case TZKEY_Asia_Omsk:
-      return TZ_Asia_Omsk;
-    case TZKEY_Asia_Krasnoyarsk:
-      return TZ_Asia_Krasnoyarsk;
-    case TZKEY_Asia_Irkutsk:
-      return TZ_Asia_Irkutsk;
-    case TZKEY_Asia_Yakutsk:
-      return TZ_Asia_Yakutsk;
-    case TZKEY_Asia_Vladivostok:
-      return TZ_Asia_Vladivostok;
-    case TZKEY_Asia_Magadan:
-      return TZ_Asia_Magadan;
-    case TZKEY_Asia_Kamchatka:
-      return TZ_Asia_Kamchatka;
-    case TZKEY_America_New_York:
-      return TZ_America_New_York;
-    case TZKEY_America_Chicago:
-      return TZ_America_Chicago;
-    case TZKEY_America_Denver:
-      return TZ_America_Denver;
-    case TZKEY_America_Los_Angeles:
-      return TZ_America_Los_Angeles;
-    case TZKEY_UTC:
-    default:
-      return "UTC0";
+String mqttSensorMetaPayload(int sensorIndex) {
+  String payload = "{";
+  payload += "\"type\":\"DS18B20\",";
+  payload += "\"units\":{";
+  payload += "\"temperature\":\"C\"";
+  payload += "},";
+  payload += "\"location\":\"" + String(DS18B20_DEVICES_LOCATIONS[sensorIndex]) + "\"";
+  payload += "}";
+  return payload;
+}
+
+String mqttSensorStatePayload(int sensorIndex) {
+  String payload = "{";
+  payload += "\"temperature\":" + String(DS18B20_values[sensorIndex].temperature, 2) + ",";
+  payload += "\"timestamp\":" + String(static_cast<unsigned long>(DS18B20_values[sensorIndex].timestamp));
+  payload += "}";
+  return payload;
+}
+
+String mqttSensorTopicBase(int sensorIndex) {
+  return String(MQTT_TOPIC_SENSOR) + "/" + formatDeviceId(DS18B20_DEVICES[sensorIndex]);
+}
+
+String mqttSensorMetaTopic(int sensorIndex) {
+  return mqttSensorTopicBase(sensorIndex) + "/meta";
+}
+
+String mqttSensorStateTopic(int sensorIndex) {
+  return mqttSensorTopicBase(sensorIndex) + "/state";
+}
+
+String mqttOneWireStatePayload(bool enabled, time_t transitionTs) {
+  String payload = "{";
+  payload += "\"enabled\":";
+  payload += enabled ? "true" : "false";
+  if (transitionTs > MIN_VALID_EPOCH) {
+    payload += ",\"timestamp\":";
+    payload += String(static_cast<unsigned long>(transitionTs));
   }
+  payload += "}";
+  return payload;
+}
+
+void publishMqttSensorMeta(int sensorIndex) {
+  if (!mqttClient.connected()) {
+    return;
+  }
+  String topic = mqttSensorMetaTopic(sensorIndex);
+  String payload = mqttSensorMetaPayload(sensorIndex);
+  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+}
+
+void publishMqttAllSensorsMeta() {
+  for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
+    publishMqttSensorMeta(i);
+  }
+}
+
+void publishMqttSensorState(int sensorIndex) {
+  if (!mqttClient.connected() || !DS18B20_values[sensorIndex].hasActualValue()) {
+    return;
+  }
+
+  String topic = mqttSensorStateTopic(sensorIndex);
+  String payload = mqttSensorStatePayload(sensorIndex);
+  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+}
+
+void publishMqttAllSensorsState() {
+  for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
+    publishMqttSensorState(i);
+  }
+}
+
+void publishMqttOneWireState(bool enabled, time_t transitionTs) {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  String payload = mqttOneWireStatePayload(enabled, transitionTs);
+  mqttClient.publish(MQTT_TOPIC_ONEWIRE_STATE, payload.c_str(), true);
+}
+
+bool connectMqtt() {
+  bool connected = mqttClient.connect(
+    MQTT_CLIENT_ID,
+    MQTT_USER,
+    MQTT_PASSWORD,
+    MQTT_TOPIC_STATUS,
+    1,
+    true,
+    "offline"
+  );
+
+  if (connected) {
+    mqttClient.publish(MQTT_TOPIC_STATUS, "online", true);
+    publishMqttAllSensorsMeta();
+    publishMqttAllSensorsState();
+  }
+
+  return connected;
 }
 
 // Функция для загрузки настроек расписания из JSON
@@ -190,23 +275,6 @@ void saveScheduleToJson(JsonArray& array, const std::vector<FloorHeatingSchedule
     item["temperature"] = schedule[i].temperature;
     item["dayOfWeek"] = schedule[i].dayOfWeek;
   }
-}
-
-const TimeZoneOption* findTimeZoneById(const String& id) {
-  for (size_t i = 0; i < TIME_ZONES_COUNT; i++) {
-    if (id == TIME_ZONES[i].id) {
-      return &TIME_ZONES[i];
-    }
-  }
-  return nullptr;
-}
-
-const TimeZoneOption* getDefaultTimeZone() {
-  const TimeZoneOption* zone = findTimeZoneById(DEFAULT_TIMEZONE_ID);
-  if (zone != nullptr) {
-    return zone;
-  }
-  return &TIME_ZONES[0];
 }
 
 bool applyTimeZoneById(const String& id) {
@@ -421,7 +489,10 @@ void setup() {
     heatingControllers[i] = new FloorHeatingController(
       heatingSettings[i],
       [sensorIndex]() -> float {
-        return DS18B20_values[sensorIndex];
+        if (DS18B20_values[sensorIndex].hasActualValue()) {
+          return DS18B20_values[sensorIndex].temperature;
+        }
+        return DEVICE_DISCONNECTED_C;
       },
       [relayIndex](bool state) {
         relay_state(relayIndex, state);
@@ -456,6 +527,11 @@ void setup() {
   });
 
   ArduinoOTA.begin();
+
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setKeepAlive(30);
+  mqttClient.setBufferSize(512);
+  connectMqtt();
 
   if (!applyTimeZoneById(currentTimeZoneId)) {
     applyTimeZoneById(getDefaultTimeZone()->id);
@@ -494,18 +570,18 @@ void setup() {
 
 
   server.on("/t", HTTP_GET, [](AsyncWebServerRequest *request){
-    DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(2048);
     
     struct timeval tp;
     gettimeofday(&tp, 0);
     
     doc["time"] = serialized(String(tp.tv_sec) + String(tp.tv_usec /1000UL));
     for (int i=0; i<ONE_WIRE_NUM_DEVICES; i++){
-      if (isValidT(DS18B20_values[i])){
-        doc["DS18B20_" + String(i+1)] = serialized(String(DS18B20_values[i], 2));
+      String sensorPrefix = "DS18B20_" + String(i+1);
+      if (DS18B20_values[i].hasValue()) {
+        doc[sensorPrefix] = serialized(String(DS18B20_values[i].temperature, 2));
+        doc[sensorPrefix + "_timestamp"] = static_cast<long>(DS18B20_values[i].timestamp);
       }
-      
-      doc["DS18B20_" + String(i+1)+"_stat"] = serialized(String(DS18B20_values[i], 2)) + " (" + String(DS18B20_errors[i]) + " / " + String(DS18B20_unavailables[i]) + ")";
     }
 
     String json;
@@ -515,16 +591,18 @@ void setup() {
   });
 
   server.on("/api/temperatures", HTTP_GET, [](AsyncWebServerRequest *request){
-    DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(2048);
     JsonArray sensors = doc.createNestedArray("sensors");
     
     for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
       JsonObject sensorObj = sensors.createNestedObject();
       sensorObj["id"] = formatDeviceId(DS18B20_DEVICES[i]);
-      if (isValidT(DS18B20_values[i])) {
-        sensorObj["temperature"] = DS18B20_values[i];
+      if (DS18B20_values[i].hasValue()) {
+        sensorObj["temperature"] = DS18B20_values[i].temperature;
+        sensorObj["timestamp"] = static_cast<long>(DS18B20_values[i].timestamp);
       } else {
         sensorObj["temperature"] = nullptr;
+        sensorObj["timestamp"] = nullptr;
       }
     }
     
@@ -624,11 +702,6 @@ void setup() {
   });
 
   server.addHandler(timeZoneHandler);
-
-  server.on("/ow", HTTP_GET, [](AsyncWebServerRequest *request){
-    oneWireEnable(!oneWireEnabled);
-    request->send(200, "text/plain", String(oneWireEnabled));
-  });
 
   server.on("/r", HTTP_GET, [](AsyncWebServerRequest *request){
     int i = request->arg("i").toInt();
@@ -1057,13 +1130,16 @@ void setup() {
   server.begin();
 
   pinMode(ONE_WIRE_SUPPLY_PIN, OUTPUT);
-  applyOneWireEnable();
+  applyOneWireEnable(true);
 
   for (int i=0; i<ONE_WIRE_NUM_DEVICES; i++){
-    DS18B20_values[i] = DEVICE_DISCONNECTED_C;
+    DS18B20_values[i].temperature = 0;
+    DS18B20_values[i].timestamp = 0;
   }
   DS18B20.begin();
   DS18B20.setResolution(10);
+  
+  oneWireWatchdog.start(millis());
 
   // Настройка обработчика кнопки для управления вентилятором туалета
   inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t state){
@@ -1072,7 +1148,16 @@ void setup() {
 }
 
 bool isValidT(float t){
-  return t>-55 && t<125;
+  return t > -55 && t < 85;
+}
+
+bool isOneWireAlive() {
+  for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
+    if (DS18B20_values[i].hasActualValue()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void server_response(AsyncWebServerRequest *request, unsigned int response) {
@@ -1093,27 +1178,45 @@ void server_response(AsyncWebServerRequest *request, unsigned int response) {
 int prev_n = -1;
 
 void loop() {
-  long m = millis();
-  int p = m % DS18B20_REQUEST_PERIOD;
-  if (p == 0){
-    int n = (m / DS18B20_REQUEST_PERIOD) % DS18B20_NUM_REQUESTS;
-    if (n != prev_n){
-      prev_n = n;
-      if (n == 0){
-        DS18B20.requestTemperatures();
-      }else{
-        DS18B20_values[n-1] = DS18B20.getTempC(DS18B20_DEVICES[n-1]);
-        if (isValidT(DS18B20_values[n-1])){
-          DS18B20_last[n-1] = m;
+  unsigned long m = millis();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!mqttClient.connected()) {
+      if (m - lastMqttReconnect >= MQTT_RECONNECT_PERIOD_MS) {
+        lastMqttReconnect = m;
+        connectMqtt();
+      }
+    } else {
+      mqttClient.loop();
+    }
+  }
+
+  if (oneWirePowerEnabled) {
+    if (ds18b20NeedsRequest) {
+      DS18B20.requestTemperatures();
+      ds18b20NeedsRequest = false;
+    }
+
+    int p = m % DS18B20_REQUEST_PERIOD;
+    if (p == 0){
+      int n = (m / DS18B20_REQUEST_PERIOD) % DS18B20_NUM_REQUESTS;
+      if (n != prev_n){
+        prev_n = n;
+        if (n == 0){
+          DS18B20.requestTemperatures();
         }else{
-          DS18B20_errors[n-1]++;
-          if (m-DS18B20_last[n-1] > DS18B20_unavailables[n-1]){
-            DS18B20_unavailables[n-1] = m-DS18B20_last[n-1];
+          float temperature = DS18B20.getTempC(DS18B20_DEVICES[n-1]);
+          if (isValidT(temperature)){
+            DS18B20_values[n-1].temperature = temperature;
+            DS18B20_values[n-1].timestamp = time(nullptr);
+            publishMqttSensorState(n-1);
           }
         }
       }
     }
   }
+
+  oneWireWatchdog.handle(m, isOneWireAlive());
 
   // Обработка всех каналов теплого пола
   for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {

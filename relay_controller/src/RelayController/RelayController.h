@@ -3,36 +3,17 @@
 
 #include <vector>
 #include "heatfloor.h"
+#include "TimeZones.h"
 
 #define CLUNET_DEVICE_ID 0x90
 #define CLUNET_DEVICE_NAME "RelayController"
 
-#define DEFAULT_TIMEZONE_ID "Europe/Samara"
+#define MQTT_CLIENT_ID "relay-controller"
 
-enum TimeZoneKey {
-  TZKEY_UTC,
-  TZKEY_Europe_Kaliningrad,
-  TZKEY_Europe_Moscow,
-  TZKEY_Europe_Samara,
-  TZKEY_Asia_Yekaterinburg,
-  TZKEY_Asia_Omsk,
-  TZKEY_Asia_Krasnoyarsk,
-  TZKEY_Asia_Irkutsk,
-  TZKEY_Asia_Yakutsk,
-  TZKEY_Asia_Vladivostok,
-  TZKEY_Asia_Magadan,
-  TZKEY_Asia_Kamchatka,
-  TZKEY_America_New_York,
-  TZKEY_America_Chicago,
-  TZKEY_America_Denver,
-  TZKEY_America_Los_Angeles
-};
-
-struct TimeZoneOption {
-  const char* id;
-  const char* label;
-  TimeZoneKey key;
-};
+#define MQTT_TOPIC_DEVICE "home/" MQTT_CLIENT_ID
+#define MQTT_TOPIC_STATUS MQTT_TOPIC_DEVICE "/status"
+#define MQTT_TOPIC_SENSOR MQTT_TOPIC_DEVICE "/sensor"
+#define MQTT_TOPIC_ONEWIRE_STATE MQTT_TOPIC_DEVICE "/onewire/state"
 
 #define BUTTON_PIN 2
 #define BUTTON_TIMEOUT 50
@@ -64,6 +45,16 @@ static const uint8_t DS18B20_DEVICES[ONE_WIRE_NUM_DEVICES][8] = {
 #define DS18B20_BEDROOM 4
 #define DS18B20_CHILDROOM 5
 #define DS18B20_LIVINGROOM 6
+
+static const char* DS18B20_DEVICES_LOCATIONS[ONE_WIRE_NUM_DEVICES] = {
+  "toilet_heatfloor",
+  "bathroom_heatfloor",
+  "bathroom_heatwall",
+  "balcony",
+  "bedroom",
+  "childroom",
+  "livingroom"
+};
 
 
 #define RELAY_NUM 5
