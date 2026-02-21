@@ -568,6 +568,10 @@
         let timeTicker = null;
         let timeSyncTimer = null;
         let lastDeviceTimeText = '--:--:--';
+        const FAN_API_CHANNEL_MAP = {
+            toiletFan: 'toilet',
+            bathroomFan: 'bathroom'
+        };
         
         // Локализуем тексты, используемые в уведомлениях
         function showMessage(text, type) {
@@ -725,7 +729,8 @@
         
         // Функция для загрузки состояния конкретного вентилятора
         function loadFanChannelState(channelId) {
-            fetch(`/api/fan/state?channel=${channelId}`)
+            const apiChannelId = FAN_API_CHANNEL_MAP[channelId] || channelId;
+            fetch(`/api/fan/state?channel=${apiChannelId}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`Ошибка получения данных о вентиляторе ${channelId}: ${response.status}`);
@@ -744,9 +749,12 @@
                     if (statusElement) {
                         if (data.on) {
                             const remainingTime = data.remainingTime || 0;
+                            const hasTimerCountdown = remainingTime > 0;
                             const remainingMinutes = Math.floor(remainingTime / 60);
                             const remainingSeconds = Math.floor(remainingTime % 60);
-                            const timeStr = `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+                            const timeStr = hasTimerCountdown
+                                ? `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`
+                                : '—';
                             
                             statusElement.innerHTML = `
                                 <span class="statusText">
@@ -807,10 +815,11 @@
             if (checkbox) {
                 checkbox.disabled = true;
             }
+            const apiChannelId = FAN_API_CHANNEL_MAP[channelId] || channelId;
             
             // Формируем JSON объект для отправки с параметром toggle
             const requestData = {
-                channel: channelId,
+                channel: apiChannelId,
                 state: "toggle"
             };
             

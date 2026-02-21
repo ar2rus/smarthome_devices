@@ -34,6 +34,7 @@
 #include <LittleFS.h>  // Используем LittleFS
 
 #include <vector>
+#include <cstring>
 
 Inputs inputs;
 
@@ -50,6 +51,7 @@ bool oneWirePowerEnabled = false;
 bool ds18b20NeedsRequest = true;
 
 void publishMqttOneWireState(bool enabled, time_t transitionTs);
+void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length);
 
 void applyOneWireEnable(bool enabled){
   if (oneWirePowerEnabled != enabled) {
@@ -181,6 +183,30 @@ String mqttSensorStateTopic(int sensorIndex) {
   return mqttSensorTopicBase(sensorIndex) + "/state";
 }
 
+String mqttFanTopicBase(int fanIndex) {
+  return String(MQTT_TOPIC_FAN) + "/" + FAN_CHANNELS_CONFIG[fanIndex].topicName;
+}
+
+String mqttFanStateTopic(int fanIndex) {
+  return mqttFanTopicBase(fanIndex) + "/state";
+}
+
+String mqttFanMetaTopic(int fanIndex) {
+  return mqttFanTopicBase(fanIndex) + "/meta";
+}
+
+String mqttFanSetOnTopic(int fanIndex) {
+  return mqttFanTopicBase(fanIndex) + "/set/on";
+}
+
+String mqttFanSetOffTopic(int fanIndex) {
+  return mqttFanTopicBase(fanIndex) + "/set/off";
+}
+
+String mqttFanSetToggleTopic(int fanIndex) {
+  return mqttFanTopicBase(fanIndex) + "/set/toggle";
+}
+
 String mqttOneWireStatePayload(bool enabled, time_t transitionTs) {
   String payload = "{";
   payload += "\"enabled\":";
@@ -191,6 +217,117 @@ String mqttOneWireStatePayload(bool enabled, time_t transitionTs) {
   }
   payload += "}";
   return payload;
+}
+
+String mqttFanStatePayload(int fanIndex) {
+  String payload = "{";
+  payload += "\"on\":";
+  payload += fanControllers[fanIndex]->getState() ? "true" : "false";
+  payload += ",\"remainingTime\":";
+  payload += String(fanControllers[fanIndex]->getRemainingTime());
+  payload += "}";
+  return payload;
+}
+
+String mqttFanMetaPayload(int fanIndex) {
+  String payload = "{";
+  payload += "\"location\":\"" + String(FAN_CHANNELS_CONFIG[fanIndex].location) + "\"";
+  payload += "}";
+  return payload;
+}
+
+void publishMqttFanMeta(int fanIndex) {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  String topic = mqttFanMetaTopic(fanIndex);
+  String payload = mqttFanMetaPayload(fanIndex);
+  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+}
+
+void publishMqttAllFansMeta() {
+  for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+    publishMqttFanMeta(i);
+  }
+}
+
+void publishMqttFanState(int fanIndex) {
+  if (!mqttClient.connected() || fanControllers[fanIndex] == nullptr) {
+    return;
+  }
+
+  String topic = mqttFanStateTopic(fanIndex);
+  String payload = mqttFanStatePayload(fanIndex);
+  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+}
+
+void publishMqttAllFansState() {
+  for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+    publishMqttFanState(i);
+  }
+}
+
+bool parseFanDurationMinutes(const uint8_t* payload, unsigned int length, unsigned long& durationMinutes) {
+  if (length == 0) {
+    return false;
+  }
+
+  DynamicJsonDocument doc(128);
+  DeserializationError error = deserializeJson(doc, reinterpret_cast<const char*>(payload), length);
+  if (error || !doc.containsKey("durationMinutes")) {
+    return false;
+  }
+
+  long value = doc["durationMinutes"].as<long>();
+  if (value <= 0 || value > 180) {
+    return false;
+  }
+
+  durationMinutes = static_cast<unsigned long>(value);
+  return true;
+}
+
+void subscribeMqttFanCommandTopics() {
+  for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+    String setOnTopic = mqttFanSetOnTopic(i);
+    String setOffTopic = mqttFanSetOffTopic(i);
+    String setToggleTopic = mqttFanSetToggleTopic(i);
+    mqttClient.subscribe(setOnTopic.c_str(), 1);
+    mqttClient.subscribe(setOffTopic.c_str(), 1);
+    mqttClient.subscribe(setToggleTopic.c_str(), 1);
+  }
+}
+
+void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length) {
+  for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+    if (fanControllers[i] == nullptr) {
+      continue;
+    }
+
+    String setOnTopic = mqttFanSetOnTopic(i);
+    if (strcmp(topic, setOnTopic.c_str()) == 0) {
+      unsigned long durationMinutes = 0;
+      if (parseFanDurationMinutes(payload, length, durationMinutes)) {
+        fanControllers[i]->turnOnWithTimer(durationMinutes);
+      } else {
+        fanControllers[i]->turnOn();
+      }
+      return;
+    }
+
+    String setOffTopic = mqttFanSetOffTopic(i);
+    if (strcmp(topic, setOffTopic.c_str()) == 0) {
+      fanControllers[i]->turnOff();
+      return;
+    }
+
+    String setToggleTopic = mqttFanSetToggleTopic(i);
+    if (strcmp(topic, setToggleTopic.c_str()) == 0) {
+      fanControllers[i]->toggle();
+      return;
+    }
+  }
 }
 
 void publishMqttSensorMeta(int sensorIndex) {
@@ -246,8 +383,11 @@ bool connectMqtt() {
 
   if (connected) {
     mqttClient.publish(MQTT_TOPIC_STATUS, "online", true);
+    subscribeMqttFanCommandTopics();
     publishMqttAllSensorsMeta();
     publishMqttAllSensorsState();
+    publishMqttAllFansMeta();
+    publishMqttAllFansState();
   }
 
   return connected;
@@ -507,6 +647,12 @@ void setup() {
     fanControllers[i] = new FanController([relayIndex](bool state) {
       relay_state(relayIndex, state);
     }, FAN_CHANNELS_CONFIG[i].defaultTimerMinutes);
+
+    fanControllers[i]->setStateChangedCallback([i](bool state, long remainingTime) {
+      (void)state;
+      (void)remainingTime;
+      publishMqttFanState(i);
+    });
   }
 
   WiFi.mode(WIFI_STA);
@@ -531,6 +677,7 @@ void setup() {
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setKeepAlive(30);
   mqttClient.setBufferSize(512);
+  mqttClient.setCallback(mqttMessageReceived);
   connectMqtt();
 
   if (!applyTimeZoneById(currentTimeZoneId)) {

@@ -7,15 +7,26 @@ FanController::FanController(std::function<void(bool)> controlFunction, unsigned
     isOn(false), 
     turnOffTime(0), 
     timerActive(false), 
-    defaultTimerDuration(defaultDurationMinutes * 60 * 1000) {
+    defaultTimerDuration(defaultDurationMinutes * 60 * 1000),
+    stateChangedCallback(nullptr),
+    lastReportedRemainingTime(0) {
   // Начальное состояние - выключено
   updateState(false);
+}
+
+void FanController::notifyStateChanged() {
+  long remainingTime = getRemainingTime();
+  lastReportedRemainingTime = remainingTime;
+  if (stateChangedCallback) {
+    stateChangedCallback(isOn, remainingTime);
+  }
 }
 
 // Приватный метод для обновления состояния и вызова управляющей функции
 void FanController::updateState(bool state) {
   isOn = state;
   relayControl(state);
+  notifyStateChanged();
 }
 
 // Включить вентилятор навсегда
@@ -55,6 +66,14 @@ void FanController::toggle() {
 void FanController::handle() {
   if (timerActive && isOn && millis() >= turnOffTime) {
     turnOff();
+    return;
+  }
+
+  if (timerActive && isOn) {
+    long remainingTime = getRemainingTime();
+    if (remainingTime != lastReportedRemainingTime) {
+      notifyStateChanged();
+    }
   }
 }
 
@@ -70,4 +89,8 @@ long FanController::getRemainingTime() const {
     return (remaining > 0) ? remaining : 0;
   }
   return 0;
-} 
+}
+
+void FanController::setStateChangedCallback(std::function<void(bool, long)> callback) {
+  stateChangedCallback = callback;
+}

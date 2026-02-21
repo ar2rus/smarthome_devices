@@ -3,9 +3,6 @@
 
 //#include <vector>
 
-#define CLUNET_DEVICE_ID 0x91
-#define CLUNET_DEVICE_NAME "BathFan"
-
 #define TIMEZONE TZ_Europe_Samara
 
 #define BUTTON_PIN 14
@@ -27,5 +24,8 @@
 
 #define MQTT_TOPIC_BUTTON MQTT_TOPIC_DEVICE "/button"
 #define MQTT_TOPIC_BUTTON_EVENT MQTT_TOPIC_BUTTON "/event"
+
+#define MQTT_TOPIC_FAN_BATHROOM_ON "home/relay-controller/fan-controller/fan-bathroom/set/on"
+#define MQTT_TOPIC_FAN_BATHROOM_TOGGLE "home/relay-controller/fan-controller/fan-bathroom/set/toggle"
 
 #endif

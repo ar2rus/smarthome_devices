@@ -12,8 +12,14 @@
 
 #define MQTT_TOPIC_DEVICE "home/" MQTT_CLIENT_ID
 #define MQTT_TOPIC_STATUS MQTT_TOPIC_DEVICE "/status"
+
 #define MQTT_TOPIC_SENSOR MQTT_TOPIC_DEVICE "/sensor"
-#define MQTT_TOPIC_ONEWIRE_STATE MQTT_TOPIC_DEVICE "/onewire/state"
+
+#define MQTT_TOPIC_FAN MQTT_TOPIC_DEVICE "/fan-controller"
+
+#define MQTT_TOPIC_ONEWIRE MQTT_TOPIC_DEVICE "/onewire"
+#define MQTT_TOPIC_ONEWIRE_STATE MQTT_TOPIC_ONEWIRE "/state"
+
 
 #define BUTTON_PIN 2
 #define BUTTON_TIMEOUT 50
@@ -82,6 +88,8 @@ static const uint8_t RELAY_PIN[RELAY_NUM] = {13, 12, 5, 4, 15};
 // Структура для хранения конфигурации канала вентилятора
 struct FanChannelConfig {
   const char* name;                 // Имя канала для использования в JSON
+  const char* topicName;            // Имя канала для MQTT топиков
+  const char* location;             // Локация вентилятора
   const char* displayName;          // Отображаемое имя
   uint8_t relayPin;                 // Индекс реле
   unsigned long defaultTimerMinutes; // Время таймера по умолчанию в минутах
@@ -90,13 +98,17 @@ struct FanChannelConfig {
 // Статическая конфигурация каналов вентиляторов
 static const FanChannelConfig FAN_CHANNELS_CONFIG[FAN_CHANNELS_NUM] = {
   {
-    "toiletFan",
+    "toilet",
+    "fan-toilet",
+    "toilet",
     "Вентилятор туалета",
     RELAY_TOILET_FAN,
     30  // 30 минут по умолчанию
   },
   {
-    "bathroomFan",
+    "bathroom",
+    "fan-bathroom",
+    "bathroom",
     "Вентилятор ванной",
     RELAY_BATHROOM_FAN,
     30  // 30 минут по умолчанию

@@ -5,7 +5,6 @@
 
     dependencies:
     https://github.com/me-no-dev/ESPAsyncWebServer
-    https://github.com/ar2rus/ClunetMulticast
     Adafruit SHT31 Library
     PubSubClient
 
@@ -16,7 +15,6 @@
 #include <TZ.h>
 
 #include <ESPAsyncWebServer.h>
-#include <ClunetMulticast.h>
 #include <PubSubClient.h>
 
 #include "BathFan.h"
@@ -40,7 +38,6 @@ IPAddress subnet DEVICE_SUBNET_MASK;
 IPAddress dnsAddr DEVICE_DNS_IP;
 
 AsyncWebServer server(80); // Порт 80
-ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 
 WiFiClient mqttTransport;
 PubSubClient mqttClient(mqttTransport);
@@ -62,13 +59,14 @@ unsigned long lastMqttReconnect = 0;
 HumidityAutoController::Params humParams;
 void publishHumidityControllerEvent(HumidityAutoController::State state);
 String humidityControllerPayload(unsigned long nowMs);
+void publishFanOnCommand();
+void publishFanToggleCommand();
 
 HumidityAutoController humidityCtrl(
   humParams,
   [](HumidityAutoController::State state, unsigned long) {
     if (state == HumidityAutoController::State::TRIGGERED) {
-      char data = 0x02;
-      clunet.send(0x90, CLUNET_COMMAND_FAN, &data, 1);
+      publishFanOnCommand();
     }
     publishHumidityControllerEvent(state);
   }
@@ -211,6 +209,18 @@ void publishButtonPressEvent() {
   }
 }
 
+void publishFanOnCommand() {
+  if (mqttClient.connected()) {
+    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_ON, "1", false);
+  }
+}
+
+void publishFanToggleCommand() {
+  if (mqttClient.connected()) {
+    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_TOGGLE, "1", false);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
@@ -241,13 +251,6 @@ void setup() {
   mqttClient.setKeepAlive(30);
   mqttClient.setBufferSize(512);
   connectMqtt();
-  
-  if (clunet.connect()){
-    clunet.onPacketReceived([](clunet_packet* packet){
-       switch (packet->command) {
-       }
-    });
-  }
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
@@ -282,7 +285,7 @@ void setup() {
 
   // Настройка обработчика кнопки для управления вентилятором туалета
   inputs.on(BUTTON_PIN, STATE_LOW, BUTTON_TIMEOUT, [](uint8_t){
-      clunet.send(0x90, CLUNET_COMMAND_FAN, NULL, 0);
+      publishFanToggleCommand();
       publishButtonPressEvent();
   });
 

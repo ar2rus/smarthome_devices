@@ -19,9 +19,14 @@ class FanController {
     
     // Длительность таймера по умолчанию (в миллисекундах)
     const unsigned long defaultTimerDuration;
+
+    // Колбэк изменения состояния/оставшегося времени
+    std::function<void(bool, long)> stateChangedCallback;
+    long lastReportedRemainingTime;
     
     // Приватный метод для обновления состояния и вызова управляющей функции
     void updateState(bool state);
+    void notifyStateChanged();
     
   public:
     // Конструктор принимает функцию для управления реле и время таймера по умолчанию
@@ -47,6 +52,9 @@ class FanController {
     
     // Получить оставшееся время работы таймера (в секундах)
     long getRemainingTime() const;
+
+    // Установить колбэк изменения состояния/оставшегося времени
+    void setStateChangedCallback(std::function<void(bool, long)> callback);
 };
 
 #endif // FANCONTROLLER_H 
