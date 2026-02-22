@@ -2,20 +2,18 @@
 #define RelayController_h
 
 #include <vector>
-#include "thermostat.h"
+#include "Thermostat.h"
 #include "TimeZones.h"
-
-#define CLUNET_DEVICE_ID 0x90
-#define CLUNET_DEVICE_NAME "RelayController"
 
 #define MQTT_CLIENT_ID "relay-controller"
 
 #define MQTT_TOPIC_DEVICE "home/" MQTT_CLIENT_ID
 #define MQTT_TOPIC_STATUS MQTT_TOPIC_DEVICE "/status"
+#define MQTT_TOPIC_BUTTON_EVENT MQTT_TOPIC_DEVICE "/button/event"
 
 #define MQTT_TOPIC_SENSOR MQTT_TOPIC_DEVICE "/sensor"
 
-#define MQTT_TOPIC_FAN MQTT_TOPIC_DEVICE "/relay"
+#define MQTT_TOPIC_RELAY MQTT_TOPIC_DEVICE "/relay"
 
 #define MQTT_TOPIC_THERMOSTAT MQTT_TOPIC_DEVICE "/thermostat"
 
@@ -83,12 +81,12 @@ static const uint8_t RELAY_PIN[RELAY_NUM] = {13, 12, 5, 4, 15};
 #define THERMOSTAT_TOILET_FLOOR_CHANNEL 2
 
 // Определение для каналов вентиляторов
-#define FAN_CHANNELS_NUM 2
-#define FAN_TOILET_CHANNEL 0
-#define FAN_BATHROOM_CHANNEL 1
+#define RELAY_CHANNELS_NUM 2
+#define RELAY_TOILET_CHANNEL 0
+#define RELAY_BATHROOM_CHANNEL 1
 
 // Структура для хранения конфигурации канала вентилятора
-struct FanChannelConfig {
+struct RelayChannelConfig {
   const char* name;                 // Имя канала для использования в JSON
   const char* topicName;            // Имя канала для MQTT топиков
   const char* location;             // Локация вентилятора
@@ -98,9 +96,9 @@ struct FanChannelConfig {
 };
 
 // Статическая конфигурация каналов вентиляторов
-static const FanChannelConfig FAN_CHANNELS_CONFIG[FAN_CHANNELS_NUM] = {
+static const RelayChannelConfig RELAY_CHANNELS_CONFIG[RELAY_CHANNELS_NUM] = {
   {
-    "toilet",
+    "toiletFan",
     "fan-toilet",
     "toilet",
     "Вентилятор туалета",
@@ -108,7 +106,7 @@ static const FanChannelConfig FAN_CHANNELS_CONFIG[FAN_CHANNELS_NUM] = {
     30  // 30 минут по умолчанию
   },
   {
-    "bathroom",
+    "bathroomFan",
     "fan-bathroom",
     "bathroom",
     "Вентилятор ванной",

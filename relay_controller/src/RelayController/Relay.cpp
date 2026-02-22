@@ -1,8 +1,8 @@
-#include "FanController.h"
+#include "Relay.h"
 #include <Arduino.h>
 
 // Конструктор
-FanController::FanController(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes)
+Relay::Relay(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes)
   : relayControl(controlFunction), 
     on(true),
     relayState(false),
@@ -17,12 +17,12 @@ FanController::FanController(std::function<void(bool)> controlFunction, unsigned
   notifyStateChanged(true);
 }
 
-bool FanController::isSameState(const FloorControllerState& a, const FloorControllerState& b) const {
+bool Relay::isSameState(const RelayState& a, const RelayState& b) const {
   return a.on == b.on && a.relayState == b.relayState && a.remainingTime == b.remainingTime;
 }
 
-void FanController::notifyStateChanged(bool force) {
-  FloorControllerState state = getState();
+void Relay::notifyStateChanged(bool force) {
+  RelayState state = getState();
   if (!force && lastReportedStateValid && isSameState(lastReportedState, state)) {
     return;
   }
@@ -36,7 +36,7 @@ void FanController::notifyStateChanged(bool force) {
 }
 
 // Приватный метод для обновления состояния и вызова управляющей функции
-void FanController::updateRelayState(bool state) {
+void Relay::updateRelayState(bool state) {
   bool appliedState = on ? state : false;
   if (relayState != appliedState) {
     relayState = appliedState;
@@ -45,7 +45,7 @@ void FanController::updateRelayState(bool state) {
   notifyStateChanged();
 }
 
-void FanController::setOn(bool enabled) {
+void Relay::setOn(bool enabled) {
   if (on == enabled) {
     return;
   }
@@ -60,12 +60,12 @@ void FanController::setOn(bool enabled) {
   notifyStateChanged(true);
 }
 
-bool FanController::isOn() const {
+bool Relay::isOn() const {
   return on;
 }
 
-// Включить вентилятор навсегда
-void FanController::turnOn() {
+// Включить реле навсегда
+void Relay::turnOn() {
   if (!on) {
     return;
   }
@@ -73,14 +73,14 @@ void FanController::turnOn() {
   updateRelayState(true);
 }
 
-// Выключить вентилятор
-void FanController::turnOff() {
+// Выключить реле
+void Relay::turnOff() {
   timerActive = false;
   updateRelayState(false);
 }
 
-// Включить вентилятор на определенное время
-void FanController::turnOnWithTimer(unsigned long durationMinutes) {
+// Включить реле на определенное время
+void Relay::turnOnWithTimer(unsigned long durationMinutes) {
   if (!on) {
     return;
   }
@@ -95,8 +95,8 @@ void FanController::turnOnWithTimer(unsigned long durationMinutes) {
   updateRelayState(true);
 }
 
-// Переключить состояние вентилятора
-void FanController::toggle() {
+// Переключить состояние реле
+void Relay::toggle() {
   if (!on) {
     return;
   }
@@ -109,7 +109,7 @@ void FanController::toggle() {
 }
 
 // Обработка таймера
-void FanController::handle() {
+void Relay::handle() {
   if (!on) {
     notifyStateChanged();
     return;
@@ -126,7 +126,7 @@ void FanController::handle() {
 }
 
 // Получить оставшееся время работы таймера (в секундах)
-long FanController::getRemainingTime() const {
+long Relay::getRemainingTime() const {
   if (timerActive && relayState && on) {
     long remaining = (turnOffTime - millis()) / 1000;
     return (remaining > 0) ? remaining : 0;
@@ -134,15 +134,15 @@ long FanController::getRemainingTime() const {
   return 0;
 }
 
-FloorControllerState FanController::getState() const {
-  FloorControllerState state;
+RelayState Relay::getState() const {
+  RelayState state;
   state.on = on;
   state.relayState = on ? relayState : false;
   state.remainingTime = getRemainingTime();
   return state;
 }
 
-void FanController::setStateChangedCallback(std::function<void(const FloorControllerState&)> callback) {
+void Relay::setStateChangedCallback(std::function<void(const RelayState&)> callback) {
   stateChangedCallback = callback;
   notifyStateChanged(true);
 }

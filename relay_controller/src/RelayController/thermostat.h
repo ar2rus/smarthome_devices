@@ -1,5 +1,5 @@
-#ifndef THERMOSTAT_CONTROLLER_H
-#define THERMOSTAT_CONTROLLER_H
+#ifndef THERMOSTAT_H
+#define THERMOSTAT_H
 
 using namespace std;
 #include <functional>
@@ -50,7 +50,7 @@ struct ThermostatState {
   float desiredTemperature;  // Текущая целевая температура
 };
 
-class ThermostatController {
+class Thermostat {
   private:
     ThermostatSchedule* schedule;
     int scheduleSize;
@@ -75,7 +75,7 @@ class ThermostatController {
 
   public:
     // Конструктор с передачей настроек
-    ThermostatController(const ThermostatSettings& _settings, 
+    Thermostat(const ThermostatSettings& _settings, 
                           std::function<float()> _requestTemperature, 
                           std::function<void(bool)> _relayControl);
     
@@ -101,7 +101,7 @@ class ThermostatController {
     ThermostatSettings getSettings() const;
     
     // Деструктор для освобождения памяти
-    ~ThermostatController();
+    ~Thermostat();
 };
 
-#endif // THERMOSTAT_CONTROLLER_H
+#endif // THERMOSTAT_H

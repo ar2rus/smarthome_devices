@@ -568,15 +568,6 @@
         let timeTicker = null;
         let timeSyncTimer = null;
         let lastDeviceTimeText = '--:--:--';
-        const FAN_API_CHANNEL_MAP = {
-            toiletFan: 'toilet',
-            bathroomFan: 'bathroom'
-        };
-        const FAN_UI_CHANNEL_MAP = {
-            toilet: 'toiletFan',
-            bathroom: 'bathroomFan'
-        };
-        
         // Локализуем тексты, используемые в уведомлениях
         function showMessage(text, type) {
             const messageElement = document.getElementById('message');
@@ -724,8 +715,8 @@
         }
         
         // Функция для загрузки состояния всех вентиляторов
-        function loadFanState() {
-            fetch('/api/fan/state')
+        function loadRelayState() {
+            fetch('/api/relay/state')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`Ошибка получения данных о вентиляторах: ${response.status}`);
@@ -737,8 +728,7 @@
                         throw new Error('Получены пустые данные о вентиляторах');
                     }
 
-                    Object.entries(allChannels).forEach(([apiChannelId, channelState]) => {
-                        const channelId = FAN_UI_CHANNEL_MAP[apiChannelId] || apiChannelId;
+                    Object.entries(allChannels).forEach(([channelId, channelState]) => {
                         const statusElement = document.getElementById(`${channelId}Status`);
                         const checkbox = document.getElementById(`${channelId}Enabled`);
                         const controllerOn = channelState.on !== false;
@@ -810,21 +800,19 @@
         }
         
         // Функция для переключения вентилятора
-        function toggleFan(channelId) {
+        function toggleRelay(channelId) {
             // Блокируем переключатель на время запроса
             const checkbox = document.getElementById(`${channelId}Enabled`);
             if (checkbox) {
                 checkbox.disabled = true;
             }
-            const apiChannelId = FAN_API_CHANNEL_MAP[channelId] || channelId;
-            
             // Формируем JSON объект для отправки с параметром toggle
             const requestData = {
-                channel: apiChannelId,
+                channel: channelId,
                 state: "toggle"
             };
             
-            fetch('/api/fan/control', {
+            fetch('/api/relay/control', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -846,12 +834,12 @@
                         showMessage(data.message, 'success');
                         
                         // Немедленно загружаем актуальное состояние
-                        loadFanState();
+                        loadRelayState();
                     } else {
                         showMessage('Ошибка: ' + (data.message || 'неизвестная ошибка'), 'error');
                         
                         // В случае ошибки все равно пытаемся узнать актуальное состояние
-                        setTimeout(() => loadFanState(), 1000);
+                        setTimeout(() => loadRelayState(), 1000);
                     }
                 })
                 .catch(error => {
@@ -1718,7 +1706,7 @@
                         // Делаем переключатель неактивным на время выполнения запроса
                         this.disabled = true;
                         // Вызываем функцию переключения с соответствующим каналом
-                        toggleFan(channelId);
+                        toggleRelay(channelId);
                     });
                 } else {
                     // Обычная обработка для теплого пола
@@ -1741,11 +1729,11 @@
             // Инициализация с сервера
             loadThermostatSettings();
             loadThermostatState();
-            loadFanState(); // Загружаем состояние вентиляторов
+            loadRelayState(); // Загружаем состояние вентиляторов
             
             // Настраиваем периодическое обновление состояния
             setInterval(loadThermostatState, 2000); // Обновление теплого пола каждые 2 секунды
-            setInterval(loadFanState, 1000); // Обновление вентиляторов каждую секунду
+            setInterval(loadRelayState, 1000); // Обновление вентиляторов каждую секунду
             
             // Таймер для проверки активности переключателей (на случай если что-то пошло не так)
             setInterval(() => {

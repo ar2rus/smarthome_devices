@@ -1,26 +1,26 @@
-#ifndef FANCONTROLLER_H
-#define FANCONTROLLER_H
+#ifndef RELAY_H
+#define RELAY_H
 
 #include <functional>
 
-struct FloorControllerState {
+struct RelayState {
   bool on;
   bool relayState;
   long remainingTime;
 };
 
-class FanController {
+class Relay {
   private:
-    // Функция для управления реле вентилятора
+    // Функция для управления реле
     std::function<void(bool)> relayControl;
     
     // Глобальное состояние контроллера (при false внешние команды игнорируются)
     bool on;
 
-    // Текущее физическое состояние реле вентилятора
+    // Текущее физическое состояние реле
     bool relayState;
     
-    // Время в миллисекундах, когда нужно выключить вентилятор
+    // Время в миллисекундах, когда нужно выключить реле
     unsigned long turnOffTime;
     
     // Установлен ли таймер
@@ -30,33 +30,33 @@ class FanController {
     const unsigned long defaultTimerDuration;
 
     // Колбэк изменения состояния/оставшегося времени
-    std::function<void(const FloorControllerState&)> stateChangedCallback;
-    FloorControllerState lastReportedState;
+    std::function<void(const RelayState&)> stateChangedCallback;
+    RelayState lastReportedState;
     bool lastReportedStateValid;
     
     // Приватный метод для обновления состояния и вызова управляющей функции
     void updateRelayState(bool state);
-    bool isSameState(const FloorControllerState& a, const FloorControllerState& b) const;
+    bool isSameState(const RelayState& a, const RelayState& b) const;
     void notifyStateChanged(bool force = false);
     
   public:
     // Конструктор принимает функцию для управления реле и время таймера по умолчанию
-    FanController(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes = 30);
+    Relay(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes = 30);
 
     // Глобально включить/выключить контроллер
     void setOn(bool enabled);
     bool isOn() const;
     
-    // Включить вентилятор навсегда
+    // Включить реле навсегда
     void turnOn();
     
-    // Выключить вентилятор
+    // Выключить реле
     void turnOff();
     
-    // Включить вентилятор на определенное время (в минутах)
+    // Включить реле на определенное время (в минутах)
     void turnOnWithTimer(unsigned long durationMinutes = 0);
     
-    // Переключить состояние вентилятора
+    // Переключить состояние реле
     void toggle();
     
     // Обработка таймера, должна вызываться в loop
@@ -65,11 +65,11 @@ class FanController {
     // Получить оставшееся время работы таймера (в секундах)
     long getRemainingTime() const;
 
-    // Получить состояние контроллера вентилятора
-    FloorControllerState getState() const;
+    // Получить состояние контроллера реле
+    RelayState getState() const;
 
     // Установить колбэк изменения состояния/оставшегося времени
-    void setStateChangedCallback(std::function<void(const FloorControllerState&)> callback);
+    void setStateChangedCallback(std::function<void(const RelayState&)> callback);
 };
 
-#endif // FANCONTROLLER_H 
+#endif // RELAY_H 

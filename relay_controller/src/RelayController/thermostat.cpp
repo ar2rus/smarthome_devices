@@ -1,10 +1,10 @@
-#include "thermostat.h"
+#include "Thermostat.h"
 
 #include <time.h>
 #include <math.h>
 
 // Конструктор с передачей настроек
-ThermostatController::ThermostatController(const ThermostatSettings& _settings, 
+Thermostat::Thermostat(const ThermostatSettings& _settings, 
                                               std::function<float()> _requestTemperature, 
                                               std::function<void(bool)> _relayControl)
   : requestTemperature(_requestTemperature),
@@ -26,13 +26,13 @@ ThermostatController::ThermostatController(const ThermostatSettings& _settings,
 }
 
 // Деструктор для освобождения памяти
-ThermostatController::~ThermostatController() {
+Thermostat::~Thermostat() {
   if (schedule != nullptr) {
     delete[] schedule;
   }
 }
 
-float ThermostatController::getDesiredTemperature(int hour, int minute, int dayOfWeek) {
+float Thermostat::getDesiredTemperature(int hour, int minute, int dayOfWeek) {
   for (int i = scheduleSize - 1; i >= 0; i--) {
     if (schedule[i].checkDayOfWeek(dayOfWeek)) {
       if (hour > schedule[i].hour || (hour == schedule[i].hour && minute >= schedule[i].minute)) {
@@ -44,7 +44,7 @@ float ThermostatController::getDesiredTemperature(int hour, int minute, int dayO
   return 0.0;
 }
 
-void ThermostatController::handle() {
+void Thermostat::handle() {
   time_t t;
   time(&t);
   struct tm* lt = localtime(&t);
@@ -73,23 +73,23 @@ void ThermostatController::handle() {
   notifyStateChangedIfNeeded();
 }
 
-void ThermostatController::setOn(bool enabled) {
+void Thermostat::setOn(bool enabled) {
   on = enabled;
   handle();  // Вызов handle при изменении состояния системы
 }
 
-bool ThermostatController::isOn() const {
+bool Thermostat::isOn() const {
   return on;
 }
 
-void ThermostatController::setRelay(bool newState) {
+void Thermostat::setRelay(bool newState) {
   if (relayState != newState) {
     relayState = newState;
     relayControl(newState);
   }
 }
 
-float ThermostatController::getCurrentTemperature() {
+float Thermostat::getCurrentTemperature() {
   float t = requestTemperature();
   if (t < THERMOSTAT_MIN_TEMPERATURE || t > THERMOSTAT_MAX_TEMPERATURE) {
     return 0.0;
@@ -97,14 +97,14 @@ float ThermostatController::getCurrentTemperature() {
   return t;
 }
 
-void ThermostatController::fillState(ThermostatState* _state) const {
+void Thermostat::fillState(ThermostatState* _state) const {
   _state->on = on;
   _state->relayState = on ? relayState : false;
   _state->currentTemperature = on ? currentTemperature : 0.0f;
   _state->desiredTemperature = on ? desiredTemperature : 0.0f;
 }
 
-bool ThermostatController::isSameState(const ThermostatState& a, const ThermostatState& b) const {
+bool Thermostat::isSameState(const ThermostatState& a, const ThermostatState& b) const {
   static const float STATE_EPS = 0.01f;
   return
     a.on == b.on &&
@@ -113,7 +113,7 @@ bool ThermostatController::isSameState(const ThermostatState& a, const Thermosta
     fabsf(a.desiredTemperature - b.desiredTemperature) < STATE_EPS;
 }
 
-void ThermostatController::notifyStateChangedIfNeeded() {
+void Thermostat::notifyStateChangedIfNeeded() {
   ThermostatState currentState;
   fillState(&currentState);
 
@@ -126,17 +126,17 @@ void ThermostatController::notifyStateChangedIfNeeded() {
   }
 }
 
-void ThermostatController::getState(ThermostatState* _state) {
+void Thermostat::getState(ThermostatState* _state) {
   fillState(_state);
 }
 
-void ThermostatController::setStateChangedCallback(std::function<void(const ThermostatState&)> callback) {
+void Thermostat::setStateChangedCallback(std::function<void(const ThermostatState&)> callback) {
   stateChangedCallback = callback;
   notifyStateChangedIfNeeded();
 }
 
 // Применение настроек из структуры ThermostatSettings (для загрузки из ПЗУ)
-void ThermostatController::applySettings(const ThermostatSettings& _settings) {
+void Thermostat::applySettings(const ThermostatSettings& _settings) {
   // Освобождаем старое расписание
   delete[] schedule;
   
@@ -151,7 +151,7 @@ void ThermostatController::applySettings(const ThermostatSettings& _settings) {
 }
 
 // Получение текущих настроек в виде ThermostatSettings (для сохранения в ПЗУ)
-ThermostatSettings ThermostatController::getSettings() const {
+ThermostatSettings Thermostat::getSettings() const {
   // Создаем новый объект настроек
   ThermostatSettings settings;
   
