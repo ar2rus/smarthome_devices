@@ -1,8 +1,12 @@
 #ifndef HeatingController_h
 #define HeatingController_h
 
-#define CLUNET_DEVICE_ID 0x92
-#define CLUNET_DEVICE_NAME "HeatingController"
+#define MQTT_CLIENT_ID "heating-controller"
+
+#define MQTT_TOPIC_DEVICE "home/" MQTT_CLIENT_ID
+#define MQTT_TOPIC_STATUS MQTT_TOPIC_DEVICE "/status"
+
+#define MQTT_TOPIC_SENSOR MQTT_TOPIC_DEVICE "/sensor"
 
 #define TIMEZONE TZ_Europe_Samara
 
@@ -20,6 +24,14 @@ static const uint8_t DS18B20_DEVICES[ONE_WIRE_NUM_DEVICES][8] = {
   { 0x28, 0x61, 0x64, 0x35, 0xC8, 0x3D, 0x4A, 0xC7 },
   { 0x28, 0x61, 0x64, 0x35, 0xC9, 0xE4, 0x88, 0xF0 },
   { 0x28, 0x61, 0x64, 0x35, 0xC9, 0x9C, 0xE7, 0x14 }
+};
+
+static const char* DS18B20_DEVICES_LOCATIONS[ONE_WIRE_NUM_DEVICES] = {
+  "channel_2_return",
+  "channel_3_return",
+  "input",
+  "channel_4_return",
+  "channel_1_return"
 };
 
 #define DS18B20_INPUT 2
