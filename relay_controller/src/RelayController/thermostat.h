@@ -1,17 +1,17 @@
-#ifndef FLOOR_HEATING_CONTROLLER_H
-#define FLOOR_HEATING_CONTROLLER_H
+#ifndef THERMOSTAT_CONTROLLER_H
+#define THERMOSTAT_CONTROLLER_H
 
 using namespace std;
 #include <functional>
 #include <vector>
 #include <string>
 
-#define HEATFLOOR_MIN_TEMPERATURE 10
-#define HEATFLOOR_MAX_TEMPERATURE 45
+#define THERMOSTAT_MIN_TEMPERATURE 10
+#define THERMOSTAT_MAX_TEMPERATURE 45
 
-#define HEATFLOOR_TEMPERATURE_HYSTERESIS 0.3
+#define THERMOSTAT_TEMPERATURE_HYSTERESIS 0.3
 
-struct FloorHeatingSchedule {
+struct ThermostatSchedule {
   int hour;
   int minute;
   float temperature;
@@ -27,32 +27,32 @@ struct FloorHeatingSchedule {
 
 // Структура с настройками теплого пола, включающая расписание и состояние
 // Используется только для инициализации
-struct FloorHeatingSettings {
-  std::vector<FloorHeatingSchedule> schedule;
+struct ThermostatSettings {
+  std::vector<ThermostatSchedule> schedule;
   bool enabled;
   
-  FloorHeatingSettings() : enabled(true) {}
+  ThermostatSettings() : enabled(true) {}
   
-  FloorHeatingSettings(const std::vector<FloorHeatingSchedule>& _schedule, bool _enabled) 
+  ThermostatSettings(const std::vector<ThermostatSchedule>& _schedule, bool _enabled) 
     : schedule(_schedule), enabled(_enabled) {}
   
   // Конструктор из массива расписаний
-  FloorHeatingSettings(const FloorHeatingSchedule* _scheduleArray, int _size, bool _enabled)
+  ThermostatSettings(const ThermostatSchedule* _scheduleArray, int _size, bool _enabled)
     : enabled(_enabled) {
     schedule.assign(_scheduleArray, _scheduleArray + _size);
   }
 };
 
-struct FloorHeatingState {
+struct ThermostatState {
   bool on;  // Глобальное включение/выключение системы
   bool relayState;  // Текущее состояние реле
   float currentTemperature;  // Текущая температура
   float desiredTemperature;  // Текущая целевая температура
 };
 
-class FloorHeatingController {
+class ThermostatController {
   private:
-    FloorHeatingSchedule* schedule;
+    ThermostatSchedule* schedule;
     int scheduleSize;
     
     bool on;  // Глобальное включение/выключение системы
@@ -62,20 +62,20 @@ class FloorHeatingController {
     
     std::function<void(bool)> relayControl;
     std::function<float()> requestTemperature;
-    std::function<void(const FloorHeatingState&)> stateChangedCallback;
-    FloorHeatingState lastReportedState;
+    std::function<void(const ThermostatState&)> stateChangedCallback;
+    ThermostatState lastReportedState;
     bool lastReportedStateValid;
 
     void setRelay(bool newState);
     float getCurrentTemperature();
     float getDesiredTemperature(int hour, int minute, int dayOfWeek);
-    void fillState(FloorHeatingState* _state) const;
-    bool isSameState(const FloorHeatingState& a, const FloorHeatingState& b) const;
+    void fillState(ThermostatState* _state) const;
+    bool isSameState(const ThermostatState& a, const ThermostatState& b) const;
     void notifyStateChangedIfNeeded();
 
   public:
     // Конструктор с передачей настроек
-    FloorHeatingController(const FloorHeatingSettings& _settings, 
+    ThermostatController(const ThermostatSettings& _settings, 
                           std::function<float()> _requestTemperature, 
                           std::function<void(bool)> _relayControl);
     
@@ -89,19 +89,19 @@ class FloorHeatingController {
     void handle();
     
     // Получение текущего состояния для отображения
-    void getState(FloorHeatingState* _state);
+    void getState(ThermostatState* _state);
 
     // Установить callback изменения состояния
-    void setStateChangedCallback(std::function<void(const FloorHeatingState&)> callback);
+    void setStateChangedCallback(std::function<void(const ThermostatState&)> callback);
     
-    // Применение настроек из структуры FloorHeatingSettings (для загрузки из ПЗУ)
-    void applySettings(const FloorHeatingSettings& _settings);
+    // Применение настроек из структуры ThermostatSettings (для загрузки из ПЗУ)
+    void applySettings(const ThermostatSettings& _settings);
     
-    // Получение текущих настроек в виде FloorHeatingSettings (для сохранения в ПЗУ)
-    FloorHeatingSettings getSettings() const;
+    // Получение текущих настроек в виде ThermostatSettings (для сохранения в ПЗУ)
+    ThermostatSettings getSettings() const;
     
     // Деструктор для освобождения памяти
-    ~FloorHeatingController();
+    ~ThermostatController();
 };
 
-#endif // FLOOR_HEATING_CONTROLLER_H
+#endif // THERMOSTAT_CONTROLLER_H

@@ -22,7 +22,7 @@
 #include "RelayController.h"
 #include "Credentials.h"
 
-#include "heatfloor.h"
+#include "thermostat.h"
 #include "FanController.h"
 #include "OneWireWatchdog.h"
 
@@ -38,8 +38,8 @@
 Inputs inputs;
 
 // Массивы для настроек и контроллеров теплого пола
-FloorHeatingSettings heatingSettings[HEATING_CHANNELS_NUM];
-FloorHeatingController* heatingControllers[HEATING_CHANNELS_NUM];
+ThermostatSettings thermostatSettings[THERMOSTAT_CHANNELS_NUM];
+ThermostatController* thermostatControllers[THERMOSTAT_CHANNELS_NUM];
 
 // Массив контроллеров вентиляторов
 FanController* fanControllers[FAN_CHANNELS_NUM];
@@ -287,26 +287,26 @@ void publishMqttAllFansState() {
   }
 }
 
-String mqttHeatingTopicBase(int channelIndex) {
-  return String(MQTT_TOPIC_HEATING) + "/" + HEATING_CHANNELS_CONFIG[channelIndex].topicName;
+String mqttThermostatTopicBase(int channelIndex) {
+  return String(MQTT_TOPIC_THERMOSTAT) + "/" + THERMOSTAT_CHANNELS_CONFIG[channelIndex].topicName;
 }
 
-String mqttHeatingStateTopic(int channelIndex) {
-  return mqttHeatingTopicBase(channelIndex) + "/state";
+String mqttThermostatStateTopic(int channelIndex) {
+  return mqttThermostatTopicBase(channelIndex) + "/state";
 }
 
-String mqttHeatingMetaTopic(int channelIndex) {
-  return mqttHeatingTopicBase(channelIndex) + "/meta";
+String mqttThermostatMetaTopic(int channelIndex) {
+  return mqttThermostatTopicBase(channelIndex) + "/meta";
 }
 
-String mqttHeatingMetaPayload(int channelIndex) {
+String mqttThermostatMetaPayload(int channelIndex) {
   String payload = "{";
-  payload += "\"location\":\"" + String(HEATING_CHANNELS_CONFIG[channelIndex].location) + "\"";
+  payload += "\"location\":\"" + String(THERMOSTAT_CHANNELS_CONFIG[channelIndex].location) + "\"";
   payload += "}";
   return payload;
 }
 
-String mqttHeatingStatePayload(const FloorHeatingState& state) {
+String mqttThermostatStatePayload(const ThermostatState& state) {
   String payload = "{";
   payload += "\"on\":";
   payload += state.on ? "true" : "false";
@@ -320,41 +320,41 @@ String mqttHeatingStatePayload(const FloorHeatingState& state) {
   return payload;
 }
 
-void publishMqttHeatingMeta(int channelIndex) {
+void publishMqttThermostatMeta(int channelIndex) {
   if (!mqttClient.connected()) {
     return;
   }
 
-  String topic = mqttHeatingMetaTopic(channelIndex);
-  String payload = mqttHeatingMetaPayload(channelIndex);
+  String topic = mqttThermostatMetaTopic(channelIndex);
+  String payload = mqttThermostatMetaPayload(channelIndex);
   mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
 }
 
-void publishMqttAllHeatingMeta() {
-  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-    publishMqttHeatingMeta(i);
+void publishMqttAllThermostatMeta() {
+  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    publishMqttThermostatMeta(i);
   }
 }
 
-void publishMqttHeatingState(int channelIndex, const FloorHeatingState& state) {
+void publishMqttThermostatState(int channelIndex, const ThermostatState& state) {
   if (!mqttClient.connected()) {
     return;
   }
 
-  String topic = mqttHeatingStateTopic(channelIndex);
-  String payload = mqttHeatingStatePayload(state);
+  String topic = mqttThermostatStateTopic(channelIndex);
+  String payload = mqttThermostatStatePayload(state);
   mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
 }
 
-void publishMqttAllHeatingState() {
-  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-    if (heatingControllers[i] == nullptr) {
+void publishMqttAllThermostatState() {
+  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    if (thermostatControllers[i] == nullptr) {
       continue;
     }
 
-    FloorHeatingState state;
-    heatingControllers[i]->getState(&state);
-    publishMqttHeatingState(i, state);
+    ThermostatState state;
+    thermostatControllers[i]->getState(&state);
+    publishMqttThermostatState(i, state);
   }
 }
 
@@ -508,15 +508,15 @@ void publishMqttStartMessages() {
   publishMqttAllSensorsState();
   publishMqttAllFansMeta();
   publishMqttAllFansState();
-  publishMqttAllHeatingMeta();
-  publishMqttAllHeatingState();
+  publishMqttAllThermostatMeta();
+  publishMqttAllThermostatState();
 }
 
 // Функция для загрузки настроек расписания из JSON
-void loadScheduleFromJson(JsonArray& array, std::vector<FloorHeatingSchedule>& schedule) {
+void loadScheduleFromJson(JsonArray& array, std::vector<ThermostatSchedule>& schedule) {
   schedule.clear();
   for (size_t i = 0; i < array.size(); i++) {
-    FloorHeatingSchedule item;
+    ThermostatSchedule item;
     item.hour = array[i]["hour"].as<int>();
     item.minute = array[i]["minute"].as<int>();
     item.temperature = array[i]["temperature"].as<float>();
@@ -526,7 +526,7 @@ void loadScheduleFromJson(JsonArray& array, std::vector<FloorHeatingSchedule>& s
 }
 
 // Функция для сохранения расписания в JSON
-void saveScheduleToJson(JsonArray& array, const std::vector<FloorHeatingSchedule>& schedule) {
+void saveScheduleToJson(JsonArray& array, const std::vector<ThermostatSchedule>& schedule) {
   for (size_t i = 0; i < schedule.size(); i++) {
     JsonObject item = array.createNestedObject();
     item["hour"] = schedule[i].hour;
@@ -613,30 +613,30 @@ void appendTimePayload(DynamicJsonDocument& doc) {
   }
 }
 
-// Функция для создания настроек FloorHeatingSettings из конфигурации канала
-FloorHeatingSettings createSettingsFromConfig(const HeatingChannelConfig& config, bool enabled = true) {
-  return FloorHeatingSettings(
+// Функция для создания настроек ThermostatSettings из конфигурации канала
+ThermostatSettings createThermostatSettingsFromConfig(const ThermostatChannelConfig& config, bool enabled = true) {
+  return ThermostatSettings(
     config.defaultSchedule,
     config.defaultScheduleSize,
     enabled
   );
 }
 
-void loadSettingFromConfig(){
- for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-    heatingSettings[i] = createSettingsFromConfig(HEATING_CHANNELS_CONFIG[i]);
+void loadThermostatSettingsFromConfig(){
+ for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    thermostatSettings[i] = createThermostatSettingsFromConfig(THERMOSTAT_CHANNELS_CONFIG[i]);
   }
 } 
 
 // Загрузка настроек теплого пола из файла
-void loadHeatfloorSettingsFromFile() {
+void loadThermostatSettingsFromFile() {
   // Инициализация настроек дефолтными значениями
-  loadSettingFromConfig();
+  loadThermostatSettingsFromConfig();
   
   if (LittleFS.exists("/settings.json")) {
     File settingsFile = LittleFS.open("/settings.json", "r");
     if (settingsFile) {
-      Serial.println("Loading heatfloor settings from file");
+      Serial.println("Loading thermostat settings from file");
       
       DynamicJsonDocument doc(2048);
       DeserializationError error = deserializeJson(doc, settingsFile);
@@ -647,26 +647,26 @@ void loadHeatfloorSettingsFromFile() {
           JsonArray channels = doc["channels"].as<JsonArray>();
           
           // Загружаем настройки из массива
-          for (int i = 0; i < min(HEATING_CHANNELS_NUM, (int)channels.size()); i++) {
+          for (int i = 0; i < min(THERMOSTAT_CHANNELS_NUM, (int)channels.size()); i++) {
             JsonObject channelObj = channels[i].as<JsonObject>();
             
             // Проверяем, что это правильный канал, сравнивая имя
-            if (channelObj.containsKey("name") && String(channelObj["name"].as<const char*>()) == String(HEATING_CHANNELS_CONFIG[i].name)) {
+            if (channelObj.containsKey("name") && String(channelObj["name"].as<const char*>()) == String(THERMOSTAT_CHANNELS_CONFIG[i].name)) {
               if (channelObj.containsKey("schedule") && channelObj["schedule"].is<JsonArray>()) {
                 JsonArray scheduleArray = channelObj["schedule"].as<JsonArray>();
-                std::vector<FloorHeatingSchedule> schedule;
+                std::vector<ThermostatSchedule> schedule;
                 loadScheduleFromJson(scheduleArray, schedule);
-                heatingSettings[i].schedule = schedule;
+                thermostatSettings[i].schedule = schedule;
               }
               
               if (channelObj.containsKey("enabled")) {
-                heatingSettings[i].enabled = channelObj["enabled"].as<bool>();
+                thermostatSettings[i].enabled = channelObj["enabled"].as<bool>();
               }
             }
           }
         }
         
-        Serial.println("Heatfloor settings loaded successfully");
+        Serial.println("Thermostat settings loaded successfully");
       } else {
         Serial.println("Failed to parse settings file");
       }
@@ -675,28 +675,28 @@ void loadHeatfloorSettingsFromFile() {
     }
   } else {
     // Создаем файл с дефолтными настройками
-    saveHeatfloorSettingsToFile();
+    saveThermostatSettingsFromFile();
   }
 }
 
 // Сохранение настроек теплого пола в файл
-void saveHeatfloorSettingsToFile() {
+void saveThermostatSettingsFromFile() {
   DynamicJsonDocument doc(2048);
   
   // Создаем массив каналов
   JsonArray channels = doc.createNestedArray("channels");
   
   // Получаем актуальные настройки и сохраняем в массив
-  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-    if (heatingControllers[i] != nullptr) {
-      FloorHeatingSettings settings = heatingControllers[i]->getSettings();
+  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    if (thermostatControllers[i] != nullptr) {
+      ThermostatSettings settings = thermostatControllers[i]->getSettings();
       
       // Создаем объект для текущего канала
       JsonObject channelObj = channels.createNestedObject();
       
       // Сохраняем идентификатор канала
-      channelObj["name"] = HEATING_CHANNELS_CONFIG[i].name;
-      channelObj["displayName"] = HEATING_CHANNELS_CONFIG[i].displayName;
+      channelObj["name"] = THERMOSTAT_CHANNELS_CONFIG[i].name;
+      channelObj["displayName"] = THERMOSTAT_CHANNELS_CONFIG[i].displayName;
       channelObj["enabled"] = settings.enabled;
       
       // Создаем массив расписания
@@ -709,7 +709,7 @@ void saveHeatfloorSettingsToFile() {
   if (settingsFile) {
     serializeJson(doc, settingsFile);
     settingsFile.close();
-    Serial.println("Heatfloor settings saved to file");
+    Serial.println("Thermostat settings saved to file");
   } else {
     Serial.println("Failed to create settings file");
   }
@@ -731,22 +731,22 @@ void setup() {
     Serial.println("Failed to mount LittleFS");
     
     // Даже если не получилось загрузить LittleFS, инициализируем с дефолтными настройками
-    loadSettingFromConfig();
+    loadThermostatSettingsFromConfig();
   } else {
     Serial.println("LittleFS mounted successfully");
     // Загружаем настройки из файла
-    loadHeatfloorSettingsFromFile();
+    loadThermostatSettingsFromFile();
   }
 
   loadTimeSettingsFromFile();
   
   // Инициализируем контроллеры теплого пола с загруженными настройками
-  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-    const uint8_t sensorIndex = HEATING_CHANNELS_CONFIG[i].temperatureSensor;
-    const uint8_t relayIndex = HEATING_CHANNELS_CONFIG[i].relayPin;
+  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    const uint8_t sensorIndex = THERMOSTAT_CHANNELS_CONFIG[i].temperatureSensor;
+    const uint8_t relayIndex = THERMOSTAT_CHANNELS_CONFIG[i].relayPin;
     
-    heatingControllers[i] = new FloorHeatingController(
-      heatingSettings[i],
+    thermostatControllers[i] = new ThermostatController(
+      thermostatSettings[i],
       [sensorIndex]() -> float {
         if (DS18B20_values[sensorIndex].hasActualValue()) {
           return DS18B20_values[sensorIndex].temperature;
@@ -758,8 +758,8 @@ void setup() {
       }
     );
 
-    heatingControllers[i]->setStateChangedCallback([i](const FloorHeatingState& state) {
-      publishMqttHeatingState(i, state);
+    thermostatControllers[i]->setStateChangedCallback([i](const ThermostatState& state) {
+      publishMqttThermostatState(i, state);
     });
   }
   
@@ -981,12 +981,12 @@ void setup() {
   });
 
   // API для управления системой теплого пола
-  AsyncCallbackWebHandler* heatfloorControlHandler = new AsyncCallbackWebHandler();
-  heatfloorControlHandler->setUri("/api/heatfloor/control");
-  heatfloorControlHandler->setMethod(HTTP_POST);
-  heatfloorControlHandler->onRequest([](AsyncWebServerRequest *request) {});
+  AsyncCallbackWebHandler* thermostatControlHandler = new AsyncCallbackWebHandler();
+  thermostatControlHandler->setUri("/api/thermostat/control");
+  thermostatControlHandler->setMethod(HTTP_POST);
+  thermostatControlHandler->onRequest([](AsyncWebServerRequest *request) {});
   
-  heatfloorControlHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+  thermostatControlHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     if (total > 0 && index == 0) {
       // Выделяем память под весь буфер
       request->_tempObject = malloc(total + 1);
@@ -1020,11 +1020,11 @@ void setup() {
             
             // Ищем канал по имени
             bool found = false;
-            for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-              if (channelName == HEATING_CHANNELS_CONFIG[i].name) {
-                heatingControllers[i]->setOn(enable);
-                saveHeatfloorSettingsToFile(); // Сохраняем новое состояние в файл
-                message = String(HEATING_CHANNELS_CONFIG[i].displayName) + (enable ? " включен" : " выключен");
+            for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+              if (channelName == THERMOSTAT_CHANNELS_CONFIG[i].name) {
+                thermostatControllers[i]->setOn(enable);
+                saveThermostatSettingsFromFile(); // Сохраняем новое состояние в файл
+                message = String(THERMOSTAT_CHANNELS_CONFIG[i].displayName) + (enable ? " включен" : " выключен");
                 success = true;
                 found = true;
                 break;
@@ -1057,7 +1057,7 @@ void setup() {
     }
   });
   
-  server.addHandler(heatfloorControlHandler);
+  server.addHandler(thermostatControlHandler);
   
   // Эндпоинт для получения состояния вентиляторов
   server.on("/api/fan/state", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -1227,24 +1227,24 @@ void setup() {
   server.addHandler(newFanHandler);
   
   // API для получения текущих настроек теплого пола
-  server.on("/api/heatfloor/settings", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/api/thermostat/settings", HTTP_GET, [](AsyncWebServerRequest *request){
     DynamicJsonDocument doc(2048);
     
     // Создаем массив каналов
     JsonArray channels = doc.createNestedArray("channels");
     
     // Добавляем информацию о каждом канале
-    for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
       JsonObject channelObj = channels.createNestedObject();
       
       // Добавляем идентификатор и отображаемое имя канала
-      channelObj["name"] = HEATING_CHANNELS_CONFIG[i].name;
-      channelObj["displayName"] = HEATING_CHANNELS_CONFIG[i].displayName;
-      channelObj["enabled"] = heatingSettings[i].enabled;
+      channelObj["name"] = THERMOSTAT_CHANNELS_CONFIG[i].name;
+      channelObj["displayName"] = THERMOSTAT_CHANNELS_CONFIG[i].displayName;
+      channelObj["enabled"] = thermostatSettings[i].enabled;
       
       // Добавляем расписание
       JsonArray scheduleArray = channelObj.createNestedArray("schedule");
-      saveScheduleToJson(scheduleArray, heatingSettings[i].schedule);
+      saveScheduleToJson(scheduleArray, thermostatSettings[i].schedule);
     }
     
     String response;
@@ -1253,15 +1253,15 @@ void setup() {
   });
   
   // API для получения текущего состояния отопления
-  server.on("/api/heatfloor/state", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/api/thermostat/state", HTTP_GET, [](AsyncWebServerRequest *request){
     DynamicJsonDocument doc(1024);
     
-    FloorHeatingState _state;
+    ThermostatState _state;
     
     // Формируем JSON с данными всех каналов
-    for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-      JsonObject channelObj = doc.createNestedObject(HEATING_CHANNELS_CONFIG[i].name);
-      heatingControllers[i]->getState(&_state);
+    for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+      JsonObject channelObj = doc.createNestedObject(THERMOSTAT_CHANNELS_CONFIG[i].name);
+      thermostatControllers[i]->getState(&_state);
       
       channelObj["on"] = _state.on;
       if (_state.on) {
@@ -1269,7 +1269,7 @@ void setup() {
         channelObj["currentTemperature"] = _state.currentTemperature;
         channelObj["desiredTemperature"] = _state.desiredTemperature;
       }
-      channelObj["displayName"] = HEATING_CHANNELS_CONFIG[i].displayName;
+      channelObj["displayName"] = THERMOSTAT_CHANNELS_CONFIG[i].displayName;
     }
     
     String jsonOutput;
@@ -1324,10 +1324,10 @@ void setup() {
                 String channelName = channelObj["name"].as<String>();
                 
                 // Ищем индекс канала по имени
-                for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-                  if (channelName == HEATING_CHANNELS_CONFIG[i].name) {
+                for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+                  if (channelName == THERMOSTAT_CHANNELS_CONFIG[i].name) {
                     // Получаем текущие настройки канала
-                    FloorHeatingSettings tempSettings = heatingControllers[i]->getSettings();
+                    ThermostatSettings tempSettings = thermostatControllers[i]->getSettings();
                     
                     // Обновляем состояние включения
                     if (channelObj.containsKey("enabled")) {
@@ -1337,16 +1337,16 @@ void setup() {
                     // Обновляем расписание
                     if (channelObj.containsKey("schedule") && channelObj["schedule"].is<JsonArray>()) {
                       JsonArray scheduleArray = channelObj["schedule"].as<JsonArray>();
-                      std::vector<FloorHeatingSchedule> schedule;
+                      std::vector<ThermostatSchedule> schedule;
                       loadScheduleFromJson(scheduleArray, schedule);
                       tempSettings.schedule = schedule;
                     }
                     
                     // Применяем настройки
-                    heatingControllers[i]->applySettings(tempSettings);
+                    thermostatControllers[i]->applySettings(tempSettings);
                     
                     // Обновляем глобальную настройку
-                    heatingSettings[i] = tempSettings;
+                    thermostatSettings[i] = tempSettings;
                     
                     success = true;
                     break;
@@ -1361,7 +1361,7 @@ void setup() {
           
           // Сохраняем настройки в LittleFS
           if (success) {
-            saveHeatfloorSettingsToFile();
+            saveThermostatSettingsFromFile();
           }
         } else {
           message = "Failed to parse JSON";
@@ -1384,7 +1384,7 @@ void setup() {
     }
   });
   
-  newUpdateSettingsHandler->setUri("/api/heatfloor/settings");
+  newUpdateSettingsHandler->setUri("/api/thermostat/settings");
   server.addHandler(newUpdateSettingsHandler);
   
   // Обработчик для корневого маршрута - отдаем index.html
@@ -1498,9 +1498,9 @@ void loop() {
   oneWireWatchdog.handle(m, isOneWireAlive());
 
   // Обработка всех каналов теплого пола
-  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
-    if (heatingControllers[i] != nullptr) {
-      heatingControllers[i]->handle();
+  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    if (thermostatControllers[i] != nullptr) {
+      thermostatControllers[i]->handle();
     }
   }
 

@@ -2,7 +2,7 @@
 #define RelayController_h
 
 #include <vector>
-#include "heatfloor.h"
+#include "thermostat.h"
 #include "TimeZones.h"
 
 #define CLUNET_DEVICE_ID 0x90
@@ -17,7 +17,7 @@
 
 #define MQTT_TOPIC_FAN MQTT_TOPIC_DEVICE "/relay"
 
-#define MQTT_TOPIC_HEATING MQTT_TOPIC_DEVICE "/thermostat"
+#define MQTT_TOPIC_THERMOSTAT MQTT_TOPIC_DEVICE "/thermostat"
 
 #define MQTT_TOPIC_ONEWIRE MQTT_TOPIC_DEVICE "/onewire"
 #define MQTT_TOPIC_ONEWIRE_STATE MQTT_TOPIC_ONEWIRE "/state"
@@ -77,10 +77,10 @@ static const char* DS18B20_DEVICES_LOCATIONS[ONE_WIRE_NUM_DEVICES] = {
 static const uint8_t RELAY_PIN[RELAY_NUM] = {13, 12, 5, 4, 15};
 
 // Определение для каналов нагрева
-#define HEATING_CHANNELS_NUM 3
-#define HEATING_BATHROOM_FLOOR_CHANNEL 0
-#define HEATING_BATHROOM_WALL_CHANNEL 1 
-#define HEATING_TOILET_FLOOR_CHANNEL 2
+#define THERMOSTAT_CHANNELS_NUM 3
+#define THERMOSTAT_BATHROOM_FLOOR_CHANNEL 0
+#define THERMOSTAT_BATHROOM_WALL_CHANNEL 1 
+#define THERMOSTAT_TOILET_FLOOR_CHANNEL 2
 
 // Определение для каналов вентиляторов
 #define FAN_CHANNELS_NUM 2
@@ -118,19 +118,19 @@ static const FanChannelConfig FAN_CHANNELS_CONFIG[FAN_CHANNELS_NUM] = {
 };
 
 // Структура для хранения конфигурации канала нагрева
-struct HeatingChannelConfig {
+struct ThermostatChannelConfig {
   const char* name;           // Имя канала для использования в JSON
   const char* topicName;      // Имя канала для MQTT топиков
   const char* location;       // Локация
   const char* displayName;    // Отображаемое имя
   uint8_t temperatureSensor;  // Индекс датчика температуры
   uint8_t relayPin;           // Индекс реле
-  const FloorHeatingSchedule* defaultSchedule; // Указатель на массив дефолтного расписания
+  const ThermostatSchedule* defaultSchedule; // Указатель на массив дефолтного расписания
   uint8_t defaultScheduleSize; // Размер массива дефолтного расписания
 };
 
 // Дефолтные расписания для контроллеров теплого пола
-static const FloorHeatingSchedule DEFAULT_BATHROOM_HEATFLOOR_SCHEDULE[] = {
+static const ThermostatSchedule DEFAULT_BATHROOM_HEATFLOOR_SCHEDULE[] = {
   {6, 30, 30.0, -2},
   {7, 30, 30.0, -3},
   {9, 30, 28.0, -1},
@@ -139,7 +139,7 @@ static const FloorHeatingSchedule DEFAULT_BATHROOM_HEATFLOOR_SCHEDULE[] = {
 };
 static const int DEFAULT_BATHROOM_HEATFLOOR_SCHEDULE_SIZE = sizeof(DEFAULT_BATHROOM_HEATFLOOR_SCHEDULE) / sizeof(DEFAULT_BATHROOM_HEATFLOOR_SCHEDULE[0]);
 
-static const FloorHeatingSchedule DEFAULT_BATHROOM_HEATWALL_SCHEDULE[] = {
+static const ThermostatSchedule DEFAULT_BATHROOM_HEATWALL_SCHEDULE[] = {
   {0, 0, 30, -1},
   {10, 0, 28, -2},
   {10, 0, 30, -3},
@@ -148,7 +148,7 @@ static const FloorHeatingSchedule DEFAULT_BATHROOM_HEATWALL_SCHEDULE[] = {
 };
 static const int DEFAULT_BATHROOM_HEATWALL_SCHEDULE_SIZE = sizeof(DEFAULT_BATHROOM_HEATWALL_SCHEDULE) / sizeof(DEFAULT_BATHROOM_HEATWALL_SCHEDULE[0]);
 
-static const FloorHeatingSchedule DEFAULT_TOILET_HEATFLOOR_SCHEDULE[] = {
+static const ThermostatSchedule DEFAULT_TOILET_HEATFLOOR_SCHEDULE[] = {
   {6, 0, 28.5, -2},
   {9, 30, 27, -2},
   {17, 0, 28.5, -2},
@@ -158,7 +158,7 @@ static const FloorHeatingSchedule DEFAULT_TOILET_HEATFLOOR_SCHEDULE[] = {
 static const int DEFAULT_TOILET_HEATFLOOR_SCHEDULE_SIZE = sizeof(DEFAULT_TOILET_HEATFLOOR_SCHEDULE) / sizeof(DEFAULT_TOILET_HEATFLOOR_SCHEDULE[0]);
 
 // Конфигурация каналов нагрева
-static const HeatingChannelConfig HEATING_CHANNELS_CONFIG[HEATING_CHANNELS_NUM] = {
+static const ThermostatChannelConfig THERMOSTAT_CHANNELS_CONFIG[THERMOSTAT_CHANNELS_NUM] = {
   {
     "bathroomFloor",
     "heating-floor-bathroom",
@@ -192,7 +192,7 @@ static const HeatingChannelConfig HEATING_CHANNELS_CONFIG[HEATING_CHANNELS_NUM] 
 };
 
 // Функции для работы с настройками теплого пола
-void loadHeatfloorSettingsFromFile();
-void saveHeatfloorSettingsToFile();
+void loadThermostatSettingsFromFile();
+void saveThermostatSettingsFromFile();
 
 #endif

@@ -1,10 +1,10 @@
-#include "heatfloor.h"
+#include "thermostat.h"
 
 #include <time.h>
 #include <math.h>
 
 // Конструктор с передачей настроек
-FloorHeatingController::FloorHeatingController(const FloorHeatingSettings& _settings, 
+ThermostatController::ThermostatController(const ThermostatSettings& _settings, 
                                               std::function<float()> _requestTemperature, 
                                               std::function<void(bool)> _relayControl)
   : requestTemperature(_requestTemperature),
@@ -18,7 +18,7 @@ FloorHeatingController::FloorHeatingController(const FloorHeatingSettings& _sett
   
   // Копируем расписание из settings в локальные поля
   scheduleSize = _settings.schedule.size();
-  schedule = new FloorHeatingSchedule[scheduleSize];
+  schedule = new ThermostatSchedule[scheduleSize];
   for (int i = 0; i < scheduleSize; i++) {
     schedule[i] = _settings.schedule[i];
   }
@@ -26,13 +26,13 @@ FloorHeatingController::FloorHeatingController(const FloorHeatingSettings& _sett
 }
 
 // Деструктор для освобождения памяти
-FloorHeatingController::~FloorHeatingController() {
+ThermostatController::~ThermostatController() {
   if (schedule != nullptr) {
     delete[] schedule;
   }
 }
 
-float FloorHeatingController::getDesiredTemperature(int hour, int minute, int dayOfWeek) {
+float ThermostatController::getDesiredTemperature(int hour, int minute, int dayOfWeek) {
   for (int i = scheduleSize - 1; i >= 0; i--) {
     if (schedule[i].checkDayOfWeek(dayOfWeek)) {
       if (hour > schedule[i].hour || (hour == schedule[i].hour && minute >= schedule[i].minute)) {
@@ -44,7 +44,7 @@ float FloorHeatingController::getDesiredTemperature(int hour, int minute, int da
   return 0.0;
 }
 
-void FloorHeatingController::handle() {
+void ThermostatController::handle() {
   time_t t;
   time(&t);
   struct tm* lt = localtime(&t);
@@ -64,47 +64,47 @@ void FloorHeatingController::handle() {
     return;
   }
 
-  if (currentTemperature <= desiredTemperature - HEATFLOOR_TEMPERATURE_HYSTERESIS) {
+  if (currentTemperature <= desiredTemperature - THERMOSTAT_TEMPERATURE_HYSTERESIS) {
     setRelay(true);
-  } else if (currentTemperature >= desiredTemperature + HEATFLOOR_TEMPERATURE_HYSTERESIS) {
+  } else if (currentTemperature >= desiredTemperature + THERMOSTAT_TEMPERATURE_HYSTERESIS) {
     setRelay(false);
   }
 
   notifyStateChangedIfNeeded();
 }
 
-void FloorHeatingController::setOn(bool enabled) {
+void ThermostatController::setOn(bool enabled) {
   on = enabled;
   handle();  // Вызов handle при изменении состояния системы
 }
 
-bool FloorHeatingController::isOn() const {
+bool ThermostatController::isOn() const {
   return on;
 }
 
-void FloorHeatingController::setRelay(bool newState) {
+void ThermostatController::setRelay(bool newState) {
   if (relayState != newState) {
     relayState = newState;
     relayControl(newState);
   }
 }
 
-float FloorHeatingController::getCurrentTemperature() {
+float ThermostatController::getCurrentTemperature() {
   float t = requestTemperature();
-  if (t < HEATFLOOR_MIN_TEMPERATURE || t > HEATFLOOR_MAX_TEMPERATURE) {
+  if (t < THERMOSTAT_MIN_TEMPERATURE || t > THERMOSTAT_MAX_TEMPERATURE) {
     return 0.0;
   }
   return t;
 }
 
-void FloorHeatingController::fillState(FloorHeatingState* _state) const {
+void ThermostatController::fillState(ThermostatState* _state) const {
   _state->on = on;
   _state->relayState = on ? relayState : false;
   _state->currentTemperature = on ? currentTemperature : 0.0f;
   _state->desiredTemperature = on ? desiredTemperature : 0.0f;
 }
 
-bool FloorHeatingController::isSameState(const FloorHeatingState& a, const FloorHeatingState& b) const {
+bool ThermostatController::isSameState(const ThermostatState& a, const ThermostatState& b) const {
   static const float STATE_EPS = 0.01f;
   return
     a.on == b.on &&
@@ -113,8 +113,8 @@ bool FloorHeatingController::isSameState(const FloorHeatingState& a, const Floor
     fabsf(a.desiredTemperature - b.desiredTemperature) < STATE_EPS;
 }
 
-void FloorHeatingController::notifyStateChangedIfNeeded() {
-  FloorHeatingState currentState;
+void ThermostatController::notifyStateChangedIfNeeded() {
+  ThermostatState currentState;
   fillState(&currentState);
 
   if (!lastReportedStateValid || !isSameState(currentState, lastReportedState)) {
@@ -126,23 +126,23 @@ void FloorHeatingController::notifyStateChangedIfNeeded() {
   }
 }
 
-void FloorHeatingController::getState(FloorHeatingState* _state) {
+void ThermostatController::getState(ThermostatState* _state) {
   fillState(_state);
 }
 
-void FloorHeatingController::setStateChangedCallback(std::function<void(const FloorHeatingState&)> callback) {
+void ThermostatController::setStateChangedCallback(std::function<void(const ThermostatState&)> callback) {
   stateChangedCallback = callback;
   notifyStateChangedIfNeeded();
 }
 
-// Применение настроек из структуры FloorHeatingSettings (для загрузки из ПЗУ)
-void FloorHeatingController::applySettings(const FloorHeatingSettings& _settings) {
+// Применение настроек из структуры ThermostatSettings (для загрузки из ПЗУ)
+void ThermostatController::applySettings(const ThermostatSettings& _settings) {
   // Освобождаем старое расписание
   delete[] schedule;
   
   // Копируем расписание из settings в локальные поля
   scheduleSize = _settings.schedule.size();
-  schedule = new FloorHeatingSchedule[scheduleSize];
+  schedule = new ThermostatSchedule[scheduleSize];
   for (int i = 0; i < scheduleSize; i++) {
     schedule[i] = _settings.schedule[i];
   }
@@ -150,10 +150,10 @@ void FloorHeatingController::applySettings(const FloorHeatingSettings& _settings
   handle();
 }
 
-// Получение текущих настроек в виде FloorHeatingSettings (для сохранения в ПЗУ)
-FloorHeatingSettings FloorHeatingController::getSettings() const {
+// Получение текущих настроек в виде ThermostatSettings (для сохранения в ПЗУ)
+ThermostatSettings ThermostatController::getSettings() const {
   // Создаем новый объект настроек
-  FloorHeatingSettings settings;
+  ThermostatSettings settings;
   
   // Заполняем расписание
   settings.schedule.clear();

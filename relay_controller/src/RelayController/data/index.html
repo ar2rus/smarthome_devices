@@ -590,8 +590,8 @@
         }
         
         // Функция для загрузки текущего состояния теплого пола
-        function loadHeatingState() {
-            fetch('/api/heatfloor/state')
+        function loadThermostatState() {
+            fetch('/api/thermostat/state')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Ошибка получения данных: ' + response.status);
@@ -876,8 +876,8 @@
         }
         
         // Функция для загрузки настроек теплого пола
-        function loadHeatingSettings() {
-            fetch('/api/heatfloor/settings')
+        function loadThermostatSettings() {
+            fetch('/api/thermostat/settings')
                 .then(response => response.json())
                 .then(data => {
                     // Проверяем, что есть массив каналов
@@ -919,7 +919,7 @@
         }
         
         // Функция для отправки запроса на включение/выключение канала теплого пола
-        function toggleHeatingChannel(channelId, enabled) {
+        function toggleThermostatChannel(channelId, enabled) {
             // Блокируем переключатель на время запроса
             const checkbox = document.getElementById(channelId + 'Enabled');
             if (checkbox) {
@@ -934,7 +934,7 @@
                 state: state
             };
             
-            fetch('/api/heatfloor/control', {
+            fetch('/api/thermostat/control', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -958,7 +958,7 @@
                     }
                     
                     // Обновим состояние через 1 секунду
-                    setTimeout(loadHeatingState, 1000);
+                    setTimeout(loadThermostatState, 1000);
                 })
                 .catch(error => {
                     console.error('Ошибка при переключении канала теплого пола:', error);
@@ -1134,7 +1134,7 @@
             if (isNaN(newTemperature) || newTemperature < 10 || newTemperature > 45) {
                 showMessage('Некорректная температура. Допустимый диапазон: 10-45°C', 'error');
                 // Перезагружаем настройки для восстановления исходных значений
-                loadHeatingSettings();
+                loadThermostatSettings();
                 return;
             }
             
@@ -1143,7 +1143,7 @@
             const previousState = checkbox ? checkbox.checked : false;
             
             // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
+            fetch('/api/thermostat/settings')
                 .then(response => response.json())
                 .then(data => {
                     // Находим канал в массиве
@@ -1187,7 +1187,7 @@
                     };
                     
                     // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
+                    return fetch('/api/thermostat/settings', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1204,7 +1204,7 @@
                     
                     if (result.success) {
                         showMessage('Температура успешно обновлена', 'success');
-                        loadHeatingSettings();
+                        loadThermostatSettings();
                     } else {
                         showMessage('Ошибка при обновлении: ' + result.message, 'error');
                     }
@@ -1222,7 +1222,7 @@
             const previousState = checkbox ? checkbox.checked : false;
             
             // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
+            fetch('/api/thermostat/settings')
                 .then(response => response.json())
                 .then(data => {
                     // Находим канал в массиве
@@ -1260,7 +1260,7 @@
                     };
                     
                     // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
+                    return fetch('/api/thermostat/settings', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1277,7 +1277,7 @@
                     
                     if (result.success) {
                         showMessage('Расписание успешно обновлено', 'success');
-                        loadHeatingSettings();
+                        loadThermostatSettings();
                     } else {
                         showMessage('Ошибка при обновлении расписания: ' + result.message, 'error');
                     }
@@ -1321,7 +1321,7 @@
             const previousState = checkbox ? checkbox.checked : false;
             
             // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
+            fetch('/api/thermostat/settings')
                 .then(response => response.json())
                 .then(data => {
                     // Находим канал в массиве
@@ -1358,7 +1358,7 @@
                     };
                     
                     // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
+                    return fetch('/api/thermostat/settings', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1376,7 +1376,7 @@
                         tempInput.value = '';
                         
                         showMessage('Расписание успешно обновлено', 'success');
-                        loadHeatingSettings();
+                        loadThermostatSettings();
                     } else {
                         showMessage('Ошибка при обновлении расписания: ' + result.message, 'error');
                     }
@@ -1396,7 +1396,7 @@
             if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
                 showMessage('Некорректное время. Используйте формат ЧЧ:ММ (0-23 часов, 0-59 минут)', 'error');
                 // Перезагружаем настройки для восстановления исходных значений
-                loadHeatingSettings();
+                loadThermostatSettings();
                 return;
             }
             
@@ -1405,7 +1405,7 @@
             const previousState = checkbox ? checkbox.checked : false;
             
             // Получаем текущее расписание
-            fetch('/api/heatfloor/settings')
+            fetch('/api/thermostat/settings')
                 .then(response => response.json())
                 .then(data => {
                     // Находим канал в массиве
@@ -1450,7 +1450,7 @@
                     };
                     
                     // Отправляем обновленные данные
-                    return fetch('/api/heatfloor/settings', {
+                    return fetch('/api/thermostat/settings', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1467,7 +1467,7 @@
                     
                     if (result.success) {
                         showMessage('Время успешно обновлено', 'success');
-                        loadHeatingSettings();
+                        loadThermostatSettings();
                     } else {
                         showMessage('Ошибка при обновлении: ' + result.message, 'error');
                     }
@@ -1725,7 +1725,7 @@
                     checkbox.addEventListener('change', function() {
                         // Делаем переключатель неактивным на время выполнения запроса
                         this.disabled = true;
-                        toggleHeatingChannel(channelId, this.checked);
+                        toggleThermostatChannel(channelId, this.checked);
                     });
                 }
             });
@@ -1739,12 +1739,12 @@
             });
             
             // Инициализация с сервера
-            loadHeatingSettings();
-            loadHeatingState();
+            loadThermostatSettings();
+            loadThermostatState();
             loadFanState(); // Загружаем состояние вентиляторов
             
             // Настраиваем периодическое обновление состояния
-            setInterval(loadHeatingState, 2000); // Обновление теплого пола каждые 2 секунды
+            setInterval(loadThermostatState, 2000); // Обновление теплого пола каждые 2 секунды
             setInterval(loadFanState, 1000); // Обновление вентиляторов каждую секунду
             
             // Таймер для проверки активности переключателей (на случай если что-то пошло не так)
@@ -1752,7 +1752,7 @@
                 // Если соединение не потеряно или была ошибка более минуты назад, проверяем соединение
                 if (!connectionLostTime || (new Date() - connectionLostTime) / 1000 > 60) {
                     // Проверяем соединение с сервером перед разблокировкой
-                    fetch('/api/heatfloor/state')
+                    fetch('/api/thermostat/state')
                         .then(response => {
                             if (!response.ok) {
                                 throw new Error('Сервер недоступен');
@@ -1765,7 +1765,7 @@
                             if (Array.from(checkboxes).every(cb => cb.disabled)) {
                                 console.log('Соединение восстановлено, разблокируем переключатели');
                                 // Запускаем нормальное обновление данных
-                                loadHeatingState();
+                                loadThermostatState();
                             }
                         })
                         .catch(error => {
