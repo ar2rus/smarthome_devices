@@ -1,6 +1,7 @@
 #include "heatfloor.h"
 
 #include <time.h>
+#include <math.h>
 
 // Конструктор с передачей настроек
 FloorHeatingController::FloorHeatingController(const FloorHeatingSettings& _settings, 
@@ -8,6 +9,9 @@ FloorHeatingController::FloorHeatingController(const FloorHeatingSettings& _sett
                                               std::function<void(bool)> _relayControl)
   : requestTemperature(_requestTemperature),
     relayControl(_relayControl),
+    stateChangedCallback(nullptr),
+    lastReportedState{false, false, 0.0f, 0.0f},
+    lastReportedStateValid(false),
     relayState(false),
     currentTemperature(0.0f),
     desiredTemperature(0.0f) {
@@ -50,11 +54,13 @@ void FloorHeatingController::handle() {
 
   if (!on) {
     setRelay(false);
+    notifyStateChangedIfNeeded();
     return;
   }
   
   if (desiredTemperature == 0.0f || currentTemperature == 0.0f) {
     setRelay(false);
+    notifyStateChangedIfNeeded();
     return;
   }
 
@@ -63,6 +69,8 @@ void FloorHeatingController::handle() {
   } else if (currentTemperature >= desiredTemperature + HEATFLOOR_TEMPERATURE_HYSTERESIS) {
     setRelay(false);
   }
+
+  notifyStateChangedIfNeeded();
 }
 
 void FloorHeatingController::setOn(bool enabled) {
@@ -89,13 +97,42 @@ float FloorHeatingController::getCurrentTemperature() {
   return t;
 }
 
-void FloorHeatingController::getState(FloorHeatingState* _state) {
+void FloorHeatingController::fillState(FloorHeatingState* _state) const {
   _state->on = on;
-  if (on) {
-    _state->relayState = relayState;
-    _state->currentTemperature = currentTemperature;
-    _state->desiredTemperature = desiredTemperature;
+  _state->relayState = on ? relayState : false;
+  _state->currentTemperature = on ? currentTemperature : 0.0f;
+  _state->desiredTemperature = on ? desiredTemperature : 0.0f;
+}
+
+bool FloorHeatingController::isSameState(const FloorHeatingState& a, const FloorHeatingState& b) const {
+  static const float STATE_EPS = 0.01f;
+  return
+    a.on == b.on &&
+    a.relayState == b.relayState &&
+    fabsf(a.currentTemperature - b.currentTemperature) < STATE_EPS &&
+    fabsf(a.desiredTemperature - b.desiredTemperature) < STATE_EPS;
+}
+
+void FloorHeatingController::notifyStateChangedIfNeeded() {
+  FloorHeatingState currentState;
+  fillState(&currentState);
+
+  if (!lastReportedStateValid || !isSameState(currentState, lastReportedState)) {
+    lastReportedState = currentState;
+    lastReportedStateValid = true;
+    if (stateChangedCallback) {
+      stateChangedCallback(currentState);
+    }
   }
+}
+
+void FloorHeatingController::getState(FloorHeatingState* _state) {
+  fillState(_state);
+}
+
+void FloorHeatingController::setStateChangedCallback(std::function<void(const FloorHeatingState&)> callback) {
+  stateChangedCallback = callback;
+  notifyStateChangedIfNeeded();
 }
 
 // Применение настроек из структуры FloorHeatingSettings (для загрузки из ПЗУ)
@@ -110,6 +147,7 @@ void FloorHeatingController::applySettings(const FloorHeatingSettings& _settings
     schedule[i] = _settings.schedule[i];
   }
   on = _settings.enabled;
+  handle();
 }
 
 // Получение текущих настроек в виде FloorHeatingSettings (для сохранения в ПЗУ)

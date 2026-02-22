@@ -6,7 +6,7 @@
     dependencies:
     https://github.com/me-no-dev/ESPAsyncWebServer
     Adafruit SHT31 Library
-    PubSubClient
+    AsyncMqttClient
 
  */
 
@@ -15,7 +15,7 @@
 #include <TZ.h>
 
 #include <ESPAsyncWebServer.h>
-#include <PubSubClient.h>
+#include <AsyncMqttClient.h>
 
 #include "BathFan.h"
 #include "Credentials.h"
@@ -39,8 +39,7 @@ IPAddress dnsAddr DEVICE_DNS_IP;
 
 AsyncWebServer server(80); // Порт 80
 
-WiFiClient mqttTransport;
-PubSubClient mqttClient(mqttTransport);
+AsyncMqttClient mqttClient;
 
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
 Inputs inputs;
@@ -55,10 +54,10 @@ static unsigned long mqttReconnectPeriodMs = 5000;
 float t, correctedT, h, correctedH;
 unsigned long lastMqttPublish = 0;
 unsigned long lastMqttReconnect = 0;
+bool mqttWasConnected = false;
 
 HumidityAutoController::Params humParams;
 void publishHumidityControllerEvent(HumidityAutoController::State state);
-String humidityControllerPayload(unsigned long nowMs);
 void publishFanOnCommand();
 void publishFanToggleCommand();
 
@@ -101,34 +100,30 @@ String deviceMeta() {
 void publishDeviceMeta() {
   if (mqttClient.connected()) {
     String payload = deviceMeta();
-    mqttClient.publish(MQTT_TOPIC_DEVICE_META, payload.c_str(), true);
+    mqttClient.publish(MQTT_TOPIC_DEVICE_META, 0, true, payload.c_str());
   }
 }
 
 void publishSht31Meta() {
   if (mqttClient.connected()) {
     String payload = sht31Meta();
-    mqttClient.publish(MQTT_TOPIC_SHT31_META, payload.c_str(), true);
+    mqttClient.publish(MQTT_TOPIC_SHT31_META, 0, true, payload.c_str());
   }
 }
 
-bool connectMqtt() {
-  bool connected = mqttClient.connect(
-    MQTT_CLIENT_ID,
-    MQTT_USER,
-    MQTT_PASSWORD,
-    MQTT_TOPIC_STATUS,
-    1,
-    true,
-    "offline"
-  );
+void publishMqttStartMessages() {
+  mqttClient.publish(MQTT_TOPIC_STATUS, 1, true, "online");
+  publishDeviceMeta();
+  publishSht31Meta();
+}
 
-  if (connected) {
-    mqttClient.publish(MQTT_TOPIC_STATUS, "online", true);
-    publishDeviceMeta();
-    publishSht31Meta();
+void connectMqtt() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
   }
-  return connected;
+  if (!mqttClient.connected()) {
+    mqttClient.connect();
+  }
 }
 
 bool isValidSht31Reading(float temperature, float humidity) {
@@ -170,7 +165,7 @@ String sht31State(float temperature, float humidity, float rawTemperature, float
 void publishSht31State(float temperature, float humidity, float rawTemperature, float rawHumidity, unsigned long nowMs) {
   if (mqttClient.connected()) {
     String payload = sht31State(temperature, humidity, rawTemperature, rawHumidity, nowMs);
-    mqttClient.publish(MQTT_TOPIC_SHT31_STATE, payload.c_str(), true);
+    mqttClient.publish(MQTT_TOPIC_SHT31_STATE, 0, true, payload.c_str());
   }
 }
 
@@ -192,33 +187,33 @@ String humidityControllerState(unsigned long nowMs) {
 void publishHumidityControllerState(unsigned long nowMs) {
   if (mqttClient.connected()) {
     String payload = humidityControllerState(nowMs);
-    mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER_STATE, payload.c_str(), true);
+    mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER_STATE, 0, true, payload.c_str());
   }
 }
 
 void publishHumidityControllerEvent(HumidityAutoController::State state) {
   if (mqttClient.connected()) {
     const char* stateName = HumidityAutoController::stateString(state);
-    mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER_EVENT, stateName, false);
+    mqttClient.publish(MQTT_TOPIC_HUMIDITY_CONTROLLER_EVENT, 0, false, stateName);
   }
 }
 
 void publishButtonPressEvent() {
   if (mqttClient.connected()) {
-    mqttClient.publish(MQTT_TOPIC_BUTTON_EVENT, "PRESS", false);
+    mqttClient.publish(MQTT_TOPIC_BUTTON_EVENT, 1, false, "PRESS");
   }
 }
 
 void publishFanOnCommand() {
   if (mqttClient.connected()) {
     String payload = "{\"durationMinutes\":" + String(FAN_BATHROOM_ON_DURATION_MINUTES) + "}";
-    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_ON, payload.c_str(), false);
+    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_ON, 1, false, payload.c_str());
   }
 }
 
 void publishFanToggleCommand() {
   if (mqttClient.connected()) {
-    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_TOGGLE, "1", false);
+    mqttClient.publish(MQTT_TOPIC_FAN_BATHROOM_TOGGLE, 1, false, "1");
   }
 }
 
@@ -250,7 +245,9 @@ void setup() {
 
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setKeepAlive(30);
-  mqttClient.setBufferSize(512);
+  mqttClient.setClientId(MQTT_CLIENT_ID);
+  mqttClient.setCredentials(MQTT_USER, MQTT_PASSWORD);
+  mqttClient.setWill(MQTT_TOPIC_STATUS, 1, true, "offline");
   connectMqtt();
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -350,9 +347,16 @@ void loop() {
         lastMqttReconnect = t_now;
         connectMqtt();
       }
-    } else {
-      mqttClient.loop();
     }
+  }
+
+  if (mqttClient.connected()) {
+    if (!mqttWasConnected) {
+      mqttWasConnected = true;
+      publishMqttStartMessages();
+    }
+  } else {
+    mqttWasConnected = false;
   }
 
   if (t_now - t_measure >= measure_period){

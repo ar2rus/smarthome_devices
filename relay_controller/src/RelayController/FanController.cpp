@@ -4,45 +4,87 @@
 // Конструктор
 FanController::FanController(std::function<void(bool)> controlFunction, unsigned long defaultDurationMinutes)
   : relayControl(controlFunction), 
-    isOn(false), 
+    on(true),
+    relayState(false),
     turnOffTime(0), 
     timerActive(false), 
     defaultTimerDuration(defaultDurationMinutes * 60 * 1000),
     stateChangedCallback(nullptr),
-    lastReportedRemainingTime(0) {
+    lastReportedState{true, false, 0},
+    lastReportedStateValid(false) {
   // Начальное состояние - выключено
-  updateState(false);
+  relayControl(false);
+  notifyStateChanged(true);
 }
 
-void FanController::notifyStateChanged() {
-  long remainingTime = getRemainingTime();
-  lastReportedRemainingTime = remainingTime;
+bool FanController::isSameState(const FloorControllerState& a, const FloorControllerState& b) const {
+  return a.on == b.on && a.relayState == b.relayState && a.remainingTime == b.remainingTime;
+}
+
+void FanController::notifyStateChanged(bool force) {
+  FloorControllerState state = getState();
+  if (!force && lastReportedStateValid && isSameState(lastReportedState, state)) {
+    return;
+  }
+
+  lastReportedState = state;
+  lastReportedStateValid = true;
+
   if (stateChangedCallback) {
-    stateChangedCallback(isOn, remainingTime);
+    stateChangedCallback(state);
   }
 }
 
 // Приватный метод для обновления состояния и вызова управляющей функции
-void FanController::updateState(bool state) {
-  isOn = state;
-  relayControl(state);
+void FanController::updateRelayState(bool state) {
+  bool appliedState = on ? state : false;
+  if (relayState != appliedState) {
+    relayState = appliedState;
+    relayControl(appliedState);
+  }
   notifyStateChanged();
+}
+
+void FanController::setOn(bool enabled) {
+  if (on == enabled) {
+    return;
+  }
+
+  on = enabled;
+  if (!on) {
+    timerActive = false;
+    updateRelayState(false);
+    return;
+  }
+
+  notifyStateChanged(true);
+}
+
+bool FanController::isOn() const {
+  return on;
 }
 
 // Включить вентилятор навсегда
 void FanController::turnOn() {
+  if (!on) {
+    return;
+  }
   timerActive = false;
-  updateState(true);
+  updateRelayState(true);
 }
 
 // Выключить вентилятор
 void FanController::turnOff() {
   timerActive = false;
-  updateState(false);
+  updateRelayState(false);
 }
 
 // Включить вентилятор на определенное время
 void FanController::turnOnWithTimer(unsigned long durationMinutes) {
+  if (!on) {
+    return;
+  }
+
   timerActive = true;
   
   unsigned long duration = (durationMinutes > 0) ? 
@@ -50,12 +92,16 @@ void FanController::turnOnWithTimer(unsigned long durationMinutes) {
                           defaultTimerDuration;
   
   turnOffTime = millis() + duration;
-  updateState(true);
+  updateRelayState(true);
 }
 
 // Переключить состояние вентилятора
 void FanController::toggle() {
-  if (isOn) {
+  if (!on) {
+    return;
+  }
+
+  if (relayState) {
     turnOff();
   } else {
     turnOnWithTimer();
@@ -64,33 +110,39 @@ void FanController::toggle() {
 
 // Обработка таймера
 void FanController::handle() {
-  if (timerActive && isOn && millis() >= turnOffTime) {
+  if (!on) {
+    notifyStateChanged();
+    return;
+  }
+
+  if (timerActive && relayState && millis() >= turnOffTime) {
     turnOff();
     return;
   }
 
-  if (timerActive && isOn) {
-    long remainingTime = getRemainingTime();
-    if (remainingTime != lastReportedRemainingTime) {
-      notifyStateChanged();
-    }
+  if (timerActive && relayState) {
+    notifyStateChanged();
   }
-}
-
-// Получить текущее состояние вентилятора
-bool FanController::getState() const {
-  return isOn;
 }
 
 // Получить оставшееся время работы таймера (в секундах)
 long FanController::getRemainingTime() const {
-  if (timerActive && isOn) {
+  if (timerActive && relayState && on) {
     long remaining = (turnOffTime - millis()) / 1000;
     return (remaining > 0) ? remaining : 0;
   }
   return 0;
 }
 
-void FanController::setStateChangedCallback(std::function<void(bool, long)> callback) {
+FloorControllerState FanController::getState() const {
+  FloorControllerState state;
+  state.on = on;
+  state.relayState = on ? relayState : false;
+  state.remainingTime = getRemainingTime();
+  return state;
+}
+
+void FanController::setStateChangedCallback(std::function<void(const FloorControllerState&)> callback) {
   stateChangedCallback = callback;
+  notifyStateChanged(true);
 }

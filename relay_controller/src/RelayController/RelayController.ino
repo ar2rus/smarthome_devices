@@ -6,7 +6,7 @@
     dependencies:
     https://github.com/me-no-dev/ESPAsyncWebServer
     https://github.com/ar2rus/ClunetMulticast
-    PubSubClient
+    AsyncMqttClient
 
  */
 
@@ -14,7 +14,7 @@
 #include <ArduinoOTA.h>
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
-#include <PubSubClient.h>
+#include <AsyncMqttClient.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -34,7 +34,6 @@
 #include <LittleFS.h>  // Используем LittleFS
 
 #include <vector>
-#include <cstring>
 
 Inputs inputs;
 
@@ -52,6 +51,16 @@ bool ds18b20NeedsRequest = true;
 
 void publishMqttOneWireState(bool enabled, time_t transitionTs);
 void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length);
+void connectMqtt();
+void onMqttMessage(
+  char* topic,
+  char* payload,
+  AsyncMqttClientMessageProperties properties,
+  size_t len,
+  size_t index,
+  size_t total
+);
+void publishMqttStartMessages();
 
 void applyOneWireEnable(bool enabled){
   if (oneWirePowerEnabled != enabled) {
@@ -115,8 +124,9 @@ AsyncWebServer server(80); // Порт 80
 ClunetMulticast clunet(CLUNET_DEVICE_ID, CLUNET_DEVICE_NAME);
 bool littleFsAvailable = false;
 
-WiFiClient mqttTransport;
-PubSubClient mqttClient(mqttTransport);
+AsyncMqttClient mqttClient;
+char mqttIncomingPayloadBuffer[256];
+bool mqttWasConnected = false;
 
 static const char* NTP_SERVER_1 = "pool.ntp.org";
 static const char* NTP_SERVER_2 = "time.nist.gov";
@@ -219,12 +229,14 @@ String mqttOneWireStatePayload(bool enabled, time_t transitionTs) {
   return payload;
 }
 
-String mqttFanStatePayload(int fanIndex) {
+String mqttFanStatePayload(const FloorControllerState& state) {
   String payload = "{";
   payload += "\"on\":";
-  payload += fanControllers[fanIndex]->getState() ? "true" : "false";
+  payload += state.on ? "true" : "false";
+  payload += ",\"relayState\":";
+  payload += state.relayState ? "true" : "false";
   payload += ",\"remainingTime\":";
-  payload += String(fanControllers[fanIndex]->getRemainingTime());
+  payload += String(state.remainingTime);
   payload += "}";
   return payload;
 }
@@ -243,7 +255,7 @@ void publishMqttFanMeta(int fanIndex) {
 
   String topic = mqttFanMetaTopic(fanIndex);
   String payload = mqttFanMetaPayload(fanIndex);
-  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
 }
 
 void publishMqttAllFansMeta() {
@@ -252,19 +264,97 @@ void publishMqttAllFansMeta() {
   }
 }
 
-void publishMqttFanState(int fanIndex) {
+void publishMqttFanState(int fanIndex, const FloorControllerState& state) {
   if (!mqttClient.connected() || fanControllers[fanIndex] == nullptr) {
     return;
   }
 
   String topic = mqttFanStateTopic(fanIndex);
-  String payload = mqttFanStatePayload(fanIndex);
-  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  String payload = mqttFanStatePayload(state);
+  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
+}
+
+void publishMqttFanState(int fanIndex) {
+  if (fanControllers[fanIndex] == nullptr) {
+    return;
+  }
+  publishMqttFanState(fanIndex, fanControllers[fanIndex]->getState());
 }
 
 void publishMqttAllFansState() {
   for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
     publishMqttFanState(i);
+  }
+}
+
+String mqttHeatingTopicBase(int channelIndex) {
+  return String(MQTT_TOPIC_HEATING) + "/" + HEATING_CHANNELS_CONFIG[channelIndex].topicName;
+}
+
+String mqttHeatingStateTopic(int channelIndex) {
+  return mqttHeatingTopicBase(channelIndex) + "/state";
+}
+
+String mqttHeatingMetaTopic(int channelIndex) {
+  return mqttHeatingTopicBase(channelIndex) + "/meta";
+}
+
+String mqttHeatingMetaPayload(int channelIndex) {
+  String payload = "{";
+  payload += "\"location\":\"" + String(HEATING_CHANNELS_CONFIG[channelIndex].location) + "\"";
+  payload += "}";
+  return payload;
+}
+
+String mqttHeatingStatePayload(const FloorHeatingState& state) {
+  String payload = "{";
+  payload += "\"on\":";
+  payload += state.on ? "true" : "false";
+  payload += ",\"relayState\":";
+  payload += state.relayState ? "true" : "false";
+  payload += ",\"currentTemperature\":";
+  payload += String(state.currentTemperature, 2);
+  payload += ",\"desiredTemperature\":";
+  payload += String(state.desiredTemperature, 2);
+  payload += "}";
+  return payload;
+}
+
+void publishMqttHeatingMeta(int channelIndex) {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  String topic = mqttHeatingMetaTopic(channelIndex);
+  String payload = mqttHeatingMetaPayload(channelIndex);
+  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
+}
+
+void publishMqttAllHeatingMeta() {
+  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    publishMqttHeatingMeta(i);
+  }
+}
+
+void publishMqttHeatingState(int channelIndex, const FloorHeatingState& state) {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  String topic = mqttHeatingStateTopic(channelIndex);
+  String payload = mqttHeatingStatePayload(state);
+  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
+}
+
+void publishMqttAllHeatingState() {
+  for (int i = 0; i < HEATING_CHANNELS_NUM; i++) {
+    if (heatingControllers[i] == nullptr) {
+      continue;
+    }
+
+    FloorHeatingState state;
+    heatingControllers[i]->getState(&state);
+    publishMqttHeatingState(i, state);
   }
 }
 
@@ -306,24 +396,24 @@ void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length) {
     }
 
     String setOnTopic = mqttFanSetOnTopic(i);
-    if (strcmp(topic, setOnTopic.c_str()) == 0) {
+    if (setOnTopic == topic) {
       unsigned long durationMinutes = 0;
       if (parseFanDurationMinutes(payload, length, durationMinutes)) {
         fanControllers[i]->turnOnWithTimer(durationMinutes);
       } else {
-        fanControllers[i]->turnOn();
+        fanControllers[i]->turnOnWithTimer();
       }
       return;
     }
 
     String setOffTopic = mqttFanSetOffTopic(i);
-    if (strcmp(topic, setOffTopic.c_str()) == 0) {
+    if (setOffTopic == topic) {
       fanControllers[i]->turnOff();
       return;
     }
 
     String setToggleTopic = mqttFanSetToggleTopic(i);
-    if (strcmp(topic, setToggleTopic.c_str()) == 0) {
+    if (setToggleTopic == topic) {
       fanControllers[i]->toggle();
       return;
     }
@@ -336,7 +426,7 @@ void publishMqttSensorMeta(int sensorIndex) {
   }
   String topic = mqttSensorMetaTopic(sensorIndex);
   String payload = mqttSensorMetaPayload(sensorIndex);
-  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
 }
 
 void publishMqttAllSensorsMeta() {
@@ -352,7 +442,7 @@ void publishMqttSensorState(int sensorIndex) {
 
   String topic = mqttSensorStateTopic(sensorIndex);
   String payload = mqttSensorStatePayload(sensorIndex);
-  mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
 }
 
 void publishMqttAllSensorsState() {
@@ -367,30 +457,59 @@ void publishMqttOneWireState(bool enabled, time_t transitionTs) {
   }
 
   String payload = mqttOneWireStatePayload(enabled, transitionTs);
-  mqttClient.publish(MQTT_TOPIC_ONEWIRE_STATE, payload.c_str(), true);
+  mqttClient.publish(MQTT_TOPIC_ONEWIRE_STATE, 0, true, payload.c_str());
 }
 
-bool connectMqtt() {
-  bool connected = mqttClient.connect(
-    MQTT_CLIENT_ID,
-    MQTT_USER,
-    MQTT_PASSWORD,
-    MQTT_TOPIC_STATUS,
-    1,
-    true,
-    "offline"
-  );
+void connectMqtt() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+  if (!mqttClient.connected()) {
+    mqttClient.connect();
+  }
+}
 
-  if (connected) {
-    mqttClient.publish(MQTT_TOPIC_STATUS, "online", true);
-    subscribeMqttFanCommandTopics();
-    publishMqttAllSensorsMeta();
-    publishMqttAllSensorsState();
-    publishMqttAllFansMeta();
-    publishMqttAllFansState();
+void onMqttMessage(
+  char* topic,
+  char* payload,
+  AsyncMqttClientMessageProperties properties,
+  size_t len,
+  size_t index,
+  size_t total
+) {
+  (void)properties;
+  if (topic == nullptr) {
+    return;
   }
 
-  return connected;
+  if (total == 0) {
+    mqttMessageReceived(topic, reinterpret_cast<uint8_t*>(mqttIncomingPayloadBuffer), 0);
+    return;
+  }
+
+  if (total >= sizeof(mqttIncomingPayloadBuffer)) {
+    return;
+  }
+
+  if (index + len > total) {
+    return;
+  }
+
+  memcpy(mqttIncomingPayloadBuffer + index, payload, len);
+  if (index + len == total) {
+    mqttMessageReceived(topic, reinterpret_cast<uint8_t*>(mqttIncomingPayloadBuffer), total);
+  }
+}
+
+void publishMqttStartMessages() {
+  mqttClient.publish(MQTT_TOPIC_STATUS, 1, true, "online");
+  subscribeMqttFanCommandTopics();
+  publishMqttAllSensorsMeta();
+  publishMqttAllSensorsState();
+  publishMqttAllFansMeta();
+  publishMqttAllFansState();
+  publishMqttAllHeatingMeta();
+  publishMqttAllHeatingState();
 }
 
 // Функция для загрузки настроек расписания из JSON
@@ -638,6 +757,10 @@ void setup() {
         relay_state(relayIndex, state);
       }
     );
+
+    heatingControllers[i]->setStateChangedCallback([i](const FloorHeatingState& state) {
+      publishMqttHeatingState(i, state);
+    });
   }
   
   // Инициализируем объекты управления вентиляторами с лямбда-функциями
@@ -648,10 +771,8 @@ void setup() {
       relay_state(relayIndex, state);
     }, FAN_CHANNELS_CONFIG[i].defaultTimerMinutes);
 
-    fanControllers[i]->setStateChangedCallback([i](bool state, long remainingTime) {
-      (void)state;
-      (void)remainingTime;
-      publishMqttFanState(i);
+    fanControllers[i]->setStateChangedCallback([i](const FloorControllerState& state) {
+      publishMqttFanState(i, state);
     });
   }
 
@@ -675,9 +796,11 @@ void setup() {
   ArduinoOTA.begin();
 
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setClientId(MQTT_CLIENT_ID);
+  mqttClient.setCredentials(MQTT_USER, MQTT_PASSWORD);
   mqttClient.setKeepAlive(30);
-  mqttClient.setBufferSize(512);
-  mqttClient.setCallback(mqttMessageReceived);
+  mqttClient.setWill(MQTT_TOPIC_STATUS, 1, true, "offline");
+  mqttClient.onMessage(onMqttMessage);
   connectMqtt();
 
   if (!applyTimeZoneById(currentTimeZoneId)) {
@@ -936,47 +1059,33 @@ void setup() {
   
   server.addHandler(heatfloorControlHandler);
   
-  // Эндпоинт для получения состояния вентилятора
+  // Эндпоинт для получения состояния вентиляторов
   server.on("/api/fan/state", HTTP_GET, [](AsyncWebServerRequest *request){
-    // Проверяем наличие параметра канала
-    bool success = true;
-    int fanIndex = FAN_TOILET_CHANNEL; // По умолчанию используем вентилятор туалета
-    FanController* targetFan = nullptr;
-    
-    if (request->hasArg("channel")) {
-      String fanId = request->arg("channel");
-      
-      // Ищем канал вентилятора по имени
-      bool found = false;
-      for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
-        if (fanId == FAN_CHANNELS_CONFIG[i].name) {
-          fanIndex = i;
-          found = true;
-          break;
-        }
+    DynamicJsonDocument doc(1024);
+
+    // Формируем JSON с данными всех каналов вентиляции
+    for (int i = 0; i < FAN_CHANNELS_NUM; i++) {
+      const char* channelName = FAN_CHANNELS_CONFIG[i].name;
+      JsonObject channelObj = doc.createNestedObject(channelName);
+
+      channelObj["displayName"] = FAN_CHANNELS_CONFIG[i].displayName;
+
+      if (fanControllers[i] == nullptr) {
+        channelObj["on"] = false;
+        channelObj["relayState"] = false;
+        channelObj["remainingTime"] = 0;
+        continue;
       }
-      
-      if (!found) {
-        success = false;
-      }
+
+      FloorControllerState state = fanControllers[i]->getState();
+      channelObj["on"] = state.on;
+      channelObj["relayState"] = state.relayState;
+      channelObj["remainingTime"] = state.remainingTime;
     }
-    
-    if (success) {
-      targetFan = fanControllers[fanIndex];
-      
-      // Формируем JSON о текущем состоянии конкретного вентилятора
-      DynamicJsonDocument doc(128);
-      doc["channel"] = FAN_CHANNELS_CONFIG[fanIndex].name;
-      doc["name"] = FAN_CHANNELS_CONFIG[fanIndex].displayName;
-      doc["on"] = targetFan->getState();
-      doc["remainingTime"] = targetFan->getRemainingTime();
-      
-      String responseStr;
-      serializeJson(doc, responseStr);
-      request->send(200, "application/json", responseStr);
-    } else {
-      request->send(404, "application/json", "{\"success\":false,\"message\":\"Вентилятор не найден\"}");
-    }
+
+    String responseStr;
+    serializeJson(doc, responseStr);
+    request->send(200, "application/json", responseStr);
   });
   
   // Обработчик для POST запросов к вентиляторам
@@ -1053,7 +1162,12 @@ void setup() {
             String stateArg = doc["state"].as<String>();
             if (stateArg == "on") {
               targetFan->turnOn();
-              message = fanName + " включен";
+              FloorControllerState state = targetFan->getState();
+              if (!state.on) {
+                message = fanName + " глобально отключен";
+              } else {
+                message = fanName + " включен";
+              }
               success = true;
             } else if (stateArg == "off") {
               targetFan->turnOff();
@@ -1061,9 +1175,15 @@ void setup() {
               success = true;
             } else if (stateArg == "toggle") {
               targetFan->toggle();
-              String newState = targetFan->getState() ? "включен" : "выключен";
-              message = fanName + " " + newState;
-              success = true;
+              FloorControllerState state = targetFan->getState();
+              if (!state.on) {
+                message = fanName + " глобально отключен";
+                success = true;
+              } else {
+                String newState = state.relayState ? "включен" : "выключен";
+                message = fanName + " " + newState;
+                success = true;
+              }
             } else {
               message = "Неверный параметр состояния";
             }
@@ -1071,7 +1191,12 @@ void setup() {
             int minutes = doc["timer"].as<int>();
             if (minutes > 0 && minutes <= 180) { // maximum 3 hours
               targetFan->turnOnWithTimer(minutes);
-              message = fanName + " включен на " + String(minutes) + " минут";
+              FloorControllerState state = targetFan->getState();
+              if (!state.on) {
+                message = fanName + " глобально отключен";
+              } else {
+                message = fanName + " включен на " + String(minutes) + " минут";
+              }
               success = true;
             } else {
               message = "Неверное значение таймера";
@@ -1333,9 +1458,16 @@ void loop() {
         lastMqttReconnect = m;
         connectMqtt();
       }
-    } else {
-      mqttClient.loop();
     }
+  }
+
+  if (mqttClient.connected()) {
+    if (!mqttWasConnected) {
+      mqttWasConnected = true;
+      publishMqttStartMessages();
+    }
+  } else {
+    mqttWasConnected = false;
   }
 
   if (oneWirePowerEnabled) {

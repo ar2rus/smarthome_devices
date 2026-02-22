@@ -15,7 +15,9 @@
 
 #define MQTT_TOPIC_SENSOR MQTT_TOPIC_DEVICE "/sensor"
 
-#define MQTT_TOPIC_FAN MQTT_TOPIC_DEVICE "/fan-controller"
+#define MQTT_TOPIC_FAN MQTT_TOPIC_DEVICE "/relay"
+
+#define MQTT_TOPIC_HEATING MQTT_TOPIC_DEVICE "/thermostat"
 
 #define MQTT_TOPIC_ONEWIRE MQTT_TOPIC_DEVICE "/onewire"
 #define MQTT_TOPIC_ONEWIRE_STATE MQTT_TOPIC_ONEWIRE "/state"
@@ -118,6 +120,8 @@ static const FanChannelConfig FAN_CHANNELS_CONFIG[FAN_CHANNELS_NUM] = {
 // Структура для хранения конфигурации канала нагрева
 struct HeatingChannelConfig {
   const char* name;           // Имя канала для использования в JSON
+  const char* topicName;      // Имя канала для MQTT топиков
+  const char* location;       // Локация
   const char* displayName;    // Отображаемое имя
   uint8_t temperatureSensor;  // Индекс датчика температуры
   uint8_t relayPin;           // Индекс реле
@@ -157,6 +161,8 @@ static const int DEFAULT_TOILET_HEATFLOOR_SCHEDULE_SIZE = sizeof(DEFAULT_TOILET_
 static const HeatingChannelConfig HEATING_CHANNELS_CONFIG[HEATING_CHANNELS_NUM] = {
   {
     "bathroomFloor",
+    "heating-floor-bathroom",
+    "bathroom_floor",
     "Теплый пол ванной",
     DS18B20_BATHROOM_HEATFLOOR,
     RELAY_BATHROOM_HEATFLOOR,
@@ -165,6 +171,8 @@ static const HeatingChannelConfig HEATING_CHANNELS_CONFIG[HEATING_CHANNELS_NUM] 
   },
   {
     "bathroomWall",
+    "heating-wall-bathroom",
+    "bathroom_wall",
     "Теплая стена ванной",
     DS18B20_BATHROOM_HEATWALL,
     RELAY_BATHROOM_HEATWALL,
@@ -173,6 +181,8 @@ static const HeatingChannelConfig HEATING_CHANNELS_CONFIG[HEATING_CHANNELS_NUM] 
   },
   {
     "toiletFloor",
+    "heating-floor-toilet",
+    "toilet_floor",
     "Теплый пол туалета",
     DS18B20_TOILET_HEATFLOOR,
     RELAY_TOILET_HEATFLOOR,

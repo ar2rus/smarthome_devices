@@ -572,6 +572,10 @@
             toiletFan: 'toilet',
             bathroomFan: 'bathroom'
         };
+        const FAN_UI_CHANNEL_MAP = {
+            toilet: 'toiletFan',
+            bathroom: 'bathroomFan'
+        };
         
         // Локализуем тексты, используемые в уведомлениях
         function showMessage(text, type) {
@@ -618,8 +622,9 @@
                             if (channel.on) {
                                 // Исключаем вентилятор туалета из этой обработки, т.к. для него отдельный API
                                 if (channelId !== 'toiletFan') {
-                                    const currentTemp = channel.currentTemperature.toFixed(1);
-                                    const desiredTempValue = channel.desiredTemperature;
+                                    const currentTempValue = Number(channel.currentTemperature);
+                                    const currentTemp = currentTempValue > 0 ? currentTempValue.toFixed(1) : '—';
+                                    const desiredTempValue = Number(channel.desiredTemperature);
                                     const desiredTemp = desiredTempValue > 0 ? desiredTempValue.toFixed(1) : '—';
                                     const relayClass = channel.relayState ? 'relayOn' : 'relayOff';
                                     const relayStatus = channel.relayState ? 'включено' : 'отключено';
@@ -720,91 +725,87 @@
         
         // Функция для загрузки состояния всех вентиляторов
         function loadFanState() {
-            // Загружаем состояние вентилятора туалета
-            loadFanChannelState('toiletFan');
-            
-            // Загружаем состояние вентилятора ванной
-            loadFanChannelState('bathroomFan');
-        }
-        
-        // Функция для загрузки состояния конкретного вентилятора
-        function loadFanChannelState(channelId) {
-            const apiChannelId = FAN_API_CHANNEL_MAP[channelId] || channelId;
-            fetch(`/api/fan/state?channel=${apiChannelId}`)
+            fetch('/api/fan/state')
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`Ошибка получения данных о вентиляторе ${channelId}: ${response.status}`);
+                        throw new Error(`Ошибка получения данных о вентиляторах: ${response.status}`);
                     }
                     return response.json();
                 })
-                .then(data => {
-                    // Проверяем, что получены данные
-                    if (!data) {
-                        throw new Error(`Получены пустые данные о вентиляторе ${channelId}`);
+                .then(allChannels => {
+                    if (!allChannels || Object.keys(allChannels).length === 0) {
+                        throw new Error('Получены пустые данные о вентиляторах');
                     }
-                    
-                    const statusElement = document.getElementById(`${channelId}Status`);
-                    const checkbox = document.getElementById(`${channelId}Enabled`);
-                    
-                    if (statusElement) {
-                        if (data.on) {
-                            const remainingTime = data.remainingTime || 0;
-                            const hasTimerCountdown = remainingTime > 0;
-                            const remainingMinutes = Math.floor(remainingTime / 60);
-                            const remainingSeconds = Math.floor(remainingTime % 60);
-                            const timeStr = hasTimerCountdown
-                                ? `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`
-                                : '—';
-                            
-                            statusElement.innerHTML = `
-                                <span class="statusText">
-                                    <div class="paramGrid">
-                                        <div class="paramBox">
-                                            <span class="paramIcon">⏱️</span>
-                                            <span class="paramLabel">Оставшееся время</span>
-                                            <span class="paramValue">${timeStr}</span>
+
+                    Object.entries(allChannels).forEach(([apiChannelId, channelState]) => {
+                        const channelId = FAN_UI_CHANNEL_MAP[apiChannelId] || apiChannelId;
+                        const statusElement = document.getElementById(`${channelId}Status`);
+                        const checkbox = document.getElementById(`${channelId}Enabled`);
+                        const controllerOn = channelState.on !== false;
+                        const relayState = channelState.relayState === true;
+
+                        if (statusElement) {
+                            if (!controllerOn) {
+                                statusElement.innerHTML = '<span class="statusText">Канал отключен</span>';
+                                statusElement.classList.remove('statusOn', 'statusWaiting');
+                                statusElement.classList.add('statusOff');
+                            } else if (relayState) {
+                                const remainingTime = channelState.remainingTime || 0;
+                                const hasTimerCountdown = remainingTime > 0;
+                                const remainingMinutes = Math.floor(remainingTime / 60);
+                                const remainingSeconds = Math.floor(remainingTime % 60);
+                                const timeStr = hasTimerCountdown
+                                    ? `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`
+                                    : '—';
+                                
+                                statusElement.innerHTML = `
+                                    <span class="statusText">
+                                        <div class="paramGrid">
+                                            <div class="paramBox">
+                                                <span class="paramIcon">⏱️</span>
+                                                <span class="paramLabel">Оставшееся время</span>
+                                                <span class="paramValue">${timeStr}</span>
+                                            </div>
+                                            <div class="paramBox">
+                                                <span class="paramIcon">⚡</span>
+                                                <span class="paramLabel">Статус</span>
+                                                <span class="paramValue relayOn">включено</span>
+                                            </div>
                                         </div>
-                                        <div class="paramBox">
-                                            <span class="paramIcon">⚡</span>
-                                            <span class="paramLabel">Статус</span>
-                                            <span class="paramValue relayOn">включено</span>
-                                        </div>
-                                    </div>
-                                </span>`;
-                            statusElement.classList.remove('statusOff', 'statusWaiting');
-                            statusElement.classList.add('statusOn');
-                        } else {
-                            statusElement.innerHTML = '<span class="statusText">Отключено</span>';
+                                    </span>`;
+                                statusElement.classList.remove('statusOff', 'statusWaiting');
+                                statusElement.classList.add('statusOn');
+                            } else {
+                                statusElement.innerHTML = '<span class="statusText">Отключено</span>';
+                                statusElement.classList.remove('statusOn', 'statusWaiting');
+                                statusElement.classList.add('statusOff');
+                            }
+                        }
+
+                        if (checkbox) {
+                            if (!checkbox.disabled) {
+                                checkbox.checked = relayState;
+                            }
+                            checkbox.disabled = !controllerOn;
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Ошибка при загрузке состояния вентиляторов:', error);
+
+                    ['toiletFan', 'bathroomFan'].forEach((channelId) => {
+                        const statusElement = document.getElementById(`${channelId}Status`);
+                        if (statusElement) {
+                            statusElement.innerHTML = '<span class="statusText">Ошибка соединения</span>';
                             statusElement.classList.remove('statusOn', 'statusWaiting');
                             statusElement.classList.add('statusOff');
                         }
-                    }
-                    
-                    // Обновляем состояние переключателя только если он не заблокирован
-                    // (это позволяет избежать мерцания при переключении)
-                    if (checkbox) {
-                        // Обновляем состояние только если элемент не заблокирован (идет переключение)
-                        if (!checkbox.disabled) {
-                            checkbox.checked = data.on;
+
+                        const checkbox = document.getElementById(`${channelId}Enabled`);
+                        if (checkbox) {
+                            checkbox.disabled = false;
                         }
-                        // Разблокируем переключатель в любом случае
-                        checkbox.disabled = false;
-                    }
-                })
-                .catch(error => {
-                    console.error(`Ошибка при загрузке состояния вентилятора ${channelId}:`, error);
-                    
-                    const statusElement = document.getElementById(`${channelId}Status`);
-                    if (statusElement) {
-                        statusElement.innerHTML = '<span class="statusText">Ошибка соединения</span>';
-                        statusElement.classList.remove('statusOn', 'statusWaiting');
-                        statusElement.classList.add('statusOff');
-                    }
-                    
-                    const checkbox = document.getElementById(`${channelId}Enabled`);
-                    if (checkbox) {
-                        checkbox.disabled = false; // Разблокируем на всякий случай
-                    }
+                    });
                 });
         }
         
@@ -845,12 +846,12 @@
                         showMessage(data.message, 'success');
                         
                         // Немедленно загружаем актуальное состояние
-                        loadFanChannelState(channelId);
+                        loadFanState();
                     } else {
                         showMessage('Ошибка: ' + (data.message || 'неизвестная ошибка'), 'error');
                         
                         // В случае ошибки все равно пытаемся узнать актуальное состояние
-                        setTimeout(() => loadFanChannelState(channelId), 1000);
+                        setTimeout(() => loadFanState(), 1000);
                     }
                 })
                 .catch(error => {

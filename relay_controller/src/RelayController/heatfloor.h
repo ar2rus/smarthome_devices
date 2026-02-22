@@ -62,10 +62,16 @@ class FloorHeatingController {
     
     std::function<void(bool)> relayControl;
     std::function<float()> requestTemperature;
+    std::function<void(const FloorHeatingState&)> stateChangedCallback;
+    FloorHeatingState lastReportedState;
+    bool lastReportedStateValid;
 
     void setRelay(bool newState);
     float getCurrentTemperature();
     float getDesiredTemperature(int hour, int minute, int dayOfWeek);
+    void fillState(FloorHeatingState* _state) const;
+    bool isSameState(const FloorHeatingState& a, const FloorHeatingState& b) const;
+    void notifyStateChangedIfNeeded();
 
   public:
     // Конструктор с передачей настроек
@@ -84,6 +90,9 @@ class FloorHeatingController {
     
     // Получение текущего состояния для отображения
     void getState(FloorHeatingState* _state);
+
+    // Установить callback изменения состояния
+    void setStateChangedCallback(std::function<void(const FloorHeatingState&)> callback);
     
     // Применение настроек из структуры FloorHeatingSettings (для загрузки из ПЗУ)
     void applySettings(const FloorHeatingSettings& _settings);
