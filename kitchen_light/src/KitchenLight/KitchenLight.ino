@@ -15,7 +15,7 @@
 
 #include <DNSServer.h>
 #include <EEPROM.h>
-#include <ESPAsyncWebServer.h>
+#include <ESPAsyncWebServer.h> 
 #include <LittleFS.h>
 #include <ClunetMulticast.h>
 
@@ -291,20 +291,11 @@ void setupWebServer() {
   }
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (wifi_state == WIFI_STATE_AP_MODE || request->hasArg("ui")) {
-      sendUiPage(request);
-      return;
-    }
-
-    int r = 404;
-    if (request->args() == 0 && switch_toggle(true)) {
-      r = 200;
-    }
-    server_response(request, r);
+    sendUiPage(request);
   });
 
   server.on("/ui", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sendUiPage(request);
+    request->redirect("/");
   });
 
   server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -612,7 +603,7 @@ void scheduleReboot() {
 
 void sendActionResponse(AsyncWebServerRequest *request, int response_code) {
   if (request->hasArg("ui")) {
-    String location = "/ui";
+    String location = "/";
     if (response_code != 200) {
       location += "?message=action_failed";
     }
