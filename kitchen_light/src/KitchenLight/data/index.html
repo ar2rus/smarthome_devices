@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Kitchen Light</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f5f5f5;color:#222;margin:0;padding:16px}
+    .card{background:#fff;max-width:720px;margin:0 auto 16px;padding:16px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+    h1,h2{margin-top:0}
+    .actions a{display:inline-block;margin:0 8px 8px 0;padding:12px 16px;background:#1f6feb;color:#fff;text-decoration:none;border-radius:8px}
+    .actions a.off{background:#d1242f}
+    .actions a.fade{background:#0f766e}
+    input{display:block;width:100%;box-sizing:border-box;padding:12px;margin:8px 0 12px;border:1px solid #c9c9c9;border-radius:8px}
+    button{padding:12px 16px;background:#111827;color:#fff;border:0;border-radius:8px}
+    .muted{color:#555}
+    .ok{padding:12px;background:#ecfdf3;border-radius:8px;color:#166534;margin-bottom:12px}
+    .check{display:flex;align-items:center;gap:8px;margin:12px 0}
+    .check input{width:auto;margin:0}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Kitchen Light</h1>
+    %MESSAGE_BLOCK%
+    <p>
+      <strong>Light:</strong> %LIGHT_STATE%<br>
+      <strong>Dimmer:</strong> %DIMMER_VALUE%<br>
+      <strong>WiFi:</strong> %WIFI_STATE%
+    </p>
+    <div class="actions">
+      <a href="/toggle">Toggle</a>
+      <a href="/on">On</a>
+      <a class="off" href="/off">Off</a>
+      <a class="fade" href="/fadein">Fade</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Network</h2>
+    <p class="muted">%NETWORK_HINT%</p>
+    <form method="POST" action="/wifi">
+      <label for="ssid">WiFi SSID</label>
+      <input id="ssid" name="ssid" maxlength="32" value="%SSID_VALUE%">
+
+      <label for="password">WiFi password</label>
+      <input id="password" name="password" type="password" maxlength="64" value="%PASSWORD_VALUE%">
+
+      <label class="check" for="use_static_ip">
+        <input id="use_static_ip" name="use_static_ip" type="checkbox" value="1" %USE_STATIC_IP_CHECKED%>
+        <span>Use static IP instead of DHCP</span>
+      </label>
+
+      <label for="ip">Static IP</label>
+      <input id="ip" name="ip" inputmode="decimal" maxlength="15" placeholder="192.168.1.122" value="%IP_VALUE%">
+
+      <label for="gateway">Gateway</label>
+      <input id="gateway" name="gateway" inputmode="decimal" maxlength="15" placeholder="192.168.1.1" value="%GATEWAY_VALUE%">
+
+      <label for="subnet">Subnet mask</label>
+      <input id="subnet" name="subnet" inputmode="decimal" maxlength="15" placeholder="255.255.255.0" value="%SUBNET_VALUE%">
+
+      <label for="dns">DNS server</label>
+      <input id="dns" name="dns" inputmode="decimal" maxlength="15" placeholder="192.168.1.1" value="%DNS_VALUE%">
+
+      <button type="submit">Save and reboot</button>
+    </form>
+  </div>
+</body>
+</html>
