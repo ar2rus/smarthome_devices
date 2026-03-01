@@ -719,7 +719,7 @@ void sendUiPage(AsyncWebServerRequest *request, const String& message, int statu
       }
 
       if (var == "USE_STATIC_IP_CHECKED") {
-        return wifi_settings.use_static_ip ? F("checked") : "";
+        return wifi_settings.use_static_ip ? String(F("checked")) : String("");
       }
 
       if (var == "IP_VALUE") {
