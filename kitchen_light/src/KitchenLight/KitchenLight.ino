@@ -86,6 +86,7 @@ void handleStationConnected();
 void startAccessPoint();
 void ensureClunetConnected();
 void scheduleReboot();
+void sendActionResponse(AsyncWebServerRequest *request, int response_code);
 
 String htmlEscape(const String& value);
 String wifiStateLabel();
@@ -307,14 +308,16 @@ void setupWebServer() {
   });
 
   server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
+    bool ui_request = request->hasArg("ui");
     int r = 404;
-    if (request->args() == 0 && switch_toggle(true)) {
+    if ((request->args() == 0 || (ui_request && request->args() == 1)) && switch_toggle(true)) {
       r = 200;
     }
-    server_response(request, r);
+    sendActionResponse(request, r);
   });
 
   server.on("/on", HTTP_GET, [](AsyncWebServerRequest *request) {
+    bool ui_request = request->hasArg("ui");
     int r = 404;
 
     switch (request->args()) {
@@ -324,7 +327,9 @@ void setupWebServer() {
         }
         break;
       case 1:
-        if (request->hasArg("d")) {
+        if (ui_request && switch_on(true)) {
+          r = 200;
+        } else if (request->hasArg("d")) {
           String arg = request->arg("d");
           byte num_digits = 0;
 
@@ -345,29 +350,33 @@ void setupWebServer() {
         break;
     }
 
-    server_response(request, r);
+    sendActionResponse(request, r);
   });
 
   server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request) {
+    bool ui_request = request->hasArg("ui");
     int r = 404;
-    if (request->args() == 0 && switch_off(true)) {
+    if ((request->args() == 0 || (ui_request && request->args() == 1)) && switch_off(true)) {
       r = 200;
     }
-    server_response(request, r);
+    sendActionResponse(request, r);
   });
 
   server.on("/fadein", HTTP_GET, [](AsyncWebServerRequest *request) {
+    bool ui_request = request->hasArg("ui");
     int r = 404;
-    if (request->args() == 0 && fade_in_start()) {
+    if ((request->args() == 0 || (ui_request && request->args() == 1)) && fade_in_start()) {
       r = 200;
     }
-    server_response(request, r);
+    sendActionResponse(request, r);
   });
 
   server.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
     String message = "";
     if (request->hasArg("saved")) {
       message = "Settings saved. Device will reboot.";
+    } else if (request->hasArg("message") && request->arg("message") == "action_failed") {
+      message = "Action failed.";
     }
     sendUiPage(request, message);
   });
@@ -599,6 +608,19 @@ void updateWiFiState() {
 
 void scheduleReboot() {
   reboot_scheduled_at = millis() + WIFI_REBOOT_DELAY_MS;
+}
+
+void sendActionResponse(AsyncWebServerRequest *request, int response_code) {
+  if (request->hasArg("ui")) {
+    String location = "/ui";
+    if (response_code != 200) {
+      location += "?message=action_failed";
+    }
+    request->redirect(location);
+    return;
+  }
+
+  server_response(request, response_code);
 }
 
 String htmlEscape(const String& value) {
