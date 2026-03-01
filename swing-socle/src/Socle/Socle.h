@@ -1,10 +1,8 @@
-#ifndef Cokle_h
-#define Cokle_h
+#ifndef Socle_h
+#define Socle_h
 
 #define CLUNET_ID 0x85
 #define CLUNET_DEVICE "SwingSocle"
-
-//#define TIMEZONE TZ_Europe_Samara
 
 #define SERVO_PIN 13
 
@@ -16,11 +14,9 @@
 #define SERVO_STEP_DOWN_DELAY 5
 #define SERVO_DOWN_TIMEOUT_DEFAULT 500
 
-
 #define TASKER_GROUP_SERVO 1
 #define TASKER_GROUP_MIIO 2
 #define TASKER_GROUP_LED_RED 3
-
 
 #define BUZZER_PORT 15
 
@@ -37,13 +33,19 @@
 #define BEEP_APP_START_FREQ 700
 #define BEEP_APP_START_DELAY 500
 
-
 #define LED_RED_PORT 4
 #define LED_BLUE_PORT 5
-
 
 #define MIROBO_CHECK_STATUS_PERIOD 2000
 #define MIROBO_MAX_GOING_HOME_PERIOD 180000
 
+#define HTTP_PORT 80
+
+#define WIFI_CONNECT_TIMEOUT_MS 30000UL
+#define WIFI_REBOOT_DELAY_MS 1500UL
+#define WIFI_AP_PASSWORD "12345678"
+#define WIFI_AP_SSID_PREFIX "SwingSocle"
+#define WIFI_CONNECT_RETRY_INTERVAL_MS 5000UL
+#define WIFI_SETTINGS_MAGIC 0x534F434CUL
 
 #endif

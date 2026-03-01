@@ -6,7 +6,16 @@
 
 #define TIMEZONE TZ_Europe_Samara
 
+#define HTTP_PORT 80
+
 #define LED_BLUE_PORT 5
+
+#define WIFI_CONNECT_TIMEOUT_MS 30000UL
+#define WIFI_REBOOT_DELAY_MS 1500UL
+#define WIFI_AP_PASSWORD "12345678"
+#define WIFI_AP_SSID_PREFIX "SmarthomeBridge"
+#define WIFI_CONNECT_RETRY_INTERVAL_MS 5000UL
+#define WIFI_SETTINGS_MAGIC 0x534D4252UL
 
 typedef struct{
   uint32_t timestamp_sec;

@@ -1,202 +1,308 @@
 <!doctype html>
 <html lang="en">
-    <head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-		
-		<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
-		<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table.min.css">
-		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/sticky-header/bootstrap-table-sticky-header.css">
-		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/filter-control/bootstrap-table-filter-control.css">
-		
-		<script src="https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js"></script>
-		<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
-		<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table.min.js"></script>
-		
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/sticky-header/bootstrap-table-sticky-header.min.js"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/filter-control/bootstrap-table-filter-control.js"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/mobile/bootstrap-table-mobile.js"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table-locale-all.min.js"></script>
-	</head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Smarthome Bridge Log</title>
+  <style>
+    :root{
+      --bg:#f3f4f6;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#d1d5db;
+      --accent:#1d4ed8;
+      --accent-2:#0f766e;
+      --danger:#b91c1c;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#eef2ff 0,#f3f4f6 180px);color:var(--text);font:14px/1.4 Arial,sans-serif}
+    .wrap{max-width:1320px;margin:0 auto;padding:16px}
+    .card{background:var(--card);border:1px solid rgba(17,24,39,.08);border-radius:14px;box-shadow:0 10px 30px rgba(17,24,39,.08);padding:16px;margin-bottom:16px}
+    h1{margin:0 0 8px;font-size:24px}
+    .muted{color:var(--muted)}
+    .toolbar{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto auto;gap:12px;align-items:end}
+    label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:0 0 6px}
+    input,select,button{width:100%;min-height:42px;border-radius:10px;border:1px solid var(--line);padding:10px 12px;font:inherit;background:#fff;color:var(--text)}
+    button{width:auto;cursor:pointer;font-weight:700}
+    .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    .secondary{background:var(--accent-2);border-color:var(--accent-2);color:#fff}
+    .danger{background:#fff;border-color:#fecaca;color:var(--danger)}
+    .status{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:#f9fafb;border:1px solid #e5e7eb}
+    .dot{width:8px;height:8px;border-radius:50%;background:#9ca3af}
+    .dot.online{background:#16a34a}
+    .dot.offline{background:#dc2626}
+    .table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:12px}
+    table{width:100%;border-collapse:collapse;min-width:920px;background:#fff}
+    th,td{padding:10px 12px;border-bottom:1px solid #eef2f7;vertical-align:top;text-align:left}
+    th{position:sticky;top:0;background:#f8fafc;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#475569}
+    tr:nth-child(even) td{background:#fcfcfd}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+    .empty{padding:28px;text-align:center;color:var(--muted)}
+    .small{font-size:12px}
+    @media (max-width:980px){
+      .toolbar{grid-template-columns:1fr 1fr}
+      button{width:100%}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Smarthome Bridge Log</h1>
+      <div class="muted">Offline-capable live log page. Works from AP mode without external CDNs.</div>
+      <div class="toolbar">
+        <div>
+          <label for="search">Search</label>
+          <input id="search" type="search" placeholder="Hex, command, source, destination, message">
+        </div>
+        <div>
+          <label for="sourceFilter">Source</label>
+          <select id="sourceFilter">
+            <option value="">All sources</option>
+          </select>
+        </div>
+        <div>
+          <label for="destinationFilter">Destination</label>
+          <select id="destinationFilter">
+            <option value="">All destinations</option>
+          </select>
+        </div>
+        <div>
+          <label for="commandFilter">Command</label>
+          <select id="commandFilter">
+            <option value="">All commands</option>
+          </select>
+        </div>
+        <button id="pauseButton" class="secondary" type="button">Pause</button>
+        <button id="clearButton" class="danger" type="button">Clear</button>
+      </div>
+      <div class="status">
+        <div class="pill"><span id="sseDot" class="dot offline"></span><span id="connectionStatus">Disconnected</span></div>
+        <div class="pill">Shown: <strong id="shownCount">0</strong></div>
+        <div class="pill">Buffered: <strong id="bufferCount">0</strong></div>
+      </div>
+    </div>
 
-    <body>
-		<table id="table" class="table small"></table>
-        <script>
-			var registry = {};
-			
-			function loadRegistries(){
-				function loadRegistry(url, name){
-					$.getJSON(url, function(data) {
-					  registry[name] = {};
-					  $.each(data, function(key, val) {
-						  registry[name][key] = val;
-					  });
-					});
-				}
-				
-				loadRegistry("/registry/commands", "commands");
-				loadRegistry("/registry/devices", "devices");
-			}
-		
-			function dateFormat(d){
-				return ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " +
-				("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2) + "." + ("00" + d.getMilliseconds()).slice(-3);
-			}
-			
-		
-			var $table = $('#table')
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Source</th>
+              <th>Destination</th>
+              <th>Command</th>
+              <th>Data</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty">No messages yet.</div>
+    </div>
+  </div>
 
-			function addData($el, data){
-				$.each(data, function(index, value) {
-					$el.bootstrapTable('insertRow',{
-						index: 0,
-						row: value
-					});
-				}); 
-			}
-			
-			function fmt_hex_value(hex, value){
-			  v = "[0x" + hex.toString(16).toUpperCase() + "]";
-				if (value != undefined){
-				  v += " " + value;
-				}
-				return v;
-			}
-			
-			function fmt_device(val){
-			  return fmt_hex_value(val, registry.devices[val]);
-			}
-			
-			function fmt_command(val){
-			  return fmt_hex_value(val, registry.commands[val]);
-			}
+  <script>
+    const MAX_ROWS = 500;
+    const registry = { commands: {}, devices: {} };
+    const rows = [];
+    let paused = false;
 
-			function buildTable($el) {
-				var columns = [
-					{
-						field: 't',
-						valign: 'middle',
-						title: 'Time',
-						sortable: true,
-						order: 'desc',
-						formatter: function (val) {
-							return dateFormat(new Date(parseInt(val)))
-						},
-						width: 200
-					},
-					{
-						field: 's',
-						valign: 'middle',
-						title: 'Source',
-						sortable: true,
-						filterControl: 'select',
-						filterDataCollector: fmt_device,
-						filterStrictSearch: true,
-						formatter: fmt_device,
-						searchFormatter: false
-					},
-					{
-						field: 'd',
-						valign: 'middle',
-						title: 'Destination',
-						sortable: true,
-						filterControl: 'select',
-						filterDataCollector: fmt_device,
-						filterStrictSearch: true,
-						formatter: fmt_device,
-						searchFormatter: false
-					},
-					{
-						field: 'c',
-						valign: 'middle',
-						title: 'Command',
-						filterControl: 'select',
-						filterDataCollector: fmt_command,
-						filterStrictSearch: true,
-						sortable: true,
-						formatter: fmt_command,
-						searchFormatter: false
-					},
-					{
-						field: 'm',
-						valign: 'middle',
-						title: 'Data',
-						formatter: function (val) {
-							if (val){
-								return val.hex
-							}else{
-								return "";
-							}
-						}
-					},
-					{
-						field: 'm',
-						valign: 'middle',
-						title: 'Message',
-						formatter: function (val) {
-							if (val && val.obj && val.obj.val){
-								return val.obj.val
-							}else{
-								return "";
-							}
-						}
-					}
-				];
+    const searchInput = document.getElementById("search");
+    const sourceFilter = document.getElementById("sourceFilter");
+    const destinationFilter = document.getElementById("destinationFilter");
+    const commandFilter = document.getElementById("commandFilter");
+    const pauseButton = document.getElementById("pauseButton");
+    const clearButton = document.getElementById("clearButton");
+    const rowsBody = document.getElementById("rows");
+    const emptyState = document.getElementById("emptyState");
+    const shownCount = document.getElementById("shownCount");
+    const bufferCount = document.getElementById("bufferCount");
+    const connectionStatus = document.getElementById("connectionStatus");
+    const sseDot = document.getElementById("sseDot");
 
-				$el.bootstrapTable({
-					locale: 'en',
-					
-					columns: columns,
-					search: true,
-					
-					filterControl: true,
-					filterControlVisible: false,
-					showFilterControlSwitch: true,
-					
-					sortName: 't',
-					sortOrder: 'asc',
-					
-					showRefresh: true,
-					onRefresh: function() {
-						$el.bootstrapTable('removeAll');
-					},
-					
-					showToggle: true,
-					mobileResponsive: true,
-					
-					stickyHeader: true,
-					
-					virtualScroll: true
-					
-				});
-				
-			}
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
 
-			$(function() {
-				loadRegistries();
-				buildTable($table);
-				
-				if (!!window.EventSource) {
-				  var source = new EventSource('/events');
+    function dateFormat(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return "";
+      }
+      const d = new Date(numeric);
+      const pad = (n, w = 2) => String(n).padStart(w, "0");
+      return [
+        pad(d.getDate()),
+        pad(d.getMonth() + 1),
+        d.getFullYear()
+      ].join("-") + " " + [
+        pad(d.getHours()),
+        pad(d.getMinutes()),
+        pad(d.getSeconds())
+      ].join(":") + "." + pad(d.getMilliseconds(), 3);
+    }
 
-				  source.addEventListener('open', function(e) {
-					console.log("connected");
-				  }, false);
+    function fmtHexValue(value, map) {
+      if (value === undefined || value === null || value === "") {
+        return "";
+      }
+      const label = map?.[value];
+      return "[0x" + Number(value).toString(16).toUpperCase() + "]" + (label ? " " + label : "");
+    }
 
-				  source.addEventListener('error', function(e) {
-					if (e.target.readyState != EventSource.OPEN) {
-					  console.log("disconnected");
-					}
-				  }, false);
+    function messageValue(message) {
+      if (!message || !message.obj) {
+        return "";
+      }
+      if (message.obj.val !== undefined) {
+        return String(message.obj.val);
+      }
+      return JSON.stringify(message.obj);
+    }
 
-				  source.addEventListener('DATA', function(e) {
-					console.log("event: " + e.lastEventId + ": " + e.data);
-					addData($table, JSON.parse(e.data));
-				  }, false);
-				}
-			})
-        </script>
-    </body>
+    function updateSelectOptions(select, map, placeholder) {
+      const current = select.value;
+      const options = ['<option value="">' + placeholder + "</option>"];
+      Object.keys(map)
+        .sort((a, b) => Number(a) - Number(b))
+        .forEach((key) => {
+          options.push('<option value="' + escapeHtml(key) + '">' + escapeHtml(fmtHexValue(Number(key), map)) + "</option>");
+        });
+      select.innerHTML = options.join("");
+      select.value = current;
+    }
+
+    async function loadRegistry(url, key, select, placeholder) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          return;
+        }
+        registry[key] = await response.json();
+        updateSelectOptions(select, registry[key], placeholder);
+        renderRows();
+      } catch (_) {
+      }
+    }
+
+    function appendEntries(entries) {
+      for (const entry of entries) {
+        rows.unshift(entry);
+      }
+      if (rows.length > MAX_ROWS) {
+        rows.length = MAX_ROWS;
+      }
+      bufferCount.textContent = String(rows.length);
+      if (!paused) {
+        renderRows();
+      }
+    }
+
+    function rowMatches(entry, searchTerm, source, destination, command) {
+      if (source && String(entry.s) !== source) {
+        return false;
+      }
+      if (destination && String(entry.d) !== destination) {
+        return false;
+      }
+      if (command && String(entry.c) !== command) {
+        return false;
+      }
+
+      if (!searchTerm) {
+        return true;
+      }
+
+      const haystack = [
+        dateFormat(entry.t),
+        fmtHexValue(entry.s, registry.devices),
+        fmtHexValue(entry.d, registry.devices),
+        fmtHexValue(entry.c, registry.commands),
+        entry.m?.hex || "",
+        messageValue(entry.m)
+      ].join(" ").toLowerCase();
+
+      return haystack.includes(searchTerm);
+    }
+
+    function renderRows() {
+      const searchTerm = searchInput.value.trim().toLowerCase();
+      const source = sourceFilter.value;
+      const destination = destinationFilter.value;
+      const command = commandFilter.value;
+
+      const filtered = rows.filter((entry) => rowMatches(entry, searchTerm, source, destination, command));
+      shownCount.textContent = String(filtered.length);
+      emptyState.style.display = filtered.length ? "none" : "block";
+
+      rowsBody.innerHTML = filtered.map((entry) => {
+        return "<tr>" +
+          "<td>" + escapeHtml(dateFormat(entry.t)) + "</td>" +
+          "<td>" + escapeHtml(fmtHexValue(entry.s, registry.devices)) + "</td>" +
+          "<td>" + escapeHtml(fmtHexValue(entry.d, registry.devices)) + "</td>" +
+          "<td>" + escapeHtml(fmtHexValue(entry.c, registry.commands)) + "</td>" +
+          "<td><code>" + escapeHtml(entry.m?.hex || "") + "</code></td>" +
+          "<td class=\"small\">" + escapeHtml(messageValue(entry.m)) + "</td>" +
+          "</tr>";
+      }).join("");
+    }
+
+    function setConnectionState(isOnline) {
+      sseDot.className = "dot " + (isOnline ? "online" : "offline");
+      connectionStatus.textContent = isOnline ? "Connected" : "Disconnected";
+    }
+
+    function connectEvents() {
+      if (!window.EventSource) {
+        connectionStatus.textContent = "EventSource unsupported";
+        return;
+      }
+
+      const source = new EventSource("/events");
+      source.addEventListener("open", () => setConnectionState(true));
+      source.addEventListener("error", () => setConnectionState(false));
+      source.addEventListener("DATA", (event) => {
+        try {
+          appendEntries(JSON.parse(event.data));
+        } catch (_) {
+        }
+      });
+    }
+
+    searchInput.addEventListener("input", renderRows);
+    sourceFilter.addEventListener("change", renderRows);
+    destinationFilter.addEventListener("change", renderRows);
+    commandFilter.addEventListener("change", renderRows);
+
+    pauseButton.addEventListener("click", () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? "Resume" : "Pause";
+      pauseButton.className = paused ? "primary" : "secondary";
+      if (!paused) {
+        renderRows();
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      rows.length = 0;
+      bufferCount.textContent = "0";
+      renderRows();
+    });
+
+    loadRegistry("/registry/commands", "commands", commandFilter, "All commands");
+    loadRegistry("/registry/devices", "devices", sourceFilter, "All sources");
+    loadRegistry("/registry/devices", "devices", destinationFilter, "All destinations");
+    connectEvents();
+    renderRows();
+  </script>
+</body>
 </html>
