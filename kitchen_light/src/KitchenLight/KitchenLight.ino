@@ -110,7 +110,7 @@ void buttonResponse(unsigned char address);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Booting");
+  Serial.println("Booting...");
 
   pinMode(BUTTON_PIN, INPUT);
   pinMode(LIGHT_PIN, OUTPUT);
