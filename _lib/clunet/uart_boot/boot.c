@@ -59,7 +59,7 @@ char check_crc(char* data, unsigned char size){
 }
 
 
-char p_num = -1;				//номер текущей страницы
+signed char p_num = -1;		//номер текущей страницы
 uint16_t p_size = 0;			//накопленный размер страницы
 char p_buffer[SPM_PAGESIZE];	//буфер
 
