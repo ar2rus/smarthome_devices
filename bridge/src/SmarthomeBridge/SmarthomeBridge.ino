@@ -44,19 +44,33 @@ AsyncEventSource events("/events");
 ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
 long event_id = 0;
-LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete m; });
-LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete m; });
+#define EVENTS_QUEUE_MAX_LENGTH 128
+LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
+LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 
-LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ delete m; });
+LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ free(m); });
 
-LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>([](api_request *r){ delete r; });
+LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>([](api_request *r){ free(r); });
 api_response* apiResponse = NULL;
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
 #define UART_MESSAGE_CODE_DEBUG 10
+#define BOOTLOADER_ACTIVITY_TIMEOUT 10000
 
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
+uint8_t bootloaderTargetAddress = 0;
+unsigned long bootloaderActivityDeadline = 0;
+
+bool bootloaderUartIsolated(uint8_t address = 0){
+  return bootloaderActivityDeadline != 0 && (long)(millis() - bootloaderActivityDeadline) < 0 &&
+    (address == 0 || address == bootloaderTargetAddress);
+}
+
+void touchBootloaderActivity(uint8_t address){
+  bootloaderTargetAddress = address;
+  bootloaderActivityDeadline = millis() + BOOTLOADER_ACTIVITY_TIMEOUT;
+}
 
 uint8_t uart_can_send(uint8_t length){
   return Serial.availableForWrite() >= length + 5;
@@ -97,6 +111,10 @@ void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t comman
                 int responseFilterCommand, long responseTimeout, bool _infoRequest, String _infoRequestId){
     webRequest->client()->setRxTimeout(5);
     api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
+    if (!ar){
+      webRequest->send(503, "text/plain", "busy");
+      return;
+    }
     ar->webRequest = webRequest;
     ar->info = _infoRequest;
     if (_infoRequest){
@@ -319,16 +337,24 @@ void setup() {
       gettimeofday(&tv, nullptr);
       
       if (CLUNET_MULTICAST_DEVICE(packet->src)){
-          uartQueue.add(packet->copy());
+          if (!bootloaderUartIsolated() ||
+              (packet->dst == bootloaderTargetAddress && packet->command == CLUNET_COMMAND_BOOT_CONTROL)){
+            uartQueue.add(packet->copy());
+          }
       }
 
       ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
-      packet->copy(&tp->packet);
-      
-      tp->timestamp_sec = (uint32_t)tv.tv_sec;
-      tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
-      
-      eventsQueue.add(tp);
+      if (tp){
+        packet->copy(&tp->packet);
+        
+        tp->timestamp_sec = (uint32_t)tv.tv_sec;
+        tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
+
+        while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
+          eventsQueue.remove(eventsQueue.front());
+        }
+        eventsQueue.add(tp);
+      }
     });
     
     clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
@@ -360,7 +386,7 @@ void setup() {
           serializeJson(doc, json);
           apiResponse->webRequest->send(200, "application/json", json);
         }
-          delete apiResponse;
+          free(apiResponse);
           apiResponse = NULL;
         
       }
@@ -491,6 +517,9 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
     case UART_MESSAGE_CODE_CLUNET:
       if (data && length >= 4){
         clunet_packet* packet = (clunet_packet*)data;
+        if (packet->command == CLUNET_COMMAND_BOOT_CONTROL){
+          touchBootloaderActivity(packet->src);
+        }
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
            multicastQueue.add(packet->copy());
         }
@@ -700,8 +729,11 @@ void loop() {
 
   while (!multicastQueue.isEmpty()){
     clunet_packet* packet = multicastQueue.front();
-    clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size);
-    multicastQueue.remove(packet);
+    if (clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size)){
+      multicastQueue.remove(packet);
+    }else{
+      break;
+    }
   }
   
   if (!eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
@@ -723,6 +755,9 @@ void loop() {
       if (ar->webRequest != NULL){
         
         apiResponse = (api_response*)malloc(sizeof(api_response));
+        if (apiResponse == NULL){
+          break;
+        }
         apiResponse->webRequest = ar->webRequest;
         apiResponse->info = ar->info;
         if (apiResponse->info){
@@ -742,7 +777,7 @@ void loop() {
        
           apiRequestsQueue.remove(ar);
         }else{
-          delete apiResponse;
+          free(apiResponse);
           apiResponse = NULL;   
         }
 
