@@ -69,7 +69,7 @@ ISR(TIMER_COMP_VECTOR){
 
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 
-#define UART_RX_BUF_LENGTH 78	//CLUNET_BUFFERED_DATA_MAX_LENGTH + 4 + 10
+#define UART_RX_BUF_LENGTH 96	//ATmega8 bootloader page write frame is 77 bytes over UART; keep margin for resync
 volatile char uart_rx_data[UART_RX_BUF_LENGTH];
 volatile unsigned char uart_rx_data_len = 0;
 volatile unsigned char uart_rx_overflow = 0;
@@ -83,7 +83,7 @@ ISR(USART_RXC_vect){
 	}
 }
 	
-#define UART_TX_BUF_LENGTH 78	//CLUNET_BUFFERED_DATA_MAX_LENGTH + 4 + 10 
+#define UART_TX_BUF_LENGTH 96	//Keep TX framing symmetric with RX and leave some guard space
 volatile char uart_tx_data[UART_TX_BUF_LENGTH];	
 volatile unsigned char uart_tx_data_pos = 0;
 volatile unsigned char uart_tx_data_len = 0;

@@ -92,7 +92,7 @@ static signed char read(){
 			unsigned char len = uart_rx_data[2] + 2;
 			if (uart_rx_data_len >= len){
 				//if (uart_rx_data_len == len){
-					if (uart_rx_data[uart_rx_data_len-1] == check_crc(uart_rx_data + 2, uart_rx_data_len - 3)){
+					if (uart_rx_data[len - 1] == check_crc(uart_rx_data + 2, len - 3)){
 						uart_rx_data_len = 0;
 						//if (clunet_receive_buf[CLUNET_OFFSET_DST_ADDRESS] == CLUNET_DEVICE_ID && clunet_receive_buf[CLUNET_OFFSET_COMMAND] == CLUNET_COMMAND_BOOT_CONTROL){
 							return 1;
