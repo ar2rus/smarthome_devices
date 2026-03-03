@@ -13,7 +13,7 @@
 #include <ArduinoJson.h>
 
 #include <LittleFS.h>
-//#include <SPIFFSEditor.h>
+#include <SPIFFSEditor.h>
 
 #include <ClunetMulticast.h>
 #include <MessageDecoder.h>
@@ -461,7 +461,7 @@ void setup() {
 
   server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html");
 
-  //server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
+  server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
 
   server.onNotFound([](AsyncWebServerRequest *request){
     request->send(404);
@@ -510,6 +510,7 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
 #define UART_RX_BUF_LENGTH 256
 volatile char uart_rx_data[UART_RX_BUF_LENGTH];
 volatile unsigned char uart_rx_data_len = 0;
+bool uart_rx_overflow = false;
 
 void analyze_uart_rx_trim(uint8_t offset){
   if (offset <= uart_rx_data_len){
@@ -537,7 +538,7 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
     if (uart_rx_data_len >= 5){ //минимальная длина сообщения с преамбулой
       char* uart_rx_message = (char*)(uart_rx_data + 2);
       uint8_t length = uart_rx_message[0];
-      if (length < 3 || length > UART_RX_BUF_LENGTH){
+      if (length < 3 || length > (UART_RX_BUF_LENGTH - 2)){
         //Serial1.println("invalid length");
         analyze_uart_rx_trim(2);  //пришел мусор, отрезаем преамбулу и надо пробовать искать преамбулу снова
         continue;
@@ -671,9 +672,20 @@ void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t time
 long uart_time = 0;
 
 void loop() {
-  while (Serial.available() > 0 && uart_rx_data_len < UART_RX_BUF_LENGTH) {
-    uart_rx_data[uart_rx_data_len++] = Serial.read();
+  while (Serial.available() > 0) {
+    char byte = Serial.read();
+    if (uart_rx_data_len < UART_RX_BUF_LENGTH) {
+      uart_rx_data[uart_rx_data_len++] = byte;
+    } else {
+      uart_rx_overflow = true;
+    }
   }
+
+  if (uart_rx_overflow) {
+    uart_rx_data_len = 0;
+    uart_rx_overflow = false;
+  }
+
   analyze_uart_rx(on_uart_message);
 
   while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front())){

@@ -1,202 +1,572 @@
 <!doctype html>
 <html lang="en">
-    <head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-		
-		<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
-		<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
-		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table.min.css">
-		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/sticky-header/bootstrap-table-sticky-header.css">
-		<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/filter-control/bootstrap-table-filter-control.css">
-		
-		<script src="https://cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js"></script>
-		<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
-		<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table.min.js"></script>
-		
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/sticky-header/bootstrap-table-sticky-header.min.js"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/filter-control/bootstrap-table-filter-control.js"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/extensions/mobile/bootstrap-table-mobile.js"></script>
-		<script src="https://unpkg.com/bootstrap-table@1.19.1/dist/bootstrap-table-locale-all.min.js"></script>
-	</head>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smarthome Bridge Log</title>
+    <link rel="icon" href="data:,">
+    <style>
+      :root {
+        --bg: #f4efe6;
+        --panel: rgba(255, 251, 245, 0.92);
+        --panel-strong: #fffaf2;
+        --line: #d6cab9;
+        --line-strong: #b8aa95;
+        --text: #2b241b;
+        --muted: #6d655b;
+        --accent: #206b5f;
+        --accent-soft: #dbece8;
+        --warn: #8b6508;
+        --danger: #b14545;
+        --shadow: 0 18px 48px rgba(43, 36, 27, 0.08);
+      }
 
-    <body>
-		<table id="table" class="table small"></table>
-        <script>
-			var registry = {};
-			
-			function loadRegistries(){
-				function loadRegistry(url, name){
-					$.getJSON(url, function(data) {
-					  registry[name] = {};
-					  $.each(data, function(key, val) {
-						  registry[name][key] = val;
-					  });
-					});
-				}
-				
-				loadRegistry("/registry/commands", "commands");
-				loadRegistry("/registry/devices", "devices");
-			}
-		
-			function dateFormat(d){
-				return ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " +
-				("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2) + "." + ("00" + d.getMilliseconds()).slice(-3);
-			}
-			
-		
-			var $table = $('#table')
+      * {
+        box-sizing: border-box;
+      }
 
-			function addData($el, data){
-				$.each(data, function(index, value) {
-					$el.bootstrapTable('insertRow',{
-						index: 0,
-						row: value
-					});
-				}); 
-			}
-			
-			function fmt_hex_value(hex, value){
-			  v = "[0x" + hex.toString(16).toUpperCase() + "]";
-				if (value != undefined){
-				  v += " " + value;
-				}
-				return v;
-			}
-			
-			function fmt_device(val){
-			  return fmt_hex_value(val, registry.devices[val]);
-			}
-			
-			function fmt_command(val){
-			  return fmt_hex_value(val, registry.commands[val]);
-			}
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(32, 107, 95, 0.18), transparent 32%),
+          radial-gradient(circle at top right, rgba(177, 69, 69, 0.1), transparent 28%),
+          linear-gradient(180deg, #f8f3ea 0%, #eee6d8 100%);
+      }
 
-			function buildTable($el) {
-				var columns = [
-					{
-						field: 't',
-						valign: 'middle',
-						title: 'Time',
-						sortable: true,
-						order: 'desc',
-						formatter: function (val) {
-							return dateFormat(new Date(parseInt(val)))
-						},
-						width: 200
-					},
-					{
-						field: 's',
-						valign: 'middle',
-						title: 'Source',
-						sortable: true,
-						filterControl: 'select',
-						filterDataCollector: fmt_device,
-						filterStrictSearch: true,
-						formatter: fmt_device,
-						searchFormatter: false
-					},
-					{
-						field: 'd',
-						valign: 'middle',
-						title: 'Destination',
-						sortable: true,
-						filterControl: 'select',
-						filterDataCollector: fmt_device,
-						filterStrictSearch: true,
-						formatter: fmt_device,
-						searchFormatter: false
-					},
-					{
-						field: 'c',
-						valign: 'middle',
-						title: 'Command',
-						filterControl: 'select',
-						filterDataCollector: fmt_command,
-						filterStrictSearch: true,
-						sortable: true,
-						formatter: fmt_command,
-						searchFormatter: false
-					},
-					{
-						field: 'm',
-						valign: 'middle',
-						title: 'Data',
-						formatter: function (val) {
-							if (val){
-								return val.hex
-							}else{
-								return "";
-							}
-						}
-					},
-					{
-						field: 'm',
-						valign: 'middle',
-						title: 'Message',
-						formatter: function (val) {
-							if (val && val.obj && val.obj.val){
-								return val.obj.val
-							}else{
-								return "";
-							}
-						}
-					}
-				];
+      .shell {
+        width: min(1440px, calc(100vw - 24px));
+        margin: 12px auto;
+        padding: 16px;
+        border: 1px solid rgba(184, 170, 149, 0.7);
+        border-radius: 18px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
+      }
 
-				$el.bootstrapTable({
-					locale: 'en',
-					
-					columns: columns,
-					search: true,
-					
-					filterControl: true,
-					filterControlVisible: false,
-					showFilterControlSwitch: true,
-					
-					sortName: 't',
-					sortOrder: 'asc',
-					
-					showRefresh: true,
-					onRefresh: function() {
-						$el.bootstrapTable('removeAll');
-					},
-					
-					showToggle: true,
-					mobileResponsive: true,
-					
-					stickyHeader: true,
-					
-					virtualScroll: true
-					
-				});
-				
-			}
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
 
-			$(function() {
-				loadRegistries();
-				buildTable($table);
-				
-				if (!!window.EventSource) {
-				  var source = new EventSource('/events');
+      .title {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.05;
+        letter-spacing: 0.02em;
+      }
 
-				  source.addEventListener('open', function(e) {
-					console.log("connected");
-				  }, false);
+      .subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
 
-				  source.addEventListener('error', function(e) {
-					if (e.target.readyState != EventSource.OPEN) {
-					  console.log("disconnected");
-					}
-				  }, false);
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel-strong);
+        font-size: 13px;
+        white-space: nowrap;
+      }
 
-				  source.addEventListener('DATA', function(e) {
-					console.log("event: " + e.lastEventId + ": " + e.data);
-					addData($table, JSON.parse(e.data));
-				  }, false);
-				}
-			})
-        </script>
-    </body>
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--warn);
+        box-shadow: 0 0 0 4px rgba(139, 101, 8, 0.14);
+      }
+
+      .status.connected .status-dot {
+        background: var(--accent);
+        box-shadow: 0 0 0 4px rgba(32, 107, 95, 0.16);
+      }
+
+      .status.error .status-dot {
+        background: var(--danger);
+        box-shadow: 0 0 0 4px rgba(177, 69, 69, 0.16);
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .field.span-2 {
+        grid-column: span 2;
+      }
+
+      label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      input,
+      select,
+      button {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fffdf9;
+        color: var(--text);
+        font: inherit;
+      }
+
+      input:focus,
+      select:focus,
+      button:focus {
+        outline: 2px solid rgba(32, 107, 95, 0.22);
+        border-color: var(--accent);
+      }
+
+      .actions {
+        display: flex;
+        align-items: end;
+      }
+
+      button {
+        cursor: pointer;
+        font-weight: 700;
+        background: linear-gradient(180deg, #fffdfa 0%, #f4ecdf 100%);
+      }
+
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .table-wrap {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 252, 246, 0.8);
+      }
+
+      table {
+        width: 100%;
+        min-width: 980px;
+        border-collapse: collapse;
+      }
+
+      thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--line-strong);
+        background: #f8efe1;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      tbody td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(214, 202, 185, 0.65);
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      tbody tr:nth-child(odd) {
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      .mono {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+      }
+
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .empty {
+        padding: 20px 16px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media (max-width: 980px) {
+        .topbar,
+        .meta {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .controls {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .field.span-2,
+        .actions {
+          grid-column: span 2;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1 class="title">Smarthome Bridge Log</h1>
+          <p class="subtitle">Local live monitor without jQuery, bootstrap, or CDN dependencies.</p>
+        </div>
+        <div id="status" class="status">
+          <span class="status-dot"></span>
+          <span id="status-text">Connecting to /events...</span>
+        </div>
+      </section>
+
+      <section class="controls">
+        <div class="field span-2">
+          <label for="search">Search</label>
+          <input id="search" type="search" placeholder="Search in device, command, hex payload, or decoded text">
+        </div>
+        <div class="field">
+          <label for="source-filter">Source</label>
+          <select id="source-filter">
+            <option value="">All sources</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="destination-filter">Destination</label>
+          <select id="destination-filter">
+            <option value="">All destinations</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="command-filter">Command</label>
+          <select id="command-filter">
+            <option value="">All commands</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button id="clear-btn" type="button">Clear Log</button>
+        </div>
+      </section>
+
+      <section class="meta">
+        <div id="registry-state">Loading registries...</div>
+        <div id="rows-state">0 rows</div>
+      </section>
+
+      <section class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Source</th>
+              <th>Destination</th>
+              <th>Command</th>
+              <th>Data</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr>
+              <td colspan="6" class="empty">Waiting for live data...</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      var registry = {
+        commands: {},
+        devices: {}
+      };
+
+      var rows = [];
+      var eventSource = null;
+      var sourceSelect = document.getElementById("source-filter");
+      var destinationSelect = document.getElementById("destination-filter");
+      var commandSelect = document.getElementById("command-filter");
+      var searchInput = document.getElementById("search");
+      var rowsContainer = document.getElementById("rows");
+      var rowsState = document.getElementById("rows-state");
+      var registryState = document.getElementById("registry-state");
+      var statusNode = document.getElementById("status");
+      var statusText = document.getElementById("status-text");
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function codeToHex(value) {
+        var number = Number(value);
+        if (Number.isNaN(number)) {
+          return String(value);
+        }
+        return "0x" + number.toString(16).toUpperCase().padStart(2, "0");
+      }
+
+      function formatCode(code, registryMap) {
+        var label = registryMap[String(code)];
+        return "[" + codeToHex(code) + "]" + (label ? " " + label : "");
+      }
+
+      function formatTime(value) {
+        if (!value) {
+          return "";
+        }
+
+        var timestamp = Number(value);
+        if (Number.isNaN(timestamp)) {
+          return String(value);
+        }
+
+        return new Date(timestamp).toLocaleString();
+      }
+
+      function formatMessage(message) {
+        if (!message || !message.obj) {
+          return "";
+        }
+
+        if (typeof message.obj.val !== "undefined") {
+          return String(message.obj.val);
+        }
+
+        if (Array.isArray(message.obj.sensors)) {
+          return message.obj.sensors.map(function(sensor) {
+            var parts = [];
+            if (typeof sensor.id !== "undefined") {
+              parts.push("id=" + sensor.id);
+            }
+            if (typeof sensor.type !== "undefined") {
+              parts.push("type=" + sensor.type);
+            }
+            if (typeof sensor.val !== "undefined") {
+              parts.push("val=" + sensor.val);
+            }
+            return parts.join(" ");
+          }).join(" | ");
+        }
+
+        if (Array.isArray(message.obj.switches)) {
+          return message.obj.switches.map(function(item) {
+            return "id=" + item.id + " val=" + item.val;
+          }).join(" | ");
+        }
+
+        try {
+          return JSON.stringify(message.obj);
+        } catch (error) {
+          return "";
+        }
+      }
+
+      function buildSearchText(row) {
+        return [
+          formatCode(row.s, registry.devices),
+          formatCode(row.d, registry.devices),
+          formatCode(row.c, registry.commands),
+          row.m && row.m.hex ? row.m.hex : "",
+          formatMessage(row.m)
+        ].join(" ").toLowerCase();
+      }
+
+      function renderSelect(selectNode, registryMap, placeholder) {
+        var current = selectNode.value;
+        var options = Object.keys(registryMap)
+          .map(function(key) {
+            return Number(key);
+          })
+          .sort(function(a, b) {
+            return a - b;
+          });
+
+        selectNode.innerHTML = "";
+        selectNode.appendChild(new Option(placeholder, ""));
+
+        options.forEach(function(code) {
+          selectNode.appendChild(new Option(formatCode(code, registryMap), String(code)));
+        });
+
+        if (current !== "") {
+          selectNode.value = current;
+        }
+      }
+
+      function syncRegistryFilters() {
+        renderSelect(sourceSelect, registry.devices, "All sources");
+        renderSelect(destinationSelect, registry.devices, "All destinations");
+        renderSelect(commandSelect, registry.commands, "All commands");
+      }
+
+      function renderRows() {
+        var sourceFilter = sourceSelect.value;
+        var destinationFilter = destinationSelect.value;
+        var commandFilter = commandSelect.value;
+        var searchFilter = searchInput.value.trim().toLowerCase();
+
+        var filtered = rows.filter(function(row) {
+          if (sourceFilter && String(row.s) !== sourceFilter) {
+            return false;
+          }
+          if (destinationFilter && String(row.d) !== destinationFilter) {
+            return false;
+          }
+          if (commandFilter && String(row.c) !== commandFilter) {
+            return false;
+          }
+          if (searchFilter && buildSearchText(row).indexOf(searchFilter) === -1) {
+            return false;
+          }
+          return true;
+        });
+
+        rowsState.textContent = filtered.length + " shown / " + rows.length + " total";
+
+        if (!filtered.length) {
+          rowsContainer.innerHTML = "<tr><td colspan=\"6\" class=\"empty\">No rows match the current filters.</td></tr>";
+          return;
+        }
+
+        rowsContainer.innerHTML = filtered.map(function(row) {
+          var hex = row.m && row.m.hex ? row.m.hex : "";
+          var message = formatMessage(row.m);
+
+          return "<tr>" +
+            "<td class=\"mono\">" + escapeHtml(formatTime(row.t)) + "</td>" +
+            "<td>" + escapeHtml(formatCode(row.s, registry.devices)) + "</td>" +
+            "<td>" + escapeHtml(formatCode(row.d, registry.devices)) + "</td>" +
+            "<td><span class=\"tag\">" + escapeHtml(formatCode(row.c, registry.commands)) + "</span></td>" +
+            "<td class=\"mono\">" + escapeHtml(hex) + "</td>" +
+            "<td>" + escapeHtml(message) + "</td>" +
+            "</tr>";
+        }).join("");
+      }
+
+      function appendEvents(batch) {
+        if (!Array.isArray(batch)) {
+          return;
+        }
+
+        for (var i = batch.length - 1; i >= 0; i -= 1) {
+          rows.unshift(batch[i]);
+        }
+
+        if (rows.length > 1000) {
+          rows.length = 1000;
+        }
+
+        renderRows();
+      }
+
+      function setStatus(kind, text) {
+        statusNode.className = "status" + (kind ? " " + kind : "");
+        statusText.textContent = text;
+      }
+
+      function loadRegistries() {
+        registryState.textContent = "Loading registries...";
+
+        return Promise.all([
+          fetch("/registry/commands").then(function(response) {
+            return response.json();
+          }),
+          fetch("/registry/devices").then(function(response) {
+            return response.json();
+          })
+        ]).then(function(result) {
+          registry.commands = result[0] || {};
+          registry.devices = result[1] || {};
+          syncRegistryFilters();
+          registryState.textContent = "Registries loaded";
+          renderRows();
+        }).catch(function(error) {
+          registryState.textContent = "Registry loading failed: " + error.message;
+        });
+      }
+
+      function connectEvents() {
+        if (!window.EventSource) {
+          setStatus("error", "EventSource is not supported in this browser");
+          return;
+        }
+
+        if (eventSource) {
+          eventSource.close();
+        }
+
+        eventSource = new EventSource("/events");
+
+        eventSource.addEventListener("open", function() {
+          setStatus("connected", "Connected to /events");
+        });
+
+        eventSource.addEventListener("error", function() {
+          if (eventSource.readyState === EventSource.CONNECTING) {
+            setStatus("", "Reconnecting to /events...");
+            return;
+          }
+
+          setStatus("error", "Disconnected from /events");
+        });
+
+        eventSource.addEventListener("DATA", function(event) {
+          try {
+            appendEvents(JSON.parse(event.data));
+          } catch (error) {
+            setStatus("error", "Bad DATA payload: " + error.message);
+          }
+        });
+      }
+
+      sourceSelect.addEventListener("change", renderRows);
+      destinationSelect.addEventListener("change", renderRows);
+      commandSelect.addEventListener("change", renderRows);
+      searchInput.addEventListener("input", renderRows);
+      document.getElementById("clear-btn").addEventListener("click", function() {
+        rows = [];
+        renderRows();
+      });
+
+      loadRegistries();
+      connectEvents();
+      renderRows();
+    </script>
+  </body>
 </html>

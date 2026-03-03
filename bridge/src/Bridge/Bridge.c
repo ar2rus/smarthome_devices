@@ -72,10 +72,14 @@ const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 #define UART_RX_BUF_LENGTH 78	//CLUNET_BUFFERED_DATA_MAX_LENGTH + 4 + 10
 volatile char uart_rx_data[UART_RX_BUF_LENGTH];
 volatile unsigned char uart_rx_data_len = 0;
+volatile unsigned char uart_rx_overflow = 0;
 
 ISR(USART_RXC_vect){
+	char byte = UDR;
 	if (uart_rx_data_len < UART_RX_BUF_LENGTH){
-		uart_rx_data[uart_rx_data_len++] = UDR;
+		uart_rx_data[uart_rx_data_len++] = byte;
+	}else{
+		uart_rx_overflow = 1;
 	}
 }
 	
@@ -88,7 +92,7 @@ ISR(USART_UDRE_vect){
 	if (uart_tx_data_pos < uart_tx_data_len){
 		UDR = uart_tx_data[uart_tx_data_pos++];
 	} else {
-		//глушим прерывание по опустошению, выходим из обработчика
+		//РіР»СѓС€РёРј РїСЂРµСЂС‹РІР°РЅРёРµ РїРѕ РѕРїСѓСЃС‚РѕС€РµРЅРёСЋ, РІС‹С…РѕРґРёРј РёР· РѕР±СЂР°Р±РѕС‚С‡РёРєР°
 		unset_bit(UCSRB, UDRIE);
 	}
 }
@@ -156,18 +160,34 @@ void clunet_data_received(unsigned char src_address, unsigned char dst_address, 
 
 char button_value;
 
+static void uart_rx_reset(){
+	unsigned char sreg = SREG;
+	cli();
+	uart_rx_data_len = 0;
+	uart_rx_overflow = 0;
+	SREG = sreg;
+}
+
 void analyze_uart_rx_trim(unsigned char offset){
+	unsigned char sreg = SREG;
+	cli();
 	if (offset <= uart_rx_data_len){
 		uart_rx_data_len -= offset;
 		if (uart_rx_data_len){
 			memmove((void*)uart_rx_data, (void*)(uart_rx_data + offset), uart_rx_data_len);
 		}
 	}
+	SREG = sreg;
 }
 
 void analyze_uart_rx(void(*f)(unsigned char code, char* data, unsigned char length)){
+	if (uart_rx_overflow){
+		uart_rx_reset();
+		return;
+	}
+
 	while (uart_rx_data_len > 1){
-		unsigned char uart_rx_preambula_offset = uart_rx_data_len - 1;	//первый байт преамбулы может быть прочитан, а второй еще не пришел
+		unsigned char uart_rx_preambula_offset = uart_rx_data_len - 1;	//РїРµСЂРІС‹Р№ Р±Р°Р№С‚ РїСЂРµР°РјР±СѓР»С‹ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСЂРѕС‡РёС‚Р°РЅ, Р° РІС‚РѕСЂРѕР№ РµС‰Рµ РЅРµ РїСЂРёС€РµР»
 		for (unsigned char i=0; i < uart_rx_data_len - 1; i++){
 			if (uart_rx_data[i+0] == UART_MESSAGE_PREAMBULE[0] && uart_rx_data[i+1] == UART_MESSAGE_PREAMBULE[1]){
 				uart_rx_preambula_offset = i;
@@ -175,23 +195,23 @@ void analyze_uart_rx(void(*f)(unsigned char code, char* data, unsigned char leng
 			}
 		}
 		if (uart_rx_preambula_offset) {
-			analyze_uart_rx_trim(uart_rx_preambula_offset); //обрезаем мусор до преамбулы
+			analyze_uart_rx_trim(uart_rx_preambula_offset); //РѕР±СЂРµР·Р°РµРј РјСѓСЃРѕСЂ РґРѕ РїСЂРµР°РјР±СѓР»С‹
 		}
 
-		if (uart_rx_data_len >= 5){	//минимальная длина сообщения с преамбулой
+		if (uart_rx_data_len >= 5){	//РјРёРЅРёРјР°Р»СЊРЅР°СЏ РґР»РёРЅР° СЃРѕРѕР±С‰РµРЅРёСЏ СЃ РїСЂРµР°РјР±СѓР»РѕР№
 			char* uart_rx_message = (char*)(uart_rx_data + 2);
 			unsigned char length = uart_rx_message[0];
-			if (length < 3 || length > UART_RX_BUF_LENGTH){
-				analyze_uart_rx_trim(2); 	//пришел мусор, отрезаем преамбулу и надо пробовать искать преамбулу снова
+			if (length < 3 || length > (UART_RX_BUF_LENGTH - 2)){
+				analyze_uart_rx_trim(2); 	//РїСЂРёС€РµР» РјСѓСЃРѕСЂ, РѕС‚СЂРµР·Р°РµРј РїСЂРµР°РјР±СѓР»Сѓ Рё РЅР°РґРѕ РїСЂРѕР±РѕРІР°С‚СЊ РёСЃРєР°С‚СЊ РїСЂРµР°РјР±СѓР»Сѓ СЃРЅРѕРІР°
 				continue;
 			}
 					
-			if (uart_rx_data_len >= length+2){		//в буфере данных уже столько, сколько описано в поле length
-				if (check_crc(uart_rx_message, length - 1) == uart_rx_message[length - 1]){ //проверка crc
+			if (uart_rx_data_len >= length+2){		//РІ Р±СѓС„РµСЂРµ РґР°РЅРЅС‹С… СѓР¶Рµ СЃС‚РѕР»СЊРєРѕ, СЃРєРѕР»СЊРєРѕ РѕРїРёСЃР°РЅРѕ РІ РїРѕР»Рµ length
+				if (check_crc(uart_rx_message, length - 1) == uart_rx_message[length - 1]){ //РїСЂРѕРІРµСЂРєР° crc
 					if (f){
 						f(uart_rx_message[1], &uart_rx_message[2], length - 3);
 					}					
-					analyze_uart_rx_trim(length+2); //отрезаем прочитанное сообщение
+					analyze_uart_rx_trim(length+2); //РѕС‚СЂРµР·Р°РµРј РїСЂРѕС‡РёС‚Р°РЅРЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ
 				}else{
 					analyze_uart_rx_trim(2); 
 				}
@@ -213,7 +233,7 @@ void on_uart_message(unsigned char code, char* data, unsigned char length){
 					//TODO: move to buffer at first
 					
 					/*	
-						if (msg->command == CLUNET_COMMAND_REBOOT){ // Просто ребут. И да, ребутнуть себя мы можем
+						if (msg->command == CLUNET_COMMAND_REBOOT){ // РџСЂРѕСЃС‚Рѕ СЂРµР±СѓС‚. Р РґР°, СЂРµР±СѓС‚РЅСѓС‚СЊ СЃРµР±СЏ РјС‹ РјРѕР¶РµРј
 						clunet_data_received(0x01,0xEE,0x2A,0,0);
 							//cli();
 							//set_bit(WDTCR, WDE);
