@@ -13,7 +13,7 @@
 #include <ArduinoJson.h>
 
 #include <LittleFS.h>
-#include <SPIFFSEditor.h>
+//#include <SPIFFSEditor.h>
 
 #include <ClunetMulticast.h>
 #include <MessageDecoder.h>
@@ -33,10 +33,10 @@
 const char *ssid = AP_SSID;
 const char *pass = AP_PASSWORD;
 
-IPAddress ip(192, 168, 1, 120);     //Node static IP
-IPAddress gateway(192, 168, 1, 1);
+IPAddress ip(192, 168, 3, 53);     //Node static IP
+IPAddress gateway(192, 168, 3, 1);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress dnsAddr(192, 168, 1, 1);
+IPAddress dnsAddr(192, 168, 3, 1);
 
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
@@ -461,7 +461,7 @@ void setup() {
 
   server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html");
 
-  server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
+  //server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
 
   server.onNotFound([](AsyncWebServerRequest *request){
     request->send(404);
@@ -589,7 +589,7 @@ void fillObjData(JsonObject obj, clunet_packet* packet){
         JsonArray sensors = obj.createNestedArray("sensors");
         for (int i=0; i<ti->num_sensors; i++){
           JsonObject sensor = sensors.createNestedObject();
-          sensor["type"] = ti->sensors[i].type;
+          sensor["type"] = static_cast<unsigned char>(ti->sensors[i].type);
           sensor["id"] = ti->sensors[i].id;
           sensor["val"] = serialized(String(ti->sensors[i].value, 2));
         }
@@ -623,7 +623,7 @@ void fillValueData(JsonObject obj, clunet_packet* packet, char* cid){
         temperature_info* ti =(temperature_info*)buf;
         for (int i=0; i<ti->num_sensors; i++){
           if (strcmp(ti->sensors[i].id, cid)){
-            obj["type"] = ti->sensors[i].type;
+            obj["type"] = static_cast<unsigned char>(ti->sensors[i].type);
             obj["cid"] = ti->sensors[i].id;
             obj["val"] = serialized(String(ti->sensors[i].value, 2));  
             break;
@@ -644,7 +644,7 @@ void fillValueData(JsonObject obj, clunet_packet* packet, char* cid){
       }
       break;
       case CLUNET_COMMAND_FAN_INFO: {
-        obj["mode"] = packet->data[0];
+        obj["mode"] = static_cast<unsigned char>(packet->data[0]);
         obj["value"] = (bool)(packet->data[1] == 3 || packet->data[1] == 4);
       }
       break;
