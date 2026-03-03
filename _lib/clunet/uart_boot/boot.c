@@ -88,25 +88,22 @@ unsigned char prev_systime = 0;
 
 static signed char read(){
 	if (uart_rx_data_len > 2){
-		//if (uart_rx_data[0] == UART_MESSAGE_PREAMBULE[0] && uart_rx_data[1] == UART_MESSAGE_PREAMBULE[1]){
-			unsigned char len = uart_rx_data[2] + 2;
-			if (uart_rx_data_len >= len){
-				//if (uart_rx_data_len == len){
-					if (uart_rx_data[len - 1] == check_crc(uart_rx_data + 2, len - 3)){
-						uart_rx_data_len = 0;
-						//if (clunet_receive_buf[CLUNET_OFFSET_DST_ADDRESS] == CLUNET_DEVICE_ID && clunet_receive_buf[CLUNET_OFFSET_COMMAND] == CLUNET_COMMAND_BOOT_CONTROL){
-							return 1;
-						//}
-					}else{
-						return -4;	//wrong crc
-					}
-				//}else{
-				//	return -3; //пришло больше длины сообщения
-				//}
+		unsigned char len = uart_rx_data[2] + 2;
+		if (uart_rx_data_len >= len){
+			if (uart_rx_data[len - 1] == check_crc(uart_rx_data + 2, len - 3)){
+				uart_rx_data_len = 0;
+				if (uart_rx_data[0] == UART_MESSAGE_PREAMBULE[0] &&
+					uart_rx_data[1] == UART_MESSAGE_PREAMBULE[1] &&
+					uart_rx_data[3] == UART_MESSAGE_CODE_CLUNET &&
+					clunet_receive_buf[CLUNET_OFFSET_DST_ADDRESS] == CLUNET_DEVICE_ID &&
+					clunet_receive_buf[CLUNET_OFFSET_COMMAND] == CLUNET_COMMAND_BOOT_CONTROL){
+					return 1;
+				}
+				return -1;	//пришёл корректный uart/clunet пакет, но не boot_control для нас
+			}else{
+				return -4;	//wrong crc
 			}
-		//}else{
-		//	return -2;	//неверная преамбула
-		//}
+		}
 	}
 	
 	return 0;	//сообщение не получено или получено не полностью
