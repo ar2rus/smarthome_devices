@@ -39,6 +39,20 @@ signed int discovery_observe_time = 0;
 signed int discovery_show_time = 0;
 unsigned char discovery_responses_count = 0;
 
+#define CLUNET_DEVICE_ID_SMARTHOME_BRIDGE 0x80
+
+char discovery_should_count_response(clunet_msg* msg){
+	if (!msg || msg->command != CLUNET_COMMAND_DISCOVERY_RESPONSE){
+		return 0;
+	}
+
+	if (msg->src_address == CLUNET_DEVICE_ID || msg->src_address == CLUNET_DEVICE_ID_SMARTHOME_BRIDGE){
+		return 0;
+	}
+
+	return 1;
+}
+
 void discovery_broadcast(){
 	while(clunet_ready_to_send());
 	clunet_send_fake(0x00, CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY, 0, 0);
@@ -52,7 +66,7 @@ void discovery_listen(clunet_msg* msg){
 	}
 
 	if (discovery_observe_time){
-		if (msg->command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+		if (discovery_should_count_response(msg)){
 			discovery_responses_count++;
 		}
 	}
