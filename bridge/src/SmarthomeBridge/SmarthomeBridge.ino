@@ -23,6 +23,7 @@
 #include "ClunetDevices.h"
 
 #include "SmarthomeBridge.h"
+#include "FlashFirmware.h"
 #include "Credentials.h"
 
 #ifdef DEFAULT_MAX_SSE_CLIENTS
@@ -56,21 +57,10 @@ api_response* apiResponse = NULL;
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
 #define UART_MESSAGE_CODE_DEBUG 10
-#define BOOTLOADER_ACTIVITY_TIMEOUT 10000
 
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
-uint8_t bootloaderTargetAddress = 0;
-unsigned long bootloaderActivityDeadline = 0;
-
-bool bootloaderUartIsolated(uint8_t address = 0){
-  return bootloaderActivityDeadline != 0 && (long)(millis() - bootloaderActivityDeadline) < 0 &&
-    (address == 0 || address == bootloaderTargetAddress);
-}
-
-void touchBootloaderActivity(uint8_t address){
-  bootloaderTargetAddress = address;
-  bootloaderActivityDeadline = millis() + BOOTLOADER_ACTIVITY_TIMEOUT;
-}
+extern volatile unsigned char uart_rx_data_len;
+extern bool uart_rx_overflow;
 
 uint8_t uart_can_send(uint8_t length){
   return Serial.availableForWrite() >= length + 5;
@@ -293,6 +283,7 @@ void setup() {
   
   Serial.begin(38400, SERIAL_8N1);
   Serial.println("Booting");
+  FlashFirmware::init();
 
   if (!LittleFS.begin()) {
     Serial1.println("LittleFS mount failed");
@@ -314,6 +305,7 @@ void setup() {
     ESP.restart();
   }
   Serial1.println("Connected");
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   Serial.swap();
   Serial.flush();
@@ -336,24 +328,23 @@ void setup() {
       timeval tv;
       gettimeofday(&tv, nullptr);
       
-      if (CLUNET_MULTICAST_DEVICE(packet->src)){
-          if (!bootloaderUartIsolated() ||
-              (packet->dst == bootloaderTargetAddress && packet->command == CLUNET_COMMAND_BOOT_CONTROL)){
-            uartQueue.add(packet->copy());
-          }
+      if (CLUNET_MULTICAST_DEVICE(packet->src) && FlashFirmware::shouldForwardMulticastToUart(packet)){
+        uartQueue.add(packet->copy());
       }
 
-      ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
-      if (tp){
-        packet->copy(&tp->packet);
-        
-        tp->timestamp_sec = (uint32_t)tv.tv_sec;
-        tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
+      if (!FlashFirmware::isTrafficMuted()){
+        ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
+        if (tp){
+          packet->copy(&tp->packet);
+          
+          tp->timestamp_sec = (uint32_t)tv.tv_sec;
+          tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
 
-        while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
-          eventsQueue.remove(eventsQueue.front());
+          while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
+            eventsQueue.remove(eventsQueue.front());
+          }
+          eventsQueue.add(tp);
         }
-        eventsQueue.add(tp);
       }
     });
     
@@ -364,7 +355,6 @@ void setup() {
           DynamicJsonDocument doc(4196);
           JsonObject root = doc.to<JsonObject>();
           root["id"] = requestId;
-          root["memory"] = ESP.getFreeHeap();
           JsonArray docArray;
           if (!apiResponse->info){
             docArray = root.createNestedArray("responses");
@@ -477,6 +467,7 @@ void setup() {
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
+  FlashFirmware::setupRoutes(server);
 
   events.onConnect([](AsyncEventSourceClient *client){
      client->send("Welcome", "SERVICE", 0, 3000);
@@ -517,11 +508,15 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
     case UART_MESSAGE_CODE_CLUNET:
       if (data && length >= 4){
         clunet_packet* packet = (clunet_packet*)data;
+        bool consumedByFlash = false;
         if (packet->command == CLUNET_COMMAND_BOOT_CONTROL){
-          touchBootloaderActivity(packet->src);
+          FlashFirmware::touchBootloaderActivity(packet->src);
+          consumedByFlash = FlashFirmware::handleBootControlResponse(packet);
         }
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
-           multicastQueue.add(packet->copy());
+           if (!consumedByFlash){
+             multicastQueue.add(packet->copy());
+           }
         }
       }
       break;
@@ -716,14 +711,18 @@ void loop() {
   }
 
   analyze_uart_rx(on_uart_message);
+  FlashFirmware::process();
 
   while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front())){
     long nt = millis();
     if (nt - uart_time > DELAY_BETWEEN_UART_MESSAGES){
      uart_time = nt;
      clunet_packet* packet = uartQueue.front();
-     uart_send_message(packet);
-     uartQueue.remove(packet);
+     if (uart_send_message(packet)){
+       uartQueue.remove(packet);
+     }else{
+       break;
+     }
     }
   }
 
@@ -736,7 +735,7 @@ void loop() {
     }
   }
   
-  if (!eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
+  if (!FlashFirmware::isTrafficMuted() && !eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
     DynamicJsonDocument doc(4196);
     while (!eventsQueue.isEmpty()){
       ts_clunet_packet* tp = eventsQueue.front();
@@ -749,7 +748,7 @@ void loop() {
     events.send(json.c_str(), "DATA", ++event_id);
   }
 
-  if (apiResponse == NULL){
+  if (!FlashFirmware::isTrafficMuted() && apiResponse == NULL){
     while (!apiRequestsQueue.isEmpty()){
       api_request* ar = apiRequestsQueue.front();
       if (ar->webRequest != NULL){

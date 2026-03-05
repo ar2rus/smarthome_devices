@@ -7,119 +7,138 @@
     <link rel="icon" href="data:,">
     <style>
       :root {
-        --bg: #f4efe6;
-        --panel: rgba(255, 251, 245, 0.92);
-        --panel-strong: #fffaf2;
-        --line: #d6cab9;
-        --line-strong: #b8aa95;
-        --text: #2b241b;
-        --muted: #6d655b;
-        --accent: #206b5f;
-        --accent-soft: #dbece8;
-        --warn: #8b6508;
-        --danger: #b14545;
-        --shadow: 0 18px 48px rgba(43, 36, 27, 0.08);
+        --bg: #f5f7fa;
+        --panel: #ffffff;
+        --line: #d7dde5;
+        --line-strong: #bac4d1;
+        --text: #1f2937;
+        --muted: #667085;
+        --accent: #0f766e;
+        --accent-soft: #d7f0ec;
+        --warn: #9a6b05;
+        --danger: #b42318;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
       body {
         margin: 0;
-        min-height: 100vh;
         color: var(--text);
-        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        font-family: "Segoe UI", "Trebuchet MS", sans-serif;
         background:
-          radial-gradient(circle at top left, rgba(32, 107, 95, 0.18), transparent 32%),
-          radial-gradient(circle at top right, rgba(177, 69, 69, 0.1), transparent 28%),
-          linear-gradient(180deg, #f8f3ea 0%, #eee6d8 100%);
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 35%),
+          linear-gradient(180deg, #f9fbff 0%, var(--bg) 100%);
       }
 
       .shell {
-        width: min(1440px, calc(100vw - 24px));
-        margin: 12px auto;
-        padding: 16px;
-        border: 1px solid rgba(184, 170, 149, 0.7);
-        border-radius: 18px;
+        width: min(1460px, calc(100vw - 20px));
+        margin: 10px auto;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
         background: var(--panel);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(10px);
       }
 
       .topbar {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 16px;
-        margin-bottom: 16px;
+        gap: 10px;
+        margin-bottom: 10px;
       }
 
       .title {
         margin: 0;
-        font-size: 28px;
-        line-height: 1.05;
-        letter-spacing: 0.02em;
+        font-size: 24px;
+        line-height: 1.1;
       }
 
       .subtitle {
-        margin: 6px 0 0;
+        margin: 4px 0 0;
+        font-size: 13px;
         color: var(--muted);
-        font-size: 14px;
       }
 
-      .status {
+      .top-actions {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 10px 14px;
+      }
+
+      .top-link,
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 12px;
         border: 1px solid var(--line);
         border-radius: 999px;
-        background: var(--panel-strong);
-        font-size: 13px;
+        background: #fff;
         white-space: nowrap;
+        font-size: 13px;
+      }
+
+      .top-link {
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .top-button {
+        cursor: pointer;
+        background: #fff;
+        font: inherit;
       }
 
       .status-dot {
-        width: 10px;
-        height: 10px;
+        width: 9px;
+        height: 9px;
         border-radius: 50%;
         background: var(--warn);
-        box-shadow: 0 0 0 4px rgba(139, 101, 8, 0.14);
+        box-shadow: 0 0 0 3px rgba(154, 107, 5, 0.15);
       }
 
       .status.connected .status-dot {
         background: var(--accent);
-        box-shadow: 0 0 0 4px rgba(32, 107, 95, 0.16);
+        box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.17);
       }
 
       .status.error .status-dot {
         background: var(--danger);
-        box-shadow: 0 0 0 4px rgba(177, 69, 69, 0.16);
+        box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.16);
       }
 
-      .controls {
+      .controls,
+      .request {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .request {
+        margin-top: 10px;
       }
 
       .field {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 4px;
       }
 
-      .field.span-2 {
+      .span-2 {
         grid-column: span 2;
       }
 
+      .span-3 {
+        grid-column: span 3;
+      }
+
       label {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
+        letter-spacing: 0.07em;
         color: var(--muted);
-        letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
@@ -127,19 +146,17 @@
       select,
       button {
         width: 100%;
-        padding: 11px 12px;
         border: 1px solid var(--line);
-        border-radius: 12px;
-        background: #fffdf9;
-        color: var(--text);
+        border-radius: 9px;
+        padding: 8px 9px;
         font: inherit;
+        color: var(--text);
+        background: #fff;
       }
 
-      input:focus,
-      select:focus,
-      button:focus {
-        outline: 2px solid rgba(32, 107, 95, 0.22);
-        border-color: var(--accent);
+      button {
+        cursor: pointer;
+        font-weight: 700;
       }
 
       .actions {
@@ -147,32 +164,25 @@
         align-items: end;
       }
 
-      button {
-        cursor: pointer;
-        font-weight: 700;
-        background: linear-gradient(180deg, #fffdfa 0%, #f4ecdf 100%);
-      }
-
       .meta {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 10px;
+        gap: 8px;
+        margin-bottom: 8px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
       }
 
       .table-wrap {
-        overflow: auto;
         border: 1px solid var(--line);
-        border-radius: 16px;
-        background: rgba(255, 252, 246, 0.8);
+        border-radius: 12px;
+        overflow: auto;
       }
 
       table {
         width: 100%;
-        min-width: 980px;
+        min-width: 900px;
         border-collapse: collapse;
       }
 
@@ -180,45 +190,72 @@
         position: sticky;
         top: 0;
         z-index: 1;
-        padding: 12px;
+        padding: 8px;
+        font-size: 11px;
         text-align: left;
-        border-bottom: 1px solid var(--line-strong);
-        background: #f8efe1;
-        font-size: 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
+        border-bottom: 1px solid var(--line-strong);
+        background: #f6f9fc;
       }
 
       tbody td {
-        padding: 10px 12px;
-        border-bottom: 1px solid rgba(214, 202, 185, 0.65);
+        padding: 8px;
+        font-size: 13px;
+        border-bottom: 1px solid #edf1f6;
         vertical-align: top;
-        font-size: 14px;
       }
 
       tbody tr:nth-child(odd) {
-        background: rgba(255, 255, 255, 0.5);
+        background: #fafcff;
       }
 
       .mono {
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        font-size: 13px;
+        font-size: 12px;
       }
 
       .tag {
         display: inline-block;
-        padding: 2px 8px;
+        padding: 2px 7px;
         border-radius: 999px;
         background: var(--accent-soft);
         color: var(--accent);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
       }
 
       .empty {
-        padding: 20px 16px;
-        color: var(--muted);
+        padding: 18px 10px;
         text-align: center;
+        color: var(--muted);
+      }
+
+      .request-panel {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fcfdff;
+      }
+
+      .request-title {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      pre {
+        margin: 8px 0 0;
+        padding: 9px;
+        border-radius: 10px;
+        border: 1px solid #c5d0dd;
+        background: #f2f6fb;
+        color: #142232;
+        max-height: 230px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
       }
 
       @media (max-width: 980px) {
@@ -228,11 +265,18 @@
           align-items: flex-start;
         }
 
-        .controls {
+        .top-actions {
+          width: 100%;
+          flex-wrap: wrap;
+        }
+
+        .controls,
+        .request {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .field.span-2,
+        .span-2,
+        .span-3,
         .actions {
           grid-column: span 2;
         }
@@ -244,36 +288,34 @@
       <section class="topbar">
         <div>
           <h1 class="title">Smarthome Bridge Log</h1>
-          <p class="subtitle">Local live monitor without jQuery, bootstrap, or CDN dependencies.</p>
+          <p class="subtitle">Live events monitor and request console.</p>
         </div>
-        <div id="status" class="status">
-          <span class="status-dot"></span>
-          <span id="status-text">Connecting to /events...</span>
+        <div class="top-actions">
+          <button id="discovery-btn" class="top-link top-button" type="button">Discovery</button>
+          <a class="top-link" href="/flash.html">Flash Firmware...</a>
+          <div id="status" class="status">
+            <span class="status-dot"></span>
+            <span id="status-text">Connecting to /events...</span>
+          </div>
         </div>
       </section>
 
       <section class="controls">
         <div class="field span-2">
           <label for="search">Search</label>
-          <input id="search" type="search" placeholder="Search in device, command, hex payload, or decoded text">
+          <input id="search" type="search" placeholder="Search device, command, hex payload, decoded text">
         </div>
         <div class="field">
           <label for="source-filter">Source</label>
-          <select id="source-filter">
-            <option value="">All sources</option>
-          </select>
+          <select id="source-filter"><option value="">All sources</option></select>
         </div>
         <div class="field">
           <label for="destination-filter">Destination</label>
-          <select id="destination-filter">
-            <option value="">All destinations</option>
-          </select>
+          <select id="destination-filter"><option value="">All destinations</option></select>
         </div>
         <div class="field">
           <label for="command-filter">Command</label>
-          <select id="command-filter">
-            <option value="">All commands</option>
-          </select>
+          <select id="command-filter"><option value="">All commands</option></select>
         </div>
         <div class="actions">
           <button id="clear-btn" type="button">Clear Log</button>
@@ -298,22 +340,51 @@
             </tr>
           </thead>
           <tbody id="rows">
-            <tr>
-              <td colspan="6" class="empty">Waiting for live data...</td>
-            </tr>
+            <tr><td colspan="6" class="empty">Waiting for live data...</td></tr>
           </tbody>
         </table>
+      </section>
+
+      <section class="request-panel">
+        <h2 class="request-title">Request / Response</h2>
+        <div class="request">
+          <div class="field">
+            <label for="req-device">Device (a)</label>
+            <select id="req-device"><option value="255">255 - BROADCAST</option></select>
+          </div>
+          <div class="field">
+            <label for="req-command">Command (c)</label>
+            <select id="req-command"><option value="">Select command</option></select>
+          </div>
+          <div class="field span-2">
+            <label for="req-data">HEX data (d)</label>
+            <input id="req-data" type="text" placeholder="Optional, e.g. 0102A0">
+          </div>
+          <div class="field">
+            <label for="req-timeout">Timeout ms (t)</label>
+            <input id="req-timeout" type="number" min="10" max="10000" value="250">
+          </div>
+          <div class="field">
+            <label for="req-response-command">Response cmd (r)</label>
+            <input id="req-response-command" type="number" min="-1" max="255" placeholder="Optional">
+          </div>
+          <div class="actions span-3">
+            <button id="request-send" type="button">Send /request</button>
+          </div>
+        </div>
+        <pre id="request-output">Ready.</pre>
       </section>
     </main>
 
     <script>
-      var registry = {
-        commands: {},
-        devices: {}
-      };
-
+      var registry = { commands: {}, devices: {} };
       var rows = [];
       var eventSource = null;
+      var reconnectTimer = null;
+      var reconnectDelayMs = 1200;
+      var lastEventAt = 0;
+      var connectStateAt = 0;
+
       var sourceSelect = document.getElementById("source-filter");
       var destinationSelect = document.getElementById("destination-filter");
       var commandSelect = document.getElementById("command-filter");
@@ -323,6 +394,7 @@
       var registryState = document.getElementById("registry-state");
       var statusNode = document.getElementById("status");
       var statusText = document.getElementById("status-text");
+      var reqOutput = document.getElementById("request-output");
 
       function escapeHtml(value) {
         return String(value)
@@ -371,15 +443,9 @@
         if (Array.isArray(message.obj.sensors)) {
           return message.obj.sensors.map(function(sensor) {
             var parts = [];
-            if (typeof sensor.id !== "undefined") {
-              parts.push("id=" + sensor.id);
-            }
-            if (typeof sensor.type !== "undefined") {
-              parts.push("type=" + sensor.type);
-            }
-            if (typeof sensor.val !== "undefined") {
-              parts.push("val=" + sensor.val);
-            }
+            if (typeof sensor.id !== "undefined") { parts.push("id=" + sensor.id); }
+            if (typeof sensor.type !== "undefined") { parts.push("type=" + sensor.type); }
+            if (typeof sensor.val !== "undefined") { parts.push("val=" + sensor.val); }
             return parts.join(" ");
           }).join(" | ");
         }
@@ -409,17 +475,11 @@
 
       function renderSelect(selectNode, registryMap, placeholder) {
         var current = selectNode.value;
-        var options = Object.keys(registryMap)
-          .map(function(key) {
-            return Number(key);
-          })
-          .sort(function(a, b) {
-            return a - b;
-          });
+        var options = Object.keys(registryMap).map(function(key) { return Number(key); })
+          .sort(function(a, b) { return a - b; });
 
         selectNode.innerHTML = "";
         selectNode.appendChild(new Option(placeholder, ""));
-
         options.forEach(function(code) {
           selectNode.appendChild(new Option(formatCode(code, registryMap), String(code)));
         });
@@ -429,10 +489,43 @@
         }
       }
 
+      function renderRequestSelects() {
+        var reqDevice = document.getElementById("req-device");
+        var reqCommand = document.getElementById("req-command");
+
+        var currentDevice = reqDevice.value;
+        var currentCommand = reqCommand.value;
+
+        reqDevice.innerHTML = "";
+        Object.keys(registry.devices).map(function(key) { return Number(key); })
+          .sort(function(a, b) { return a - b; })
+          .forEach(function(code) {
+            reqDevice.appendChild(new Option(code + " - " + (registry.devices[String(code)] || ""), String(code)));
+          });
+
+        reqCommand.innerHTML = "<option value=\"\">Select command</option>";
+        Object.keys(registry.commands).map(function(key) { return Number(key); })
+          .sort(function(a, b) { return a - b; })
+          .forEach(function(code) {
+            reqCommand.appendChild(new Option(code + " - " + (registry.commands[String(code)] || ""), String(code)));
+          });
+
+        if (currentDevice && reqDevice.querySelector("option[value=\"" + currentDevice + "\"]")) {
+          reqDevice.value = currentDevice;
+        } else if (reqDevice.querySelector("option[value=\"255\"]")) {
+          reqDevice.value = "255";
+        }
+
+        if (currentCommand && reqCommand.querySelector("option[value=\"" + currentCommand + "\"]")) {
+          reqCommand.value = currentCommand;
+        }
+      }
+
       function syncRegistryFilters() {
         renderSelect(sourceSelect, registry.devices, "All sources");
         renderSelect(destinationSelect, registry.devices, "All destinations");
         renderSelect(commandSelect, registry.commands, "All commands");
+        renderRequestSelects();
       }
 
       function renderRows() {
@@ -442,32 +535,23 @@
         var searchFilter = searchInput.value.trim().toLowerCase();
 
         var filtered = rows.filter(function(row) {
-          if (sourceFilter && String(row.s) !== sourceFilter) {
-            return false;
-          }
-          if (destinationFilter && String(row.d) !== destinationFilter) {
-            return false;
-          }
-          if (commandFilter && String(row.c) !== commandFilter) {
-            return false;
-          }
-          if (searchFilter && buildSearchText(row).indexOf(searchFilter) === -1) {
-            return false;
-          }
+          if (sourceFilter && String(row.s) !== sourceFilter) { return false; }
+          if (destinationFilter && String(row.d) !== destinationFilter) { return false; }
+          if (commandFilter && String(row.c) !== commandFilter) { return false; }
+          if (searchFilter && buildSearchText(row).indexOf(searchFilter) === -1) { return false; }
           return true;
         });
 
         rowsState.textContent = filtered.length + " shown / " + rows.length + " total";
 
         if (!filtered.length) {
-          rowsContainer.innerHTML = "<tr><td colspan=\"6\" class=\"empty\">No rows match the current filters.</td></tr>";
+          rowsContainer.innerHTML = "<tr><td colspan=\"6\" class=\"empty\">No rows match current filters.</td></tr>";
           return;
         }
 
         rowsContainer.innerHTML = filtered.map(function(row) {
           var hex = row.m && row.m.hex ? row.m.hex : "";
           var message = formatMessage(row.m);
-
           return "<tr>" +
             "<td class=\"mono\">" + escapeHtml(formatTime(row.t)) + "</td>" +
             "<td>" + escapeHtml(formatCode(row.s, registry.devices)) + "</td>" +
@@ -483,15 +567,12 @@
         if (!Array.isArray(batch)) {
           return;
         }
-
         for (var i = batch.length - 1; i >= 0; i -= 1) {
           rows.unshift(batch[i]);
         }
-
         if (rows.length > 1000) {
           rows.length = 1000;
         }
-
         renderRows();
       }
 
@@ -500,16 +581,68 @@
         statusText.textContent = text;
       }
 
+      function scheduleReconnect(reason) {
+        if (reconnectTimer) {
+          return;
+        }
+        setStatus("", reason || "Reconnecting to /events...");
+        reconnectTimer = setTimeout(function() {
+          reconnectTimer = null;
+          connectEvents();
+        }, reconnectDelayMs);
+      }
+
+      function connectEvents() {
+        if (!window.EventSource) {
+          setStatus("error", "EventSource is not supported");
+          return;
+        }
+
+        if (eventSource) {
+          try { eventSource.close(); } catch (e) {}
+          eventSource = null;
+        }
+
+        eventSource = new EventSource("/events");
+        connectStateAt = Date.now();
+
+        eventSource.addEventListener("open", function() {
+          if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+          }
+          connectStateAt = Date.now();
+          lastEventAt = Date.now();
+          setStatus("connected", "Connected to /events");
+        });
+
+        eventSource.addEventListener("error", function() {
+          if (!eventSource) {
+            return;
+          }
+          if (eventSource.readyState === EventSource.CONNECTING) {
+            setStatus("", "Reconnecting to /events...");
+            return;
+          }
+          setStatus("error", "Disconnected from /events");
+          scheduleReconnect("Reconnecting to /events...");
+        });
+
+        eventSource.addEventListener("DATA", function(event) {
+          lastEventAt = Date.now();
+          try {
+            appendEvents(JSON.parse(event.data));
+          } catch (error) {
+            setStatus("error", "Bad DATA payload: " + error.message);
+          }
+        });
+      }
+
       function loadRegistries() {
         registryState.textContent = "Loading registries...";
-
         return Promise.all([
-          fetch("/registry/commands").then(function(response) {
-            return response.json();
-          }),
-          fetch("/registry/devices").then(function(response) {
-            return response.json();
-          })
+          fetch("/registry/commands").then(function(response) { return response.json(); }),
+          fetch("/registry/devices").then(function(response) { return response.json(); })
         ]).then(function(result) {
           registry.commands = result[0] || {};
           registry.devices = result[1] || {};
@@ -521,38 +654,75 @@
         });
       }
 
-      function connectEvents() {
-        if (!window.EventSource) {
-          setStatus("error", "EventSource is not supported in this browser");
+      function sendRequest() {
+        var command = document.getElementById("req-command").value;
+        if (!command) {
+          reqOutput.textContent = "Select command first.";
           return;
         }
 
-        if (eventSource) {
-          eventSource.close();
+        var params = new URLSearchParams();
+        params.set("c", command);
+        params.set("a", document.getElementById("req-device").value || "255");
+
+        var hex = document.getElementById("req-data").value.trim();
+        if (hex) {
+          params.set("d", hex);
         }
 
-        eventSource = new EventSource("/events");
+        var timeout = document.getElementById("req-timeout").value.trim();
+        if (timeout) {
+          params.set("t", timeout);
+        }
 
-        eventSource.addEventListener("open", function() {
-          setStatus("connected", "Connected to /events");
-        });
+        var responseCommand = document.getElementById("req-response-command").value.trim();
+        if (responseCommand) {
+          params.set("r", responseCommand);
+        }
 
-        eventSource.addEventListener("error", function() {
-          if (eventSource.readyState === EventSource.CONNECTING) {
-            setStatus("", "Reconnecting to /events...");
-            return;
-          }
+        reqOutput.textContent = "Sending...";
+        fetch("/request?" + params.toString())
+          .then(function(response) {
+            return response.text().then(function(text) {
+              if (!response.ok) {
+                throw new Error(text || ("HTTP " + response.status));
+              }
+              return text;
+            });
+          })
+          .then(function(text) {
+            try {
+              reqOutput.textContent = JSON.stringify(JSON.parse(text), null, 2);
+            } catch (e) {
+              reqOutput.textContent = text;
+            }
+          })
+          .catch(function(error) {
+            reqOutput.textContent = "Request error: " + error.message;
+          });
+      }
 
-          setStatus("error", "Disconnected from /events");
-        });
-
-        eventSource.addEventListener("DATA", function(event) {
-          try {
-            appendEvents(JSON.parse(event.data));
-          } catch (error) {
-            setStatus("error", "Bad DATA payload: " + error.message);
-          }
-        });
+      function sendDiscovery() {
+        reqOutput.textContent = "Sending /discovery...";
+        fetch("/discovery")
+          .then(function(response) {
+            return response.text().then(function(text) {
+              if (!response.ok) {
+                throw new Error(text || ("HTTP " + response.status));
+              }
+              return text;
+            });
+          })
+          .then(function(text) {
+            try {
+              reqOutput.textContent = JSON.stringify(JSON.parse(text), null, 2);
+            } catch (e) {
+              reqOutput.textContent = text;
+            }
+          })
+          .catch(function(error) {
+            reqOutput.textContent = "Discovery error: " + error.message;
+          });
       }
 
       sourceSelect.addEventListener("change", renderRows);
@@ -562,6 +732,37 @@
       document.getElementById("clear-btn").addEventListener("click", function() {
         rows = [];
         renderRows();
+      });
+      document.getElementById("request-send").addEventListener("click", sendRequest);
+      document.getElementById("discovery-btn").addEventListener("click", sendDiscovery);
+
+      setInterval(function() {
+        if (!eventSource) {
+          scheduleReconnect("Reconnecting to /events...");
+          return;
+        }
+
+        if (eventSource.readyState === EventSource.CLOSED) {
+          scheduleReconnect("Reconnecting to /events...");
+          return;
+        }
+
+        if (eventSource.readyState === EventSource.CONNECTING && (Date.now() - connectStateAt > 30000)) {
+          try { eventSource.close(); } catch (e) {}
+          eventSource = null;
+          scheduleReconnect("Connection stalled, reconnecting...");
+          return;
+        }
+
+        if (eventSource.readyState === EventSource.OPEN && lastEventAt && (Date.now() - lastEventAt > 45000)) {
+          try { eventSource.close(); } catch (e) {}
+          eventSource = null;
+          scheduleReconnect("No events recently, reconnecting...");
+        }
+      }, 5000);
+
+      window.addEventListener("online", function() {
+        scheduleReconnect("Network online, reconnecting...");
       });
 
       loadRegistries();

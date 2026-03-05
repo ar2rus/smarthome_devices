@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smarthome Bridge Flash</title>
+    <link rel="icon" href="data:,">
+    <style>
+      :root {
+        --bg: #eef2f5;
+        --panel: #ffffff;
+        --line: #d2dce8;
+        --line-strong: #b9c6d6;
+        --text: #1f2937;
+        --muted: #64748b;
+        --primary: #1f6feb;
+        --secondary: #6b7280;
+        --ok: #16a34a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(31, 111, 235, 0.14), transparent 35%),
+          linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      }
+
+      .card {
+        width: min(900px, calc(100vw - 20px));
+        margin: 10px auto;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        box-shadow: 0 10px 32px rgba(15, 23, 42, 0.08);
+      }
+
+      .top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7px 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--text);
+        text-decoration: none;
+        background: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .hint {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .field.file {
+        grid-column: 1 / -1;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        font-weight: 700;
+      }
+
+      .label-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        position: relative;
+      }
+
+      .hint-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 1px solid #9aa8bc;
+        background: #fff;
+        color: #475569;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0;
+      }
+
+      .hint-pop {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 5;
+        width: min(280px, 75vw);
+        padding: 7px 8px;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: #fff;
+        color: #334155;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.35;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+        text-transform: none;
+        letter-spacing: normal;
+      }
+
+      .hint-pop[hidden] {
+        display: none;
+      }
+
+      input,
+      select,
+      button {
+        width: 100%;
+        padding: 8px 9px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        color: var(--text);
+        font: inherit;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .actions button {
+        border: none;
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      #start {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      #abort {
+        background: var(--secondary);
+        color: #fff;
+      }
+
+      .bar {
+        margin-top: 10px;
+        width: 100%;
+        height: 9px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+      }
+
+      .bar > span {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: var(--ok);
+        transition: width .2s linear;
+      }
+
+      #summary {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      pre {
+        margin: 10px 0 0;
+        border-radius: 10px;
+        border: 1px solid #c5d0dd;
+        background: #f2f6fb;
+        color: #142232;
+        padding: 10px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        max-height: 260px;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .top {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="top">
+        <h1>Firmware Flash</h1>
+        <a class="back-link" href="/log.html">Back to Log</a>
+      </div>
+      <p class="hint">Upload Intel HEX (up to 8KB after parsing), choose target, start flashing.</p>
+
+      <section class="grid">
+        <div class="field file">
+          <label for="hex">HEX firmware file</label>
+          <input id="hex" type="file" accept=".hex">
+        </div>
+        <div class="field">
+          <label for="target">Target device</label>
+          <select id="target">
+            <option value="0">Loading devices...</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="rt">Response timeout (ms)</label>
+          <input id="rt" type="number" min="100" max="10000" value="1500">
+        </div>
+        <div class="field">
+          <label for="bt">
+            <span class="label-row">
+              Boot timeout (ms)
+              <button id="bt-help-btn" class="hint-icon" type="button" aria-label="Boot timeout help" aria-expanded="false">i</button>
+              <span id="bt-help-pop" class="hint-pop" role="tooltip" hidden>0 = wait indefinitely until you press Abort.</span>
+            </span>
+          </label>
+          <input id="bt" type="number" min="0" max="10000" value="2500">
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="start" type="button">Flash</button>
+        <button id="abort" type="button">Abort</button>
+      </div>
+
+      <div class="bar"><span id="progress"></span></div>
+      <div id="summary">Idle</div>
+      <pre id="status">Loading...</pre>
+    </main>
+
+    <script>
+      var targetEl = document.getElementById("target");
+      var summaryEl = document.getElementById("summary");
+      var statusEl = document.getElementById("status");
+      var progressEl = document.getElementById("progress");
+      var btHelpBtn = document.getElementById("bt-help-btn");
+      var btHelpPop = document.getElementById("bt-help-pop");
+      var busy = false;
+
+      function setSummary(text) {
+        summaryEl.textContent = text;
+      }
+
+      function setBusy(value) {
+        busy = value;
+        document.getElementById("start").disabled = value;
+      }
+
+      function setHelpVisible(visible) {
+        btHelpPop.hidden = !visible;
+        btHelpBtn.setAttribute("aria-expanded", visible ? "true" : "false");
+      }
+
+      function requestJson(url, options) {
+        return fetch(url, options || {}).then(function(response) {
+          return response.text().then(function(text) {
+            var body = {};
+            try {
+              body = text ? JSON.parse(text) : {};
+            } catch (e) {
+              body = { raw: text };
+            }
+            if (!response.ok) {
+              throw new Error(body.error || body.status || body.raw || ("HTTP " + response.status));
+            }
+            return body;
+          });
+        });
+      }
+
+      function loadDevices() {
+        return requestJson("/registry/devices").then(function(devices) {
+          var options = Object.keys(devices || {})
+            .map(function(code) {
+              return Number(code);
+            })
+            .filter(function(code) {
+              return !Number.isNaN(code) && code !== 255;
+            })
+            .sort(function(a, b) {
+              return a - b;
+            });
+
+          targetEl.innerHTML = "";
+          if (!options.length) {
+            targetEl.innerHTML = "<option value=\"0\">No devices</option>";
+            return;
+          }
+
+          options.forEach(function(code) {
+            var option = document.createElement("option");
+            option.value = String(code);
+            option.textContent = code + " - " + devices[String(code)];
+            if (code === 0) {
+              option.selected = true;
+            }
+            targetEl.appendChild(option);
+          });
+        }).catch(function(error) {
+          targetEl.innerHTML = "<option value=\"0\">Device load error</option>";
+          setSummary("Device registry error: " + error.message);
+        });
+      }
+
+      function refreshStatus() {
+        requestJson("/flash/status").then(function(state) {
+          var progress = state.progress || 0;
+          progressEl.style.width = progress + "%";
+          setSummary((state.status || "Idle") + " | " + progress + "% (" + (state.sentBytes || 0) + "/" + (state.firmwareBytes || 0) + ")");
+          statusEl.textContent = JSON.stringify(state, null, 2);
+        }).catch(function(error) {
+          statusEl.textContent = "Status error: " + error.message;
+        });
+      }
+
+      function uploadFirmware() {
+        var file = document.getElementById("hex").files[0];
+        if (!file) {
+          return Promise.reject(new Error("Select HEX file"));
+        }
+
+        var form = new FormData();
+        form.append("file", file, file.name);
+        return requestJson("/flash/firmware", {
+          method: "POST",
+          body: form
+        });
+      }
+
+      function startFlash() {
+        var params = new URLSearchParams();
+        params.set("a", targetEl.value);
+        params.set("rt", document.getElementById("rt").value || "1500");
+        params.set("bt", document.getElementById("bt").value || "2500");
+
+        return requestJson("/flash/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: params.toString()
+        });
+      }
+
+      document.getElementById("start").addEventListener("click", function() {
+        if (busy) {
+          return;
+        }
+        setBusy(true);
+        setSummary("Uploading HEX...");
+        uploadFirmware()
+          .then(function() {
+            setSummary("Starting flashing...");
+            return startFlash();
+          })
+          .then(function() {
+            setSummary("Flashing started");
+            refreshStatus();
+          })
+          .catch(function(error) {
+            setSummary("Error: " + error.message);
+          })
+          .finally(function() {
+            setBusy(false);
+          });
+      });
+
+      document.getElementById("abort").addEventListener("click", function() {
+        requestJson("/flash/abort", { method: "POST" })
+          .then(function() {
+            setSummary("Flash aborted");
+            refreshStatus();
+          })
+          .catch(function(error) {
+            setSummary("Abort error: " + error.message);
+          });
+      });
+
+      btHelpBtn.addEventListener("click", function(event) {
+        event.stopPropagation();
+        setHelpVisible(btHelpPop.hidden);
+      });
+
+      document.addEventListener("click", function(event) {
+        if (!btHelpPop.hidden && !btHelpPop.contains(event.target) && event.target !== btHelpBtn) {
+          setHelpVisible(false);
+        }
+      });
+
+      loadDevices();
+      refreshStatus();
+      setInterval(refreshStatus, 700);
+    </script>
+  </body>
+</html>
