@@ -46,6 +46,7 @@ ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
 long event_id = 0;
 #define EVENTS_QUEUE_MAX_LENGTH 128
+#define DEVICE_LOG_DEDUP_WINDOW_MS 40
 LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 
@@ -61,6 +62,141 @@ api_response* apiResponse = NULL;
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 extern volatile unsigned char uart_rx_data_len;
 extern bool uart_rx_overflow;
+char check_crc(char* data, uint8_t size);
+
+typedef struct {
+  bool valid;
+  uint8_t src;
+  uint8_t dst;
+  uint8_t command;
+  uint8_t size;
+  uint8_t dataCrc;
+  unsigned long atMs;
+} device_log_fingerprint;
+
+device_log_fingerprint lastDeviceLog = {};
+
+bool isDuplicateDeviceEvent(clunet_packet* packet){
+  if (!packet){
+    return false;
+  }
+
+  uint8_t dataCrc = packet->size ? static_cast<uint8_t>(check_crc(packet->data, packet->size)) : 0;
+  unsigned long now = millis();
+  bool duplicate = lastDeviceLog.valid &&
+    lastDeviceLog.src == packet->src &&
+    lastDeviceLog.dst == packet->dst &&
+    lastDeviceLog.command == packet->command &&
+    lastDeviceLog.size == packet->size &&
+    lastDeviceLog.dataCrc == dataCrc &&
+    (now - lastDeviceLog.atMs) <= DEVICE_LOG_DEDUP_WINDOW_MS;
+
+  lastDeviceLog.valid = true;
+  lastDeviceLog.src = packet->src;
+  lastDeviceLog.dst = packet->dst;
+  lastDeviceLog.command = packet->command;
+  lastDeviceLog.size = packet->size;
+  lastDeviceLog.dataCrc = dataCrc;
+  lastDeviceLog.atMs = now;
+
+  return duplicate;
+}
+
+void pushDeviceEvent(clunet_packet* packet){
+  if (!packet || isDuplicateDeviceEvent(packet)){
+    return;
+  }
+
+  timeval tv;
+  gettimeofday(&tv, nullptr);
+
+  ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
+  if (!tp){
+    return;
+  }
+  packet->copy(&tp->packet);
+
+  tp->timestamp_sec = (uint32_t)tv.tv_sec;
+  tp->timestamp_ms = (uint16_t)(tv.tv_usec / 1000UL);
+
+  while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
+    eventsQueue.remove(eventsQueue.front());
+  }
+  eventsQueue.add(tp);
+}
+
+uint8_t buildTimeInfoPayload(char* out){
+  time_t t = time(nullptr);
+  if (!t){
+    return 0;
+  }
+
+  struct tm timeinfo;
+  localtime_r(&t, &timeinfo);
+  if (timeinfo.tm_year <= 100){
+    return 0;
+  }
+
+  out[0] = static_cast<char>(timeinfo.tm_year + 1900 - 2000);
+  out[1] = static_cast<char>(timeinfo.tm_mon + 1);
+  out[2] = static_cast<char>(timeinfo.tm_mday);
+  out[3] = static_cast<char>(timeinfo.tm_hour);
+  out[4] = static_cast<char>(timeinfo.tm_min);
+  out[5] = static_cast<char>(timeinfo.tm_sec);
+  out[6] = static_cast<char>(timeinfo.tm_wday == 0 ? 7 : timeinfo.tm_wday);
+  return 7;
+}
+
+void pushLocalAutoResponseEvent(clunet_packet* request){
+  if (!request || request->src == CLUNET_ID){
+    return;
+  }
+  if (request->dst != CLUNET_ID && request->dst != CLUNET_ADDRESS_BROADCAST){
+    return;
+  }
+
+  uint8_t responseCommand = 0;
+  char payload[CLUNET_PACKET_DATA_SIZE];
+  uint8_t payloadSize = 0;
+
+  switch (request->command){
+    case CLUNET_COMMAND_DISCOVERY:
+      responseCommand = CLUNET_COMMAND_DISCOVERY_RESPONSE;
+      payloadSize = static_cast<uint8_t>(strlen(CLUNET_DEVICE));
+      if (payloadSize){
+        memcpy(payload, CLUNET_DEVICE, payloadSize);
+      }
+      break;
+    case CLUNET_COMMAND_PING:
+      responseCommand = CLUNET_COMMAND_PING_REPLY;
+      payloadSize = request->size;
+      if (payloadSize){
+        memcpy(payload, request->data, payloadSize);
+      }
+      break;
+    case CLUNET_COMMAND_TIME:
+      responseCommand = CLUNET_COMMAND_TIME_INFO;
+      payloadSize = buildTimeInfoPayload(payload);
+      break;
+    default:
+      return;
+  }
+
+  clunet_packet* packet = reinterpret_cast<clunet_packet*>(new char[sizeof(clunet_packet) + payloadSize]);
+  if (!packet){
+    return;
+  }
+  packet->src = CLUNET_ID;
+  packet->dst = request->src;
+  packet->command = responseCommand;
+  packet->size = payloadSize;
+  if (payloadSize){
+    memcpy(packet->data, payload, payloadSize);
+  }
+
+  pushDeviceEvent(packet);
+  delete[] reinterpret_cast<char*>(packet);
+}
 
 uint8_t uart_can_send(uint8_t length){
   return Serial.availableForWrite() >= length + 5;
@@ -94,6 +230,38 @@ uint8_t uart_send_message(char code, char* data, uint8_t length){
 
 uint8_t uart_send_message(clunet_packet* packet){
   return uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, packet->len());
+}
+
+void mirrorLocalPacketToUart(uint8_t address, uint8_t command, char* data, uint8_t size){
+  clunet_packet* packet = reinterpret_cast<clunet_packet*>(new char[sizeof(clunet_packet) + size]);
+  if (!packet){
+    return;
+  }
+
+  packet->src = CLUNET_ID;
+  packet->dst = address;
+  packet->command = command;
+  packet->size = size;
+  if (size){
+    memcpy(packet->data, data, size);
+  }
+
+  // Log bridge-origin commands from UI/API as regular events in the table.
+  pushDeviceEvent(packet);
+
+  if (CLUNET_MULTICAST_DEVICE(packet->src) && FlashFirmware::shouldForwardMulticastToUart(packet)){
+    uartQueue.add(packet);
+  } else {
+    delete[] reinterpret_cast<char*>(packet);
+  }
+}
+
+size_t clunetSendMirrored(uint8_t address, uint8_t command, char* data, uint8_t size){
+  size_t sent = clunet.send(address, command, data, size);
+  if (sent){
+    mirrorLocalPacketToUart(address, command, data, size);
+  }
+  return sent;
 }
 
 
@@ -156,7 +324,7 @@ void api_dimmer_400(AsyncWebServerRequest* request){
 
 void _api_dimmer(int address, int channel_id, int value){
     char data[] = {(char)channel_id, (char)map(value, 0, 100, 0, 255)};
-    clunet.send(address, CLUNET_COMMAND_DIMMER, data, 2);
+    clunetSendMirrored(address, CLUNET_COMMAND_DIMMER, data, 2);
 }
 
 void api_dimmer(AsyncWebServerRequest* request){
@@ -181,7 +349,7 @@ void api_switch_400(AsyncWebServerRequest* request){
 
 void _api_switch(int address, int channel_id, int value){
     char data[] = {(char)value, (char)channel_id};
-    clunet.send(address, CLUNET_COMMAND_SWITCH, data, 2);
+    clunetSendMirrored(address, CLUNET_COMMAND_SWITCH, data, 2);
 }
 
 void api_switch(AsyncWebServerRequest* request){
@@ -206,7 +374,7 @@ void api_fan_400(AsyncWebServerRequest* request){
 
 void _api_fan(int address, int value){
     char data = value ? 4 : 3;
-    clunet.send(address, CLUNET_COMMAND_FAN, &data, 1);
+    clunetSendMirrored(address, CLUNET_COMMAND_FAN, &data, 1);
 }
 
 void api_fan(AsyncWebServerRequest* request){
@@ -230,7 +398,7 @@ void api_door_400(AsyncWebServerRequest* request){
 }
 
 void _api_door(int address, int value){
-    clunet.send(address, CLUNET_COMMAND_DOOR, (char*)&value, 1);
+    clunetSendMirrored(address, CLUNET_COMMAND_DOOR, (char*)&value, 1);
 }
 
 void api_door(AsyncWebServerRequest* request){
@@ -324,28 +492,14 @@ void setup() {
 
   if (clunet.connect()){
     clunet.onPacketSniff([](clunet_packet* packet){
-      
-      timeval tv;
-      gettimeofday(&tv, nullptr);
-      
-      if (CLUNET_MULTICAST_DEVICE(packet->src) && FlashFirmware::shouldForwardMulticastToUart(packet)){
+      if (packet->src != CLUNET_ID &&
+          CLUNET_MULTICAST_DEVICE(packet->src) &&
+          FlashFirmware::shouldForwardMulticastToUart(packet)){
         uartQueue.add(packet->copy());
       }
 
-      if (!FlashFirmware::isTrafficMuted()){
-        ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
-        if (tp){
-          packet->copy(&tp->packet);
-          
-          tp->timestamp_sec = (uint32_t)tv.tv_sec;
-          tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
-
-          while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
-            eventsQueue.remove(eventsQueue.front());
-          }
-          eventsQueue.add(tp);
-        }
-      }
+      pushDeviceEvent(packet);
+      pushLocalAutoResponseEvent(packet);
     });
     
     clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
@@ -397,7 +551,7 @@ void setup() {
         String hexData = request->getParam("d")->value();
         dataLen = hexStringToCharArray(data, (char*)hexData.c_str(), hexData.length());
       }
-      clunet.send(address, command, data, dataLen);
+      clunetSendMirrored(address, command, data, dataLen);
       request->send(200, "text/plain", "OK");
   });
 
@@ -518,6 +672,8 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
              multicastQueue.add(packet->copy());
            }
         }
+        pushDeviceEvent(packet);
+        pushLocalAutoResponseEvent(packet);
       }
       break;
     case UART_MESSAGE_CODE_FIRMWARE:
@@ -735,11 +891,12 @@ void loop() {
     }
   }
   
-  if (!FlashFirmware::isTrafficMuted() && !eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
+  if (!eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
     DynamicJsonDocument doc(4196);
+    JsonArray batch = doc.to<JsonArray>();
     while (!eventsQueue.isEmpty()){
       ts_clunet_packet* tp = eventsQueue.front();
-      fillMessageJsonObject(doc.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
+      fillMessageJsonObject(batch.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
       eventsQueue.remove(tp);
     }
     
@@ -768,6 +925,7 @@ void loop() {
         }, ar->responseTimeout);
         
         if (apiResponse->requestId){
+          mirrorLocalPacketToUart(ar->address, ar->command, ar->data, ar->size);
           apiResponse->webRequest->onDisconnect([](){
             if (apiResponse != NULL){
               apiResponse->webRequest = NULL;
