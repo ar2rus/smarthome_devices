@@ -46,4 +46,11 @@ static const char* DS18B20_DEVICES_LOCATIONS[ONE_WIRE_NUM_DEVICES] = {
 
 static const uint8_t RELAY_PIN[RELAY_NUM] = {13, 12, 14, 16};
 
+static const uint8_t SHIFT_REGISTER_DATA_PIN = 1;
+static const uint8_t SHIFT_REGISTER_LATCH_PIN = 3;
+static const uint8_t SHIFT_REGISTER_CLOCK_PIN = 5;
+
+static const uint8_t SHIFT_REGISTER_WIFI_LED_BIT = 0;
+static const uint8_t SHIFT_REGISTER_CHANNEL_LED_BITS[RELAY_NUM] = {1, 2, 3, 4};
+
 #endif

@@ -60,6 +60,10 @@ void onMqttMessage(
   size_t total
 );
 void publishMqttStartMessages();
+void applyShiftRegisterState();
+void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on);
+void updateStatusLeds(unsigned long nowMs);
+void beginWifiConnection(unsigned long nowMs);
 
 void applyOneWireEnable(bool enabled){
   if (oneWirePowerEnabled != enabled) {
@@ -104,6 +108,7 @@ void relay_state(int index, bool _on){
   if (relay_states[index] != _on){
      relay_states[index] = _on;
      apply_relay_state(index);
+     updateStatusLeds(millis());
   }
 }
 
@@ -125,6 +130,7 @@ bool littleFsAvailable = false;
 AsyncMqttClient mqttClient;
 char mqttIncomingPayloadBuffer[256];
 bool mqttWasConnected = false;
+uint8_t shiftRegisterState = 0xFF;
 
 static const char* NTP_SERVER_1 = "pool.ntp.org";
 static const char* NTP_SERVER_2 = "time.nist.gov";
@@ -134,9 +140,12 @@ static const char* TIME_SETTINGS_FILE = "/time.json";
 static const unsigned long ONE_WIRE_WATCHDOG_RESET_OFF_MS = 30UL * 1000UL;
 static const unsigned long ONE_WIRE_WATCHDOG_GRACE_MS = 2 * ONE_WIRE_UPDATE_PERIOD * 1000UL;
 
-static const unsigned long MQTT_RECONNECT_PERIOD_MS = 5000;
+static const unsigned long MQTT_RECONNECT_PERIOD_MS = 5000UL;
+static const unsigned long WIFI_RECONNECT_PERIOD_MS = 5000UL;
+static const unsigned long WIFI_LED_BLINK_PERIOD_MS = 500UL;
 
 unsigned long lastMqttReconnect = 0;
+unsigned long lastWifiReconnect = 0;
 
 OneWireWatchdog oneWireWatchdog(
   ONE_WIRE_WATCHDOG_GRACE_MS,
@@ -147,6 +156,46 @@ OneWireWatchdog oneWireWatchdog(
 );
 
 String currentTimeZoneId = DEFAULT_TIMEZONE_ID;
+
+void applyShiftRegisterState() {
+  digitalWrite(SHIFT_REGISTER_LATCH_PIN, LOW);
+  shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, MSBFIRST, shiftRegisterState);
+  digitalWrite(SHIFT_REGISTER_LATCH_PIN, HIGH);
+}
+
+void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on) {
+  if (value == nullptr) {
+    return;
+  }
+
+  if (on) {
+    *value &= static_cast<uint8_t>(~(1U << bitIndex));
+  } else {
+    *value |= static_cast<uint8_t>(1U << bitIndex);
+  }
+}
+
+void updateStatusLeds(unsigned long nowMs) {
+  bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  bool wifiLedOn = wifiConnected || (((nowMs / WIFI_LED_BLINK_PERIOD_MS) % 2U) == 0U);
+
+  uint8_t nextState = 0xFF;
+  setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_WIFI_LED_BIT, wifiLedOn);
+  for (uint8_t i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
+    setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_THERMOSTAT_LED_BITS[i], relay_states[THERMOSTAT_CHANNELS_CONFIG[i].relayPin]);
+  }
+
+  if (nextState != shiftRegisterState) {
+    shiftRegisterState = nextState;
+    applyShiftRegisterState();
+  }
+}
+
+void beginWifiConnection(unsigned long nowMs) {
+  WiFi.config(ip, gateway, subnet, dnsAddr);
+  WiFi.begin(ssid, pass);
+  lastWifiReconnect = nowMs;
+}
 
 String formatDeviceId(const uint8_t* address) {
   char buffer[17];
@@ -642,7 +691,7 @@ void loadThermostatSettingsFromFile() {
   if (LittleFS.exists("/settings.json")) {
     File settingsFile = LittleFS.open("/settings.json", "r");
     if (settingsFile) {
-      Serial.println("Loading thermostat settings from file");
+      // Serial.println("Loading thermostat settings from file");
       
       DynamicJsonDocument doc(2048);
       DeserializationError error = deserializeJson(doc, settingsFile);
@@ -672,9 +721,9 @@ void loadThermostatSettingsFromFile() {
           }
         }
         
-        Serial.println("Thermostat settings loaded successfully");
+        // Serial.println("Thermostat settings loaded successfully");
       } else {
-        Serial.println("Failed to parse settings file");
+        // Serial.println("Failed to parse settings file");
       }
       
       settingsFile.close();
@@ -715,31 +764,41 @@ void saveThermostatSettingsFromFile() {
   if (settingsFile) {
     serializeJson(doc, settingsFile);
     settingsFile.close();
-    Serial.println("Thermostat settings saved to file");
+    // Serial.println("Thermostat settings saved to file");
   } else {
-    Serial.println("Failed to create settings file");
+    // Serial.println("Failed to create settings file");
   }
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("Booting");
+  // Serial.begin(115200);
+  // Serial.println("Booting");
+
+  pinMode(SHIFT_REGISTER_DATA_PIN, OUTPUT);
+  pinMode(SHIFT_REGISTER_LATCH_PIN, OUTPUT);
+  pinMode(SHIFT_REGISTER_CLOCK_PIN, OUTPUT);
+  digitalWrite(SHIFT_REGISTER_DATA_PIN, LOW);
+  digitalWrite(SHIFT_REGISTER_CLOCK_PIN, LOW);
+  digitalWrite(SHIFT_REGISTER_LATCH_PIN, HIGH);
+  applyShiftRegisterState();
 
   // Инициализируем выходы для реле
   for (int i=0; i<RELAY_NUM; i++){
+    relay_states[i] = false;
     pinMode(RELAY_PIN[i], OUTPUT);
     apply_relay_state(i);
   }
+  updateStatusLeds(millis());
 
   // Инициализируем файловую систему LittleFS
   littleFsAvailable = LittleFS.begin();
   if (!littleFsAvailable) {
-    Serial.println("Failed to mount LittleFS");
+    // Serial.println("Failed to mount LittleFS");
     
     // Даже если не получилось загрузить LittleFS, инициализируем с дефолтными настройками
     loadThermostatSettingsFromConfig();
   } else {
-    Serial.println("LittleFS mounted successfully");
+    // Serial.println("LittleFS mounted successfully");
     // Загружаем настройки из файла
     loadThermostatSettingsFromFile();
   }
@@ -782,21 +841,16 @@ void setup() {
     });
   }
 
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  
-  WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet, dnsAddr);
-
-  //Wifi connection
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(1000);
-    ESP.restart();
-  }
+  WiFi.setAutoReconnect(true);
+  beginWifiConnection(millis());
+  updateStatusLeds(millis());
 
   ArduinoOTA.setHostname("relay-controller");
   
   ArduinoOTA.onStart([]() {
-    Serial.println("ArduinoOTA start update");
+    // Serial.println("ArduinoOTA start update");
   });
 
   ArduinoOTA.begin();
@@ -1409,8 +1463,14 @@ int prev_n = -1;
 
 void loop() {
   unsigned long m = millis();
+  wl_status_t wifiStatus = WiFi.status();
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (wifiStatus != WL_CONNECTED && (m - lastWifiReconnect) >= WIFI_RECONNECT_PERIOD_MS) {
+    beginWifiConnection(m);
+    wifiStatus = WiFi.status();
+  }
+
+  if (wifiStatus == WL_CONNECTED) {
     if (!mqttClient.connected()) {
       if (m - lastMqttReconnect >= MQTT_RECONNECT_PERIOD_MS) {
         lastMqttReconnect = m;
@@ -1470,6 +1530,7 @@ void loop() {
   }
 
   inputs.handle();
+  updateStatusLeds(m);
   
   ArduinoOTA.handle();
   yield();
