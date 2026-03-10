@@ -57,6 +57,8 @@ struct TemperatureCacheEntry {
 };
 
 static const unsigned long MQTT_RECONNECT_PERIOD_MS = 5000UL;
+static const unsigned long WIFI_RECONNECT_PERIOD_MS = 5000UL;
+static const unsigned long WIFI_LED_BLINK_PERIOD_MS = 500UL;
 static const char* CONFIG_FILE_PATH = "/heating-config.json";
 static const unsigned long CHANNEL_SOURCE_MAX_AGE_MS = 30UL * 60UL * 1000UL;
 static const size_t CONFIG_JSON_CAPACITY = 16384;
@@ -84,9 +86,11 @@ char channelReturnSensorStorage[RELAY_NUM][17];
 char channelRoomSensorStorage[RELAY_NUM][MAX_ROOM_GROUP_SIZE][17];
 
 unsigned long lastMqttReconnect = 0;
+unsigned long lastWifiReconnect = 0;
 bool mqttWasConnected = false;
 int prev_n = -1;
 bool littleFsReady = false;
+uint8_t shiftRegisterState = 0xFF;
 
 AsyncMqttClient mqttClient;
 char mqttIncomingPayloadBuffer[2048];
@@ -105,6 +109,46 @@ IPAddress dnsAddr DEVICE_DNS_IP;
 
 AsyncWebServer server(80);
 
+void applyShiftRegisterState() {
+  digitalWrite(SHIFT_REGISTER_LATCH_PIN, LOW);
+  shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, MSBFIRST, shiftRegisterState);
+  digitalWrite(SHIFT_REGISTER_LATCH_PIN, HIGH);
+}
+
+void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on) {
+  if (value == nullptr) {
+    return;
+  }
+
+  if (on) {
+    *value &= static_cast<uint8_t>(~(1U << bitIndex));
+  } else {
+    *value |= static_cast<uint8_t>(1U << bitIndex);
+  }
+}
+
+void updateStatusLeds(unsigned long nowMs) {
+  bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  bool wifiLedOn = wifiConnected || (((nowMs / WIFI_LED_BLINK_PERIOD_MS) % 2U) == 0U);
+
+  uint8_t nextState = 0xFF;
+  setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_WIFI_LED_BIT, wifiLedOn);
+  for (uint8_t i = 0; i < RELAY_NUM; i++) {
+    setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_CHANNEL_LED_BITS[i], relay_states[i]);
+  }
+
+  if (nextState != shiftRegisterState) {
+    shiftRegisterState = nextState;
+    applyShiftRegisterState();
+  }
+}
+
+void beginWifiConnection(unsigned long nowMs) {
+  WiFi.config(ip, gateway, subnet, dnsAddr);
+  WiFi.begin(ssid, pass);
+  lastWifiReconnect = nowMs;
+}
+
 void apply_relay_state(int index) {
   digitalWrite(RELAY_PIN[index], relay_states[index] ? HIGH : LOW);
 }
@@ -113,6 +157,7 @@ void relay_state(int index, bool on) {
   if (relay_states[index] != on) {
     relay_states[index] = on;
     apply_relay_state(index);
+    updateStatusLeds(millis());
   }
 }
 
@@ -956,14 +1001,23 @@ void handleConfigChannelBody(AsyncWebServerRequest* request, uint8_t* data, size
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("Booting");
+  // Serial.begin(115200);
+  // Serial.println("Booting");
+
+  pinMode(SHIFT_REGISTER_DATA_PIN, OUTPUT);
+  pinMode(SHIFT_REGISTER_LATCH_PIN, OUTPUT);
+  pinMode(SHIFT_REGISTER_CLOCK_PIN, OUTPUT);
+  digitalWrite(SHIFT_REGISTER_DATA_PIN, LOW);
+  digitalWrite(SHIFT_REGISTER_CLOCK_PIN, LOW);
+  digitalWrite(SHIFT_REGISTER_LATCH_PIN, HIGH);
+  applyShiftRegisterState();
 
   for (int i = 0; i < RELAY_NUM; i++) {
     relay_states[i] = false;
     pinMode(RELAY_PIN[i], OUTPUT);
     apply_relay_state(i);
   }
+  updateStatusLeds(millis());
 
   for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
     DS18B20_values[i].temperature = 0.0f;
@@ -978,7 +1032,7 @@ void setup() {
 
   littleFsReady = LittleFS.begin();
   if (!littleFsReady) {
-    Serial.println("Failed to mount LittleFS");
+    // Serial.println("Failed to mount LittleFS");
   }
 
   initChannelConfigDefaults();
@@ -987,23 +1041,21 @@ void setup() {
     if (!LittleFS.exists(CONFIG_FILE_PATH)) {
       saveConfigToFs();
     } else {
-      Serial.println("Config file exists but failed to load; keep runtime defaults");
+      // Serial.println("Config file exists but failed to load; keep runtime defaults");
     }
   }
   applyAllChannelControllers(millis());
+  updateStatusLeds(millis());
 
   DS18B20.begin();
   DS18B20.setResolution(10);
   DS18B20.requestTemperatures();
 
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, pass);
-  WiFi.config(ip, gateway, subnet, dnsAddr);
-
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(1000);
-    ESP.restart();
-  }
+  WiFi.setAutoReconnect(true);
+  beginWifiConnection(millis());
+  updateStatusLeds(millis());
 
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setClientId(MQTT_CLIENT_ID);
@@ -1015,7 +1067,7 @@ void setup() {
 
   ArduinoOTA.setHostname("heating-controller");
   ArduinoOTA.onStart([]() {
-    Serial.println("ArduinoOTA start update");
+    // Serial.println("ArduinoOTA start update");
   });
   ArduinoOTA.begin();
 
@@ -1293,8 +1345,14 @@ void setup() {
 
 void loop() {
   unsigned long nowMs = millis();
+  wl_status_t wifiStatus = WiFi.status();
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (wifiStatus != WL_CONNECTED && (nowMs - lastWifiReconnect) >= WIFI_RECONNECT_PERIOD_MS) {
+    beginWifiConnection(nowMs);
+    wifiStatus = WiFi.status();
+  }
+
+  if (wifiStatus == WL_CONNECTED) {
     if (!mqttClient.connected()) {
       if (nowMs - lastMqttReconnect >= MQTT_RECONNECT_PERIOD_MS) {
         lastMqttReconnect = nowMs;
@@ -1339,6 +1397,7 @@ void loop() {
     }
   }
 
+  updateStatusLeds(nowMs);
   ArduinoOTA.handle();
   yield();
 }
