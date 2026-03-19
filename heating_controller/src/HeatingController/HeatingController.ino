@@ -59,6 +59,7 @@ struct TemperatureCacheEntry {
 static const unsigned long MQTT_RECONNECT_PERIOD_MS = 5000UL;
 static const unsigned long WIFI_RECONNECT_PERIOD_MS = 5000UL;
 static const unsigned long WIFI_LED_BLINK_PERIOD_MS = 500UL;
+static const unsigned long SHIFT_REGISTER_REFRESH_PERIOD_MS = 1000UL;
 static const char* CONFIG_FILE_PATH = "/heating-config.json";
 static const unsigned long CHANNEL_SOURCE_MAX_AGE_MS = 30UL * 60UL * 1000UL;
 static const size_t CONFIG_JSON_CAPACITY = 16384;
@@ -91,6 +92,7 @@ bool mqttWasConnected = false;
 int prev_n = -1;
 bool littleFsReady = false;
 uint8_t shiftRegisterState = 0xFF;
+unsigned long lastShiftRegisterRefreshMs = 0;
 
 AsyncMqttClient mqttClient;
 char mqttIncomingPayloadBuffer[2048];
@@ -113,6 +115,7 @@ void applyShiftRegisterState() {
   digitalWrite(SHIFT_REGISTER_LATCH_PIN, LOW);
   shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, MSBFIRST, shiftRegisterState);
   digitalWrite(SHIFT_REGISTER_LATCH_PIN, HIGH);
+  lastShiftRegisterRefreshMs = millis();
 }
 
 void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on) {
@@ -137,8 +140,12 @@ void updateStatusLeds(unsigned long nowMs) {
     setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_CHANNEL_LED_BITS[i], relay_states[i]);
   }
 
-  if (nextState != shiftRegisterState) {
+  bool stateChanged = nextState != shiftRegisterState;
+  if (stateChanged) {
     shiftRegisterState = nextState;
+  }
+
+  if (stateChanged || (nowMs - lastShiftRegisterRefreshMs) >= SHIFT_REGISTER_REFRESH_PERIOD_MS) {
     applyShiftRegisterState();
   }
 }
@@ -383,7 +390,7 @@ bool parseTemperaturePayload(
       if (nowTs > 0 && sourceTs > 0 && nowTs >= sourceTs) {
         unsigned long ageMs = static_cast<unsigned long>(nowTs - sourceTs) * 1000UL;
         unsigned long nowMs = millis();
-        updatedAtMs = (ageMs <= nowMs) ? (nowMs - ageMs) : 0;
+        updatedAtMs = nowMs - ageMs;
       }
     }
 

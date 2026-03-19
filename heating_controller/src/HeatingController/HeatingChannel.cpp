@@ -33,11 +33,12 @@ void FilteredTemperature::applyEma(float tauSec, unsigned long nowMs) {
     return;
   }
 
-  if (nowMs <= lastFilterMs) {
+  unsigned long dtMs = nowMs - lastFilterMs;
+  if (dtMs == 0) {
     return;
   }
 
-  float dtSec = (nowMs - lastFilterMs) / 1000.0f;
+  float dtSec = dtMs / 1000.0f;
   if (dtSec <= 0.0f) {
     return;
   }
@@ -52,9 +53,6 @@ void FilteredTemperature::applyEma(float tauSec, unsigned long nowMs) {
 
 bool FilteredTemperature::isActual(unsigned long nowMs, unsigned long maxAgeMs) const {
   if (!sourceValid || !hasFiltered) {
-    return false;
-  }
-  if (nowMs < updatedAtMs) {
     return false;
   }
   return (nowMs - updatedAtMs) <= maxAgeMs;
@@ -188,7 +186,7 @@ void HeatingChannel::pollInputs(unsigned long nowMs) {
     }
 
     bool actual = false;
-    if (found && nowMs >= updatedAtMs && (nowMs - updatedAtMs) <= sourceMaxAgeMs_) {
+    if (found && (nowMs - updatedAtMs) <= sourceMaxAgeMs_) {
       actual = true;
     }
 
