@@ -23,10 +23,18 @@ typedef struct{
 } ts_clunet_response;
 
 typedef struct api_request api_request;
+typedef struct api_request_state api_request_state;
+
+struct api_request_state{
+  AsyncWebServerRequest* webRequest;
+  bool disconnected;
+  uint8_t refs;
+};
 
 struct api_request{
   bool info;
   char infoId[64];
+  api_request_state* requestState;
   AsyncWebServerRequest* webRequest;
   uint8_t address;
   uint8_t command;  
@@ -41,6 +49,7 @@ struct api_request{
 typedef struct{
   int requestId;
   AsyncWebServerRequest* webRequest;
+  api_request_state* requestState;
   bool info;
   char infoId[64];
   uint8_t responseFilterCommand;

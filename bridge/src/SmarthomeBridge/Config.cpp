@@ -8,8 +8,10 @@
 namespace BridgeConfig {
 
 static constexpr uint32_t SETTINGS_MAGIC = 0x53424857UL;
-static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 30000UL;
+static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 60000UL;
 static constexpr unsigned long WIFI_STA_RECONNECT_DELAY_MS = 1500UL;
+static constexpr unsigned long WIFI_AP_RESTART_TIMEOUT_MS = 15UL * 60UL * 1000UL;
+static constexpr unsigned long CONFIG_REBOOT_DELAY_MS = 1500UL;
 static constexpr const char* WIFI_HOSTNAME = "smarthome-bridge";
 static constexpr const char* WIFI_AP_SSID_PREFIX = "SmarthomeBridge";
 
@@ -88,6 +90,8 @@ static WifiState wifiState = WIFI_STATE_IDLE;
 static DNSServer dnsServer;
 static unsigned long wifiConnectStartedAt = 0;
 static unsigned long wifiStaReconnectAt = 0;
+static unsigned long apModeStartedAt = 0;
+static unsigned long rebootScheduledAt = 0;
 static char accessPointSsid[32] = {};
 
 static bool parseIpAddress(const char* value, IPAddress& out){
@@ -299,6 +303,8 @@ static void startAccessPoint(){
   wifiState = WIFI_STATE_AP_MODE;
   wifiConnectStartedAt = 0;
   wifiStaReconnectAt = 0;
+  apModeStartedAt = millis();
+  rebootScheduledAt = 0;
 
   Serial1.print("AP mode: ");
   Serial1.println(accessPointSsid);
@@ -332,6 +338,8 @@ static void startStationConnection(){
   wifiState = WIFI_STATE_CONNECTING;
   wifiConnectStartedAt = millis();
   wifiStaReconnectAt = 0;
+  apModeStartedAt = 0;
+  rebootScheduledAt = 0;
 
   Serial1.print("Connecting WiFi SSID: ");
   Serial1.println(settings.ssid);
@@ -345,6 +353,8 @@ static void handleStationConnected(){
   wifiState = WIFI_STATE_STA_CONNECTED;
   wifiConnectStartedAt = 0;
   wifiStaReconnectAt = 0;
+  apModeStartedAt = 0;
+  rebootScheduledAt = 0;
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   Serial1.print("WiFi connected: ");
@@ -482,6 +492,11 @@ void init(){
 }
 
 void loop(){
+  if (rebootScheduledAt && static_cast<long>(millis() - rebootScheduledAt) >= 0){
+    ESP.restart();
+    return;
+  }
+
   wl_status_t status = WiFi.status();
   switch (wifiState){
     case WIFI_STATE_CONNECTING:
@@ -501,6 +516,15 @@ void loop(){
       break;
     case WIFI_STATE_AP_MODE:
       dnsServer.processNextRequest();
+      if (
+        hasSavedWiFiSettings() &&
+        rebootScheduledAt == 0 &&
+        apModeStartedAt != 0 &&
+        (millis() - apModeStartedAt) >= WIFI_AP_RESTART_TIMEOUT_MS
+      ){
+        rebootScheduledAt = millis() + CONFIG_REBOOT_DELAY_MS;
+        Serial1.println("AP timeout, rebooting to retry STA");
+      }
       break;
     case WIFI_STATE_IDLE:
     default:
@@ -531,6 +555,11 @@ const char* timezone(){
     return nullptr;
   }
   return option->tz;
+}
+
+void forceApMode(){
+  Serial1.println("Forced AP mode");
+  startAccessPoint();
 }
 
 } // namespace BridgeConfig

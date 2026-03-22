@@ -14,6 +14,7 @@ bool isApMode();
 bool isStaConnected();
 const char* timezone();
 void sendPage(AsyncWebServerRequest* request);
+void forceApMode();
 
 }
 

@@ -464,6 +464,8 @@
       var statusNode = document.getElementById("status");
       var statusText = document.getElementById("status-text");
       var reqOutput = document.getElementById("request-output");
+      var discoveryButton = document.getElementById("discovery-btn");
+      var discoveryPending = false;
 
       function escapeHtml(value) {
         return String(value)
@@ -801,6 +803,13 @@
       }
 
       function sendDiscovery() {
+        if (discoveryPending) {
+          reqOutput.textContent = "Discovery is already running...";
+          return;
+        }
+
+        discoveryPending = true;
+        discoveryButton.disabled = true;
         reqOutput.textContent = "Sending /discovery...";
         fetch("/discovery")
           .then(function(response) {
@@ -820,6 +829,10 @@
           })
           .catch(function(error) {
             reqOutput.textContent = "Discovery error: " + error.message;
+          })
+          .finally(function() {
+            discoveryPending = false;
+            discoveryButton.disabled = false;
           });
       }
 
@@ -832,7 +845,7 @@
         renderRows();
       });
       document.getElementById("request-send").addEventListener("click", sendRequest);
-      document.getElementById("discovery-btn").addEventListener("click", sendDiscovery);
+      discoveryButton.addEventListener("click", sendDiscovery);
       document.querySelectorAll("a.top-link").forEach(function(node) {
         node.addEventListener("click", function() {
           pageNavigating = true;

@@ -13,6 +13,7 @@
 
 #include <LittleFS.h>
 #include <SPIFFSEditor.h>
+#include <ESPInputs.h>
 
 #include <ClunetMulticast.h>
 #include <MessageDecoder.h>
@@ -32,6 +33,7 @@
 
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
+Inputs inputs;
 
 ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
@@ -49,12 +51,52 @@ long event_id = 0;
 #define DEVICE_LOG_DEDUP_WINDOW_MS 40
 #define UART_QUEUE_MAX_LENGTH 64
 #define MULTICAST_QUEUE_MAX_LENGTH 64
+#define AP_FORCE_BUTTON_PIN 0
+#define AP_FORCE_BUTTON_HOLD_MS 5000UL
 LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 
 LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ free(m); });
 
-LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>([](api_request *r){ free(r); });
+void retainApiRequestState(api_request_state* state){
+  if (state){
+    state->refs++;
+  }
+}
+
+void releaseApiRequestState(api_request_state* state){
+  if (!state){
+    return;
+  }
+  if (state->refs){
+    state->refs--;
+  }
+  if (!state->refs){
+    free(state);
+  }
+}
+
+void freeApiRequest(api_request* request){
+  if (!request){
+    return;
+  }
+  if (request->requestState){
+    releaseApiRequestState(request->requestState);
+  }
+  free(request);
+}
+
+void freeApiResponse(api_response* response){
+  if (!response){
+    return;
+  }
+  if (response->requestState){
+    releaseApiRequestState(response->requestState);
+  }
+  free(response);
+}
+
+LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>(freeApiRequest);
 api_response* apiResponse = NULL;
 unsigned long eventsHeartbeatAt = 0;
 unsigned long uartPacketsReceivedCount = 0;
@@ -64,6 +106,13 @@ unsigned long multicastDroppedForMulticastDstCount = 0;
 unsigned long multicastSentFromUartCount = 0;
 unsigned long lastUartPacketAt = 0;
 unsigned long lastMulticastPacketAt = 0;
+unsigned long uartRxBytesReceivedCount = 0;
+unsigned long uartRxOverflowCount = 0;
+unsigned long uartRxInvalidLengthCount = 0;
+unsigned long uartRxCrcErrorCount = 0;
+unsigned long uartRxNoiseTrimmedBytesCount = 0;
+unsigned long lastUartByteAt = 0;
+uint8_t lastUartInvalidLength = 0;
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
@@ -73,6 +122,7 @@ const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 extern volatile unsigned char uart_rx_data_len;
 extern bool uart_rx_overflow;
 char check_crc(char* data, uint8_t size);
+void printUartRxBufferedHex(Print& out);
 
 typedef struct {
   bool valid;
@@ -302,11 +352,24 @@ size_t clunetSendMirrored(uint8_t address, uint8_t command, char* data, uint8_t 
 void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
                 int responseFilterCommand, long responseTimeout, bool _infoRequest, String _infoRequestId){
     webRequest->client()->setRxTimeout(5);
-    api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
-    if (!ar){
+    api_request_state* requestState = (api_request_state*)malloc(sizeof(api_request_state));
+    if (!requestState){
       webRequest->send(503, "text/plain", "busy");
       return;
     }
+
+    api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
+    if (!ar){
+      free(requestState);
+      webRequest->send(503, "text/plain", "busy");
+      return;
+    }
+    requestState->webRequest = webRequest;
+    requestState->disconnected = false;
+    requestState->refs = 1;
+    retainApiRequestState(requestState);
+
+    ar->requestState = requestState;
     ar->webRequest = webRequest;
     ar->info = _infoRequest;
     if (_infoRequest){
@@ -320,9 +383,10 @@ void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t comman
     memcpy(ar->data, data, size);
     apiRequestsQueue.add(ar);
 
-    ar->webRequest->onDisconnect([&ar](){
-      if (ar != NULL){
-        ar->webRequest = NULL;
+    webRequest->onDisconnect([requestState](){
+      if (requestState){
+        requestState->disconnected = true;
+        releaseApiRequestState(requestState);
       }
     });
 }
@@ -511,7 +575,9 @@ void setupClunetCallbacks(){
 
   clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
     if (apiResponse != NULL /**&& apiResponse->requestId == requestId**/){
-      if (apiResponse->webRequest != NULL){
+      if (apiResponse->webRequest != NULL &&
+          apiResponse->requestState != NULL &&
+          !apiResponse->requestState->disconnected){
         DynamicJsonDocument doc(4196);
         JsonObject root = doc.to<JsonObject>();
         root["id"] = requestId;
@@ -536,7 +602,7 @@ void setupClunetCallbacks(){
         serializeJson(doc, json);
         apiResponse->webRequest->send(200, "application/json", json);
       }
-      free(apiResponse);
+      freeApiResponse(apiResponse);
       apiResponse = NULL;
     }
   });
@@ -597,6 +663,10 @@ void setup() {
     }
   });
   BridgeConfig::init();
+  inputs.on(AP_FORCE_BUTTON_PIN, STATE_LOW, AP_FORCE_BUTTON_HOLD_MS, [](uint8_t state){
+    (void)state;
+    BridgeConfig::forceApMode();
+  });
 
   server.on("/command", HTTP_GET, [](AsyncWebServerRequest* request) {
        if (!request->hasParam("c")){
@@ -711,8 +781,12 @@ void setup() {
     response->print(multicastSentFromUartCount);
     response->print(F(",\"lastUartPacketAt\":"));
     response->print(lastUartPacketAt);
+    response->print(F(",\"lastUartByteAt\":"));
+    response->print(lastUartByteAt);
     response->print(F(",\"lastMulticastPacketAt\":"));
     response->print(lastMulticastPacketAt);
+    response->print(F(",\"uartRxBytesReceived\":"));
+    response->print(uartRxBytesReceivedCount);
     response->print(F(",\"uartQueueLength\":"));
     response->print(uartQueue.length());
     response->print(F(",\"multicastQueueLength\":"));
@@ -721,6 +795,19 @@ void setup() {
     response->print(uart_rx_data_len);
     response->print(F(",\"uartRxOverflow\":"));
     response->print(uart_rx_overflow ? F("true") : F("false"));
+    response->print(F(",\"uartRxOverflowCount\":"));
+    response->print(uartRxOverflowCount);
+    response->print(F(",\"uartRxInvalidLengthCount\":"));
+    response->print(uartRxInvalidLengthCount);
+    response->print(F(",\"lastUartInvalidLength\":"));
+    response->print(lastUartInvalidLength);
+    response->print(F(",\"uartRxCrcErrorCount\":"));
+    response->print(uartRxCrcErrorCount);
+    response->print(F(",\"uartRxNoiseTrimmedBytes\":"));
+    response->print(uartRxNoiseTrimmedBytesCount);
+    response->print(F(",\"uartRxBufferedHex\":\""));
+    printUartRxBufferedHex(*response);
+    response->print(F("\""));
     response->print(F(",\"eventsQueued\":"));
     response->print(eventsQueue.length());
     response->print(F(",\"apiRequestQueued\":"));
@@ -851,6 +938,7 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
       }
     }
     if (uart_rx_preambula_offset) {
+      uartRxNoiseTrimmedBytesCount += uart_rx_preambula_offset;
       analyze_uart_rx_trim(uart_rx_preambula_offset ); //обрезаем мусор до преамбулы
     }
 
@@ -858,6 +946,8 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
       char* uart_rx_message = (char*)(uart_rx_data + 2);
       uint8_t length = uart_rx_message[0];
       if (length < 3 || length > (UART_RX_BUF_LENGTH - 2)){
+        uartRxInvalidLengthCount++;
+        lastUartInvalidLength = length;
         //Serial1.println("invalid length");
         analyze_uart_rx_trim(2);  //пришел мусор, отрезаем преамбулу и надо пробовать искать преамбулу снова
         continue;
@@ -874,6 +964,7 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
           analyze_uart_rx_trim(length+2); //отрезаем прочитанное сообщение
           //Serial1.println("uart_rx_data_len: " + String(uart_rx_data_len));
         }else{
+          uartRxCrcErrorCount++;
           //Serial1.println("crc error");
           analyze_uart_rx_trim(2); 
         }
@@ -885,6 +976,33 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
       //Serial1.println("too short message yet (length<5)");
       break;
     }
+  }
+}
+
+void printUartRxBufferedHex(Print& out){
+  uint8_t sampleLength = uart_rx_data_len;
+  if (sampleLength > 24){
+    sampleLength = 24;
+  }
+
+  if (!sampleLength){
+    return;
+  }
+
+  char sample[24];
+  for (uint8_t i = 0; i < sampleLength; i++){
+    sample[i] = uart_rx_data[i];
+  }
+
+  char hex[24 * 2 + 1];
+  int hexLength = charArrayToHexString(hex, sample, sampleLength);
+  if (hexLength < 0){
+    return;
+  }
+  hex[hexLength] = '\0';
+  out.print(hex);
+  if (uart_rx_data_len > sampleLength){
+    out.print(F("..."));
   }
 }
 
@@ -993,6 +1111,8 @@ long uart_time = 0;
 void loop() {
   while (Serial.available() > 0) {
     char byte = Serial.read();
+    uartRxBytesReceivedCount++;
+    lastUartByteAt = millis();
     if (uart_rx_data_len < UART_RX_BUF_LENGTH) {
       uart_rx_data[uart_rx_data_len++] = byte;
     } else {
@@ -1001,12 +1121,14 @@ void loop() {
   }
 
   if (uart_rx_overflow) {
+    uartRxOverflowCount++;
     uart_rx_data_len = 0;
     uart_rx_overflow = false;
   }
 
   analyze_uart_rx(on_uart_message);
   FlashFirmware::process();
+  inputs.handle();
   BridgeConfig::loop();
 
   bool wifiStaConnected = BridgeConfig::isStaConnected();
@@ -1076,13 +1198,14 @@ void loop() {
   if (!FlashFirmware::isTrafficMuted() && apiResponse == NULL){
     while (!apiRequestsQueue.isEmpty()){
       api_request* ar = apiRequestsQueue.front();
-      if (ar->webRequest != NULL){
+      if (ar->requestState != NULL && !ar->requestState->disconnected && ar->webRequest != NULL){
         
         apiResponse = (api_response*)malloc(sizeof(api_response));
         if (apiResponse == NULL){
           break;
         }
         apiResponse->webRequest = ar->webRequest;
+        apiResponse->requestState = ar->requestState;
         apiResponse->info = ar->info;
         if (apiResponse->info){
           strcpy(apiResponse->infoId, ar->infoId);
@@ -1094,12 +1217,7 @@ void loop() {
         
         if (apiResponse->requestId){
           mirrorLocalPacketToUart(ar->address, ar->command, ar->data, ar->size);
-          apiResponse->webRequest->onDisconnect([](){
-            if (apiResponse != NULL){
-              apiResponse->webRequest = NULL;
-            }
-          });
-       
+          ar->requestState = NULL;
           apiRequestsQueue.remove(ar);
         }else{
           free(apiResponse);
