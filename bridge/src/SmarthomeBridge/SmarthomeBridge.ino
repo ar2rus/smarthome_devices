@@ -51,6 +51,9 @@ long event_id = 0;
 #define DEVICE_LOG_DEDUP_WINDOW_MS 40
 #define UART_QUEUE_MAX_LENGTH 64
 #define MULTICAST_QUEUE_MAX_LENGTH 64
+#define UART_MESSAGES_PER_LOOP_MAX 4
+#define MULTICAST_MESSAGES_PER_LOOP_MAX 4
+#define EVENTS_BATCH_MAX 8
 #define AP_FORCE_BUTTON_PIN 0
 #define AP_FORCE_BUTTON_HOLD_MS 5000UL
 LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
@@ -574,7 +577,7 @@ void setupClunetCallbacks(){
   });
 
   clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
-    if (apiResponse != NULL /**&& apiResponse->requestId == requestId**/){
+    if (apiResponse != NULL && apiResponse->requestId == requestId){
       if (apiResponse->webRequest != NULL &&
           apiResponse->requestState != NULL &&
           !apiResponse->requestState->disconnected){
@@ -1153,36 +1156,44 @@ void loop() {
     ensureClunetConnected();
   }
 
-  while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front())){
+  uint8_t uartProcessed = 0;
+  while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front()) && uartProcessed < UART_MESSAGES_PER_LOOP_MAX){
     long nt = millis();
-    if (nt - uart_time > DELAY_BETWEEN_UART_MESSAGES){
-     uart_time = nt;
-     clunet_packet* packet = uartQueue.front();
-     if (uart_send_message(packet)){
-       uartQueue.remove(packet);
-     }else{
-       break;
-     }
+    if ((nt - uart_time) < DELAY_BETWEEN_UART_MESSAGES){
+      break;
+    }
+
+    uart_time = nt;
+    clunet_packet* packet = uartQueue.front();
+    if (uart_send_message(packet)){
+      uartQueue.remove(packet);
+      uartProcessed++;
+    }else{
+      break;
     }
   }
 
-  while (!multicastQueue.isEmpty()){
+  uint8_t multicastProcessed = 0;
+  while (!multicastQueue.isEmpty() && multicastProcessed < MULTICAST_MESSAGES_PER_LOOP_MAX){
     clunet_packet* packet = multicastQueue.front();
     if (clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size)){
       multicastSentFromUartCount++;
       multicastQueue.remove(packet);
+      multicastProcessed++;
     }else{
       break;
     }
   }
   
-  if (!eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
+  if (!eventsQueue.isEmpty() && events.count() > 0 && events.avgPacketsWaiting()==0){
     DynamicJsonDocument doc(4196);
     JsonArray batch = doc.to<JsonArray>();
-    while (!eventsQueue.isEmpty()){
+    uint8_t eventsProcessed = 0;
+    while (!eventsQueue.isEmpty() && eventsProcessed < EVENTS_BATCH_MAX){
       ts_clunet_packet* tp = eventsQueue.front();
       fillMessageJsonObject(batch.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
       eventsQueue.remove(tp);
+      eventsProcessed++;
     }
     
     String json;
