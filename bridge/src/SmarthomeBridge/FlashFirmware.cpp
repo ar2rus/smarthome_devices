@@ -355,7 +355,7 @@ static void flashStartSession(uint8_t target, uint16_t responseTimeoutMs, uint16
   flashSession.stage = FLASH_STAGE_SEND_REBOOT;
   flashSession.target = target;
   flashSession.responseTimeoutMs = responseTimeoutMs ? responseTimeoutMs : FLASH_DEFAULT_RESPONSE_TIMEOUT;
-  flashSession.bootTimeoutMs = bootTimeoutMs;
+  flashSession.bootTimeoutMs = bootTimeoutMs ? bootTimeoutMs : FLASH_DEFAULT_BOOT_TIMEOUT;
   flashSession.firmwareLength = flashFirmwareLength;
   flashSession.startedAt = millis();
   flashSetStatus("sending reboot command");
@@ -668,12 +668,7 @@ void setupRoutes(AsyncWebServer& server){
 
   server.on("/flash/firmware", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (flashUpload.hasError){
-      AsyncResponseStream* response = beginFlashResponse(request);
-      response->setCode(400);
-      response->print(F("{\"ok\":false,\"error\":\""));
-      response->print(flashUpload.error);
-      response->print(F("\"}"));
-      request->send(response);
+      request->send(400, "application/json", String("{\"ok\":false,\"error\":\"") + flashUpload.error + "\"}");
       return;
     }
     if (!flashFirmwareReady){

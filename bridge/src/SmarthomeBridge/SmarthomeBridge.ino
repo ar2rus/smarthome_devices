@@ -7,13 +7,13 @@
 
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
+#include <TZ.h>
 
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
 #include <LittleFS.h>
 #include <SPIFFSEditor.h>
-#include <ESPInputs.h>
 
 #include <ClunetMulticast.h>
 #include <MessageDecoder.h>
@@ -24,98 +24,35 @@
 
 #include "SmarthomeBridge.h"
 #include "FlashFirmware.h"
-#include "Config.h"
+#include "Credentials.h"
 
 #ifdef DEFAULT_MAX_SSE_CLIENTS
   #undef DEFAULT_MAX_SSE_CLIENTS 
   #define DEFAULT_MAX_SSE_CLIENTS 10
 #endif
 
+const char *ssid = AP_SSID;
+const char *pass = AP_PASSWORD;
+
+IPAddress ip(192, 168, 3, 53);     //Node static IP
+IPAddress gateway(192, 168, 3, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dnsAddr(192, 168, 3, 1);
+
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
-Inputs inputs;
 
 ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
-bool clunetReady = false;
-bool clunetHandlersRegistered = false;
-bool otaReady = false;
-bool wifiStaConnectedPrev = false;
-unsigned long clunetConnectAttemptAt = 0;
-unsigned long clunetConnectedAt = 0;
-unsigned long clunetLastConnectFailedAt = 0;
-
 long event_id = 0;
 #define EVENTS_QUEUE_MAX_LENGTH 128
-#define EVENTS_HEARTBEAT_INTERVAL_MS 2000UL
-#define DEVICE_LOG_DEDUP_WINDOW_MS 40
-#define UART_QUEUE_MAX_LENGTH 64
-#define MULTICAST_QUEUE_MAX_LENGTH 64
-#define UART_MESSAGES_PER_LOOP_MAX 4
-#define MULTICAST_MESSAGES_PER_LOOP_MAX 4
-#define EVENTS_BATCH_MAX 8
-#define AP_FORCE_BUTTON_PIN 0
-#define AP_FORCE_BUTTON_HOLD_MS 5000UL
 LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
 
 LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ free(m); });
 
-void retainApiRequestState(api_request_state* state){
-  if (state){
-    state->refs++;
-  }
-}
-
-void releaseApiRequestState(api_request_state* state){
-  if (!state){
-    return;
-  }
-  if (state->refs){
-    state->refs--;
-  }
-  if (!state->refs){
-    free(state);
-  }
-}
-
-void freeApiRequest(api_request* request){
-  if (!request){
-    return;
-  }
-  if (request->requestState){
-    releaseApiRequestState(request->requestState);
-  }
-  free(request);
-}
-
-void freeApiResponse(api_response* response){
-  if (!response){
-    return;
-  }
-  if (response->requestState){
-    releaseApiRequestState(response->requestState);
-  }
-  free(response);
-}
-
-LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>(freeApiRequest);
+LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>([](api_request *r){ free(r); });
 api_response* apiResponse = NULL;
-unsigned long eventsHeartbeatAt = 0;
-unsigned long uartPacketsReceivedCount = 0;
-unsigned long multicastSniffPacketsCount = 0;
-unsigned long multicastForwardedToUartCount = 0;
-unsigned long multicastDroppedForMulticastDstCount = 0;
-unsigned long multicastSentFromUartCount = 0;
-unsigned long lastUartPacketAt = 0;
-unsigned long lastMulticastPacketAt = 0;
-unsigned long uartRxBytesReceivedCount = 0;
-unsigned long uartRxOverflowCount = 0;
-unsigned long uartRxInvalidLengthCount = 0;
-unsigned long uartRxCrcErrorCount = 0;
-unsigned long uartRxNoiseTrimmedBytesCount = 0;
-unsigned long lastUartByteAt = 0;
-uint8_t lastUartInvalidLength = 0;
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
@@ -124,166 +61,6 @@ uint8_t lastUartInvalidLength = 0;
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 extern volatile unsigned char uart_rx_data_len;
 extern bool uart_rx_overflow;
-char check_crc(char* data, uint8_t size);
-void printUartRxBufferedHex(Print& out);
-
-typedef struct {
-  bool valid;
-  uint8_t src;
-  uint8_t dst;
-  uint8_t command;
-  uint8_t size;
-  uint8_t dataCrc;
-  unsigned long atMs;
-} device_log_fingerprint;
-
-device_log_fingerprint lastDeviceLog = {};
-
-bool isDuplicateDeviceEvent(clunet_packet* packet){
-  if (!packet){
-    return false;
-  }
-
-  uint8_t dataCrc = packet->size ? static_cast<uint8_t>(check_crc(packet->data, packet->size)) : 0;
-  unsigned long now = millis();
-  bool duplicate = lastDeviceLog.valid &&
-    lastDeviceLog.src == packet->src &&
-    lastDeviceLog.dst == packet->dst &&
-    lastDeviceLog.command == packet->command &&
-    lastDeviceLog.size == packet->size &&
-    lastDeviceLog.dataCrc == dataCrc &&
-    (now - lastDeviceLog.atMs) <= DEVICE_LOG_DEDUP_WINDOW_MS;
-
-  lastDeviceLog.valid = true;
-  lastDeviceLog.src = packet->src;
-  lastDeviceLog.dst = packet->dst;
-  lastDeviceLog.command = packet->command;
-  lastDeviceLog.size = packet->size;
-  lastDeviceLog.dataCrc = dataCrc;
-  lastDeviceLog.atMs = now;
-
-  return duplicate;
-}
-
-void pushDeviceEvent(clunet_packet* packet){
-  if (!packet || isDuplicateDeviceEvent(packet)){
-    return;
-  }
-
-  timeval tv;
-  gettimeofday(&tv, nullptr);
-
-  ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
-  if (!tp){
-    return;
-  }
-  packet->copy(&tp->packet);
-
-  tp->timestamp_sec = (uint32_t)tv.tv_sec;
-  tp->timestamp_ms = (uint16_t)(tv.tv_usec / 1000UL);
-
-  while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
-    eventsQueue.remove(eventsQueue.front());
-  }
-  eventsQueue.add(tp);
-}
-
-void enqueuePacket(LinkedList<clunet_packet*>& queue, clunet_packet* packet, uint16_t maxLength){
-  if (!packet){
-    return;
-  }
-
-  while (queue.length() >= maxLength){
-    queue.remove(queue.front());
-  }
-  queue.add(packet);
-}
-
-bool shouldForwardSniffPacketToUart(clunet_packet* packet){
-  if (!packet){
-    return false;
-  }
-  if (packet->src == CLUNET_ID || !CLUNET_MULTICAST_DEVICE(packet->src)){
-    return false;
-  }
-  if (packet->dst != CLUNET_ADDRESS_BROADCAST && CLUNET_MULTICAST_DEVICE(packet->dst)){
-    return false;
-  }
-  return FlashFirmware::shouldForwardMulticastToUart(packet);
-}
-
-uint8_t buildTimeInfoPayload(char* out){
-  time_t t = time(nullptr);
-  if (!t){
-    return 0;
-  }
-
-  struct tm timeinfo;
-  localtime_r(&t, &timeinfo);
-  if (timeinfo.tm_year <= 100){
-    return 0;
-  }
-
-  out[0] = static_cast<char>(timeinfo.tm_year + 1900 - 2000);
-  out[1] = static_cast<char>(timeinfo.tm_mon + 1);
-  out[2] = static_cast<char>(timeinfo.tm_mday);
-  out[3] = static_cast<char>(timeinfo.tm_hour);
-  out[4] = static_cast<char>(timeinfo.tm_min);
-  out[5] = static_cast<char>(timeinfo.tm_sec);
-  out[6] = static_cast<char>(timeinfo.tm_wday == 0 ? 7 : timeinfo.tm_wday);
-  return 7;
-}
-
-void pushLocalAutoResponseEvent(clunet_packet* request){
-  if (!request || request->src == CLUNET_ID){
-    return;
-  }
-  if (request->dst != CLUNET_ID && request->dst != CLUNET_ADDRESS_BROADCAST){
-    return;
-  }
-
-  uint8_t responseCommand = 0;
-  char payload[CLUNET_PACKET_DATA_SIZE];
-  uint8_t payloadSize = 0;
-
-  switch (request->command){
-    case CLUNET_COMMAND_DISCOVERY:
-      responseCommand = CLUNET_COMMAND_DISCOVERY_RESPONSE;
-      payloadSize = static_cast<uint8_t>(strlen(CLUNET_DEVICE));
-      if (payloadSize){
-        memcpy(payload, CLUNET_DEVICE, payloadSize);
-      }
-      break;
-    case CLUNET_COMMAND_PING:
-      responseCommand = CLUNET_COMMAND_PING_REPLY;
-      payloadSize = request->size;
-      if (payloadSize){
-        memcpy(payload, request->data, payloadSize);
-      }
-      break;
-    case CLUNET_COMMAND_TIME:
-      responseCommand = CLUNET_COMMAND_TIME_INFO;
-      payloadSize = buildTimeInfoPayload(payload);
-      break;
-    default:
-      return;
-  }
-
-  clunet_packet* packet = reinterpret_cast<clunet_packet*>(new char[sizeof(clunet_packet) + payloadSize]);
-  if (!packet){
-    return;
-  }
-  packet->src = CLUNET_ID;
-  packet->dst = request->src;
-  packet->command = responseCommand;
-  packet->size = payloadSize;
-  if (payloadSize){
-    memcpy(packet->data, payload, payloadSize);
-  }
-
-  pushDeviceEvent(packet);
-  delete[] reinterpret_cast<char*>(packet);
-}
 
 uint8_t uart_can_send(uint8_t length){
   return Serial.availableForWrite() >= length + 5;
@@ -319,60 +96,15 @@ uint8_t uart_send_message(clunet_packet* packet){
   return uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, packet->len());
 }
 
-void mirrorLocalPacketToUart(uint8_t address, uint8_t command, char* data, uint8_t size){
-  clunet_packet* packet = reinterpret_cast<clunet_packet*>(new char[sizeof(clunet_packet) + size]);
-  if (!packet){
-    return;
-  }
-
-  packet->src = CLUNET_ID;
-  packet->dst = address;
-  packet->command = command;
-  packet->size = size;
-  if (size){
-    memcpy(packet->data, data, size);
-  }
-
-  // Log bridge-origin commands from UI/API as regular events in the table.
-  pushDeviceEvent(packet);
-
-  if (CLUNET_MULTICAST_DEVICE(packet->src) && FlashFirmware::shouldForwardMulticastToUart(packet)){
-    enqueuePacket(uartQueue, packet, UART_QUEUE_MAX_LENGTH);
-  } else {
-    delete[] reinterpret_cast<char*>(packet);
-  }
-}
-
-size_t clunetSendMirrored(uint8_t address, uint8_t command, char* data, uint8_t size){
-  size_t sent = clunet.send(address, command, data, size);
-  if (sent){
-    mirrorLocalPacketToUart(address, command, data, size);
-  }
-  return sent;
-}
-
 
 void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
                 int responseFilterCommand, long responseTimeout, bool _infoRequest, String _infoRequestId){
     webRequest->client()->setRxTimeout(5);
-    api_request_state* requestState = (api_request_state*)malloc(sizeof(api_request_state));
-    if (!requestState){
-      webRequest->send(503, "text/plain", "busy");
-      return;
-    }
-
     api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
     if (!ar){
-      free(requestState);
       webRequest->send(503, "text/plain", "busy");
       return;
     }
-    requestState->webRequest = webRequest;
-    requestState->disconnected = false;
-    requestState->refs = 1;
-    retainApiRequestState(requestState);
-
-    ar->requestState = requestState;
     ar->webRequest = webRequest;
     ar->info = _infoRequest;
     if (_infoRequest){
@@ -386,10 +118,9 @@ void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t comman
     memcpy(ar->data, data, size);
     apiRequestsQueue.add(ar);
 
-    webRequest->onDisconnect([requestState](){
-      if (requestState){
-        requestState->disconnected = true;
-        releaseApiRequestState(requestState);
+    ar->webRequest->onDisconnect([&ar](){
+      if (ar != NULL){
+        ar->webRequest = NULL;
       }
     });
 }
@@ -416,12 +147,7 @@ void api_200(AsyncWebServerRequest* request){
 }
 
 void api_400(AsyncWebServerRequest* request, String params){
-    AsyncResponseStream* response = request->beginResponseStream("text/plain");
-    response->setCode(400);
-    response->print(request->url());
-    response->print("?");
-    response->print(params);
-    request->send(response);
+    request->send(400, "text/plain", request->url() + "?" + params);
 }
 
 void api_dimmer_400(AsyncWebServerRequest* request){
@@ -430,7 +156,7 @@ void api_dimmer_400(AsyncWebServerRequest* request){
 
 void _api_dimmer(int address, int channel_id, int value){
     char data[] = {(char)channel_id, (char)map(value, 0, 100, 0, 255)};
-    clunetSendMirrored(address, CLUNET_COMMAND_DIMMER, data, 2);
+    clunet.send(address, CLUNET_COMMAND_DIMMER, data, 2);
 }
 
 void api_dimmer(AsyncWebServerRequest* request){
@@ -455,7 +181,7 @@ void api_switch_400(AsyncWebServerRequest* request){
 
 void _api_switch(int address, int channel_id, int value){
     char data[] = {(char)value, (char)channel_id};
-    clunetSendMirrored(address, CLUNET_COMMAND_SWITCH, data, 2);
+    clunet.send(address, CLUNET_COMMAND_SWITCH, data, 2);
 }
 
 void api_switch(AsyncWebServerRequest* request){
@@ -480,7 +206,7 @@ void api_fan_400(AsyncWebServerRequest* request){
 
 void _api_fan(int address, int value){
     char data = value ? 4 : 3;
-    clunetSendMirrored(address, CLUNET_COMMAND_FAN, &data, 1);
+    clunet.send(address, CLUNET_COMMAND_FAN, &data, 1);
 }
 
 void api_fan(AsyncWebServerRequest* request){
@@ -504,7 +230,7 @@ void api_door_400(AsyncWebServerRequest* request){
 }
 
 void _api_door(int address, int value){
-    clunetSendMirrored(address, CLUNET_COMMAND_DOOR, (char*)&value, 1);
+    clunet.send(address, CLUNET_COMMAND_DOOR, (char*)&value, 1);
 }
 
 void api_door(AsyncWebServerRequest* request){
@@ -551,93 +277,6 @@ void info_fan(AsyncWebServerRequest* request){
     _request(request, address_param(request), CLUNET_COMMAND_FAN, &data, 1, CLUNET_COMMAND_FAN_INFO, 250, true, "");
 }
 
-void setupClunetCallbacks(){
-  if (clunetHandlersRegistered){
-    return;
-  }
-
-  clunet.onPacketSniff([](clunet_packet* packet){
-    multicastSniffPacketsCount++;
-    lastMulticastPacketAt = millis();
-
-    if (packet->src != CLUNET_ID &&
-        CLUNET_MULTICAST_DEVICE(packet->src) &&
-        packet->dst != CLUNET_ADDRESS_BROADCAST &&
-        CLUNET_MULTICAST_DEVICE(packet->dst)){
-      multicastDroppedForMulticastDstCount++;
-    }
-
-    if (shouldForwardSniffPacketToUart(packet)){
-      enqueuePacket(uartQueue, packet->copy(), UART_QUEUE_MAX_LENGTH);
-      multicastForwardedToUartCount++;
-    }
-
-    pushDeviceEvent(packet);
-    pushLocalAutoResponseEvent(packet);
-  });
-
-  clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
-    if (apiResponse != NULL && apiResponse->requestId == requestId){
-      if (apiResponse->webRequest != NULL &&
-          apiResponse->requestState != NULL &&
-          !apiResponse->requestState->disconnected){
-        DynamicJsonDocument doc(4196);
-        JsonObject root = doc.to<JsonObject>();
-        root["id"] = requestId;
-        JsonArray docArray;
-        if (!apiResponse->info){
-          docArray = root.createNestedArray("responses");
-        }
-
-        for(auto i = responses->begin(); i != responses->end(); ++i){
-          clunet_response* response = *i;
-          if (requestId == response->requestId){
-            if (apiResponse->info){
-              fillValueData(root, response->packet, apiResponse->infoId);
-              break;
-            } else {
-              fillMessageJsonObject(docArray.createNestedObject(), 0, 0, response->packet);
-            }
-          }
-        }
-
-        String json;
-        serializeJson(doc, json);
-        apiResponse->webRequest->send(200, "application/json", json);
-      }
-      freeApiResponse(apiResponse);
-      apiResponse = NULL;
-    }
-  });
-
-  clunetHandlersRegistered = true;
-}
-
-void ensureClunetConnected(){
-  if (!BridgeConfig::isStaConnected() || clunetReady){
-    return;
-  }
-
-  unsigned long now = millis();
-  if (clunetConnectAttemptAt && (now - clunetConnectAttemptAt) < CLUNET_CONNECT_RETRY_INTERVAL_MS){
-    return;
-  }
-  clunetConnectAttemptAt = now;
-
-  if (clunet.connect()){
-    setupClunetCallbacks();
-    clunetReady = true;
-    clunetConnectedAt = millis();
-    Serial1.println("Clunet connected");
-  } else {
-    clunetLastConnectFailedAt = millis();
-  }
-}
-
-void sendConfigPage(AsyncWebServerRequest* request){
-  BridgeConfig::sendPage(request);
-}
-
 void setup() {
   Serial1.begin(115200);
   Serial1.println("\n\nHello");
@@ -646,13 +285,27 @@ void setup() {
   Serial.println("Booting");
   FlashFirmware::init();
 
-  pinMode(LED_BLUE_PORT, OUTPUT);
-  analogWrite(LED_BLUE_PORT, 12);
-
   if (!LittleFS.begin()) {
     Serial1.println("LittleFS mount failed");
     return;
   }
+
+  WiFi.mode(WIFI_STA);
+
+  WiFi.begin(ssid, pass);
+  WiFi.config(ip, gateway, subnet, dnsAddr);
+
+  pinMode(LED_BLUE_PORT, OUTPUT);  
+  analogWrite(LED_BLUE_PORT, 12);
+  
+  //Wifi connection
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial1.println("Connection Failed! Rebooting...");
+    delay(1000);
+    ESP.restart();
+  }
+  Serial1.println("Connected");
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   Serial.swap();
   Serial.flush();
@@ -665,11 +318,70 @@ void setup() {
       LittleFS.end();
     }
   });
-  BridgeConfig::init();
-  inputs.on(AP_FORCE_BUTTON_PIN, STATE_LOW, AP_FORCE_BUTTON_HOLD_MS, [](uint8_t state){
-    (void)state;
-    BridgeConfig::forceApMode();
-  });
+  ArduinoOTA.begin();
+
+  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
+
+  if (clunet.connect()){
+    clunet.onPacketSniff([](clunet_packet* packet){
+      
+      timeval tv;
+      gettimeofday(&tv, nullptr);
+      
+      if (CLUNET_MULTICAST_DEVICE(packet->src) && FlashFirmware::shouldForwardMulticastToUart(packet)){
+        uartQueue.add(packet->copy());
+      }
+
+      if (!FlashFirmware::isTrafficMuted()){
+        ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
+        if (tp){
+          packet->copy(&tp->packet);
+          
+          tp->timestamp_sec = (uint32_t)tv.tv_sec;
+          tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
+
+          while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
+            eventsQueue.remove(eventsQueue.front());
+          }
+          eventsQueue.add(tp);
+        }
+      }
+    });
+    
+    clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
+
+      if (apiResponse != NULL /**&& apiResponse->requestId == requestId**/){
+        if (apiResponse->webRequest != NULL){
+          DynamicJsonDocument doc(4196);
+          JsonObject root = doc.to<JsonObject>();
+          root["id"] = requestId;
+          JsonArray docArray;
+          if (!apiResponse->info){
+            docArray = root.createNestedArray("responses");
+          }
+
+          for(auto i = responses->begin(); i != responses->end(); ++i){
+            clunet_response* response = *i;
+            if (requestId == response->requestId){
+              if (apiResponse->info){
+                fillValueData(root, response->packet, apiResponse->infoId);
+                break;
+              }else{
+                fillMessageJsonObject(docArray.createNestedObject(), 0, 0, response->packet);
+              }
+            }
+          }
+
+          String json;
+          serializeJson(doc, json);
+          apiResponse->webRequest->send(200, "application/json", json);
+        }
+          free(apiResponse);
+          apiResponse = NULL;
+        
+      }
+    });
+  }
 
   server.on("/command", HTTP_GET, [](AsyncWebServerRequest* request) {
        if (!request->hasParam("c")){
@@ -685,7 +397,7 @@ void setup() {
         String hexData = request->getParam("d")->value();
         dataLen = hexStringToCharArray(data, (char*)hexData.c_str(), hexData.length());
       }
-      clunetSendMirrored(address, command, data, dataLen);
+      clunet.send(address, command, data, dataLen);
       request->send(200, "text/plain", "OK");
   });
 
@@ -755,98 +467,7 @@ void setup() {
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
     ESP.restart();
   });
-
-  server.on("/bridge/status", HTTP_GET, [](AsyncWebServerRequest* request) {
-    AsyncResponseStream* response = request->beginResponseStream("application/json");
-    response->print(F("{\"wifiStaConnected\":"));
-    response->print(BridgeConfig::isStaConnected() ? F("true") : F("false"));
-    response->print(F(",\"clunetReady\":"));
-    response->print(clunetReady ? F("true") : F("false"));
-    response->print(F(",\"clunetHandlersRegistered\":"));
-    response->print(clunetHandlersRegistered ? F("true") : F("false"));
-    response->print(F(",\"trafficMuted\":"));
-    response->print(FlashFirmware::isTrafficMuted() ? F("true") : F("false"));
-    response->print(F(",\"clunetConnectAttemptAt\":"));
-    response->print(clunetConnectAttemptAt);
-    response->print(F(",\"clunetConnectedAt\":"));
-    response->print(clunetConnectedAt);
-    response->print(F(",\"clunetLastConnectFailedAt\":"));
-    response->print(clunetLastConnectFailedAt);
-    response->print(F(",\"uartPacketsReceived\":"));
-    response->print(uartPacketsReceivedCount);
-    response->print(F(",\"multicastSniffPackets\":"));
-    response->print(multicastSniffPacketsCount);
-    response->print(F(",\"multicastForwardedToUart\":"));
-    response->print(multicastForwardedToUartCount);
-    response->print(F(",\"multicastDroppedForMulticastDst\":"));
-    response->print(multicastDroppedForMulticastDstCount);
-    response->print(F(",\"multicastSentFromUart\":"));
-    response->print(multicastSentFromUartCount);
-    response->print(F(",\"lastUartPacketAt\":"));
-    response->print(lastUartPacketAt);
-    response->print(F(",\"lastUartByteAt\":"));
-    response->print(lastUartByteAt);
-    response->print(F(",\"lastMulticastPacketAt\":"));
-    response->print(lastMulticastPacketAt);
-    response->print(F(",\"uartRxBytesReceived\":"));
-    response->print(uartRxBytesReceivedCount);
-    response->print(F(",\"uartQueueLength\":"));
-    response->print(uartQueue.length());
-    response->print(F(",\"multicastQueueLength\":"));
-    response->print(multicastQueue.length());
-    response->print(F(",\"uartRxBuffered\":"));
-    response->print(uart_rx_data_len);
-    response->print(F(",\"uartRxOverflow\":"));
-    response->print(uart_rx_overflow ? F("true") : F("false"));
-    response->print(F(",\"uartRxOverflowCount\":"));
-    response->print(uartRxOverflowCount);
-    response->print(F(",\"uartRxInvalidLengthCount\":"));
-    response->print(uartRxInvalidLengthCount);
-    response->print(F(",\"lastUartInvalidLength\":"));
-    response->print(lastUartInvalidLength);
-    response->print(F(",\"uartRxCrcErrorCount\":"));
-    response->print(uartRxCrcErrorCount);
-    response->print(F(",\"uartRxNoiseTrimmedBytes\":"));
-    response->print(uartRxNoiseTrimmedBytesCount);
-    response->print(F(",\"uartRxBufferedHex\":\""));
-    printUartRxBufferedHex(*response);
-    response->print(F("\""));
-    response->print(F(",\"eventsQueued\":"));
-    response->print(eventsQueue.length());
-    response->print(F(",\"apiRequestQueued\":"));
-    response->print(apiRequestsQueue.length());
-    response->print(F(",\"apiResponseActive\":"));
-    response->print(apiResponse != NULL ? F("true") : F("false"));
-    response->print(F("}"));
-    request->send(response);
-  });
-
-  BridgeConfig::setupRoutes(server);
   FlashFirmware::setupRoutes(server);
-
-  server.on("/log", HTTP_GET, [](AsyncWebServerRequest* request){
-    request->send(LittleFS, "/www/log.html", "text/html");
-  });
-
-  server.on("/log.html", HTTP_GET, [](AsyncWebServerRequest* request){
-    request->redirect("/log");
-  });
-
-  server.on("/flash", HTTP_GET, [](AsyncWebServerRequest* request){
-    request->send(LittleFS, "/www/flash.html", "text/html");
-  });
-
-  server.on("/flash.html", HTTP_GET, [](AsyncWebServerRequest* request){
-    request->redirect("/flash");
-  });
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request){
-    if (BridgeConfig::isApMode()){
-      sendConfigPage(request);
-    } else {
-      request->send(LittleFS, "/www/log.html", "text/html");
-    }
-  });
 
   events.onConnect([](AsyncEventSourceClient *client){
      client->send("Welcome", "SERVICE", 0, 3000);
@@ -855,7 +476,7 @@ void setup() {
   server.addHandler(&events);
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-  server.serveStatic("/", LittleFS, "/www/");
+  server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html");
 
   server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
 
@@ -886,8 +507,6 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
   switch(code){
     case UART_MESSAGE_CODE_CLUNET:
       if (data && length >= 4){
-        uartPacketsReceivedCount++;
-        lastUartPacketAt = millis();
         clunet_packet* packet = (clunet_packet*)data;
         bool consumedByFlash = false;
         if (packet->command == CLUNET_COMMAND_BOOT_CONTROL){
@@ -896,13 +515,9 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
         }
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
            if (!consumedByFlash){
-             if (clunetReady && BridgeConfig::isStaConnected()){
-               enqueuePacket(multicastQueue, packet->copy(), MULTICAST_QUEUE_MAX_LENGTH);
-             }
+             multicastQueue.add(packet->copy());
            }
         }
-        pushDeviceEvent(packet);
-        pushLocalAutoResponseEvent(packet);
       }
       break;
     case UART_MESSAGE_CODE_FIRMWARE:
@@ -941,7 +556,6 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
       }
     }
     if (uart_rx_preambula_offset) {
-      uartRxNoiseTrimmedBytesCount += uart_rx_preambula_offset;
       analyze_uart_rx_trim(uart_rx_preambula_offset ); //обрезаем мусор до преамбулы
     }
 
@@ -949,8 +563,6 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
       char* uart_rx_message = (char*)(uart_rx_data + 2);
       uint8_t length = uart_rx_message[0];
       if (length < 3 || length > (UART_RX_BUF_LENGTH - 2)){
-        uartRxInvalidLengthCount++;
-        lastUartInvalidLength = length;
         //Serial1.println("invalid length");
         analyze_uart_rx_trim(2);  //пришел мусор, отрезаем преамбулу и надо пробовать искать преамбулу снова
         continue;
@@ -967,7 +579,6 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
           analyze_uart_rx_trim(length+2); //отрезаем прочитанное сообщение
           //Serial1.println("uart_rx_data_len: " + String(uart_rx_data_len));
         }else{
-          uartRxCrcErrorCount++;
           //Serial1.println("crc error");
           analyze_uart_rx_trim(2); 
         }
@@ -979,33 +590,6 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
       //Serial1.println("too short message yet (length<5)");
       break;
     }
-  }
-}
-
-void printUartRxBufferedHex(Print& out){
-  uint8_t sampleLength = uart_rx_data_len;
-  if (sampleLength > 24){
-    sampleLength = 24;
-  }
-
-  if (!sampleLength){
-    return;
-  }
-
-  char sample[24];
-  for (uint8_t i = 0; i < sampleLength; i++){
-    sample[i] = uart_rx_data[i];
-  }
-
-  char hex[24 * 2 + 1];
-  int hexLength = charArrayToHexString(hex, sample, sampleLength);
-  if (hexLength < 0){
-    return;
-  }
-  hex[hexLength] = '\0';
-  out.print(hex);
-  if (uart_rx_data_len > sampleLength){
-    out.print(F("..."));
   }
 }
 
@@ -1114,8 +698,6 @@ long uart_time = 0;
 void loop() {
   while (Serial.available() > 0) {
     char byte = Serial.read();
-    uartRxBytesReceivedCount++;
-    lastUartByteAt = millis();
     if (uart_rx_data_len < UART_RX_BUF_LENGTH) {
       uart_rx_data[uart_rx_data_len++] = byte;
     } else {
@@ -1124,76 +706,41 @@ void loop() {
   }
 
   if (uart_rx_overflow) {
-    uartRxOverflowCount++;
     uart_rx_data_len = 0;
     uart_rx_overflow = false;
   }
 
   analyze_uart_rx(on_uart_message);
   FlashFirmware::process();
-  inputs.handle();
-  BridgeConfig::loop();
 
-  bool wifiStaConnected = BridgeConfig::isStaConnected();
-  if (wifiStaConnected && !wifiStaConnectedPrev){
-    const char* timezone = BridgeConfig::timezone();
-    if (timezone && timezone[0]){
-      configTime(timezone, "pool.ntp.org", "time.nist.gov");
-    }
-    ArduinoOTA.begin();
-    otaReady = true;
-    clunetReady = false;
-    clunetConnectAttemptAt = millis() - CLUNET_CONNECT_RETRY_INTERVAL_MS;
-    Serial1.print("WiFi connected: ");
-    Serial1.println(WiFi.localIP());
-  } else if (!wifiStaConnected && wifiStaConnectedPrev){
-    otaReady = false;
-    clunetReady = false;
-  }
-  wifiStaConnectedPrev = wifiStaConnected;
-
-  if (wifiStaConnected){
-    ensureClunetConnected();
-  }
-
-  uint8_t uartProcessed = 0;
-  while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front()) && uartProcessed < UART_MESSAGES_PER_LOOP_MAX){
+  while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front())){
     long nt = millis();
-    if ((nt - uart_time) < DELAY_BETWEEN_UART_MESSAGES){
-      break;
-    }
-
-    uart_time = nt;
-    clunet_packet* packet = uartQueue.front();
-    if (uart_send_message(packet)){
-      uartQueue.remove(packet);
-      uartProcessed++;
-    }else{
-      break;
+    if (nt - uart_time > DELAY_BETWEEN_UART_MESSAGES){
+     uart_time = nt;
+     clunet_packet* packet = uartQueue.front();
+     if (uart_send_message(packet)){
+       uartQueue.remove(packet);
+     }else{
+       break;
+     }
     }
   }
 
-  uint8_t multicastProcessed = 0;
-  while (!multicastQueue.isEmpty() && multicastProcessed < MULTICAST_MESSAGES_PER_LOOP_MAX){
+  while (!multicastQueue.isEmpty()){
     clunet_packet* packet = multicastQueue.front();
     if (clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size)){
-      multicastSentFromUartCount++;
       multicastQueue.remove(packet);
-      multicastProcessed++;
     }else{
       break;
     }
   }
   
-  if (!eventsQueue.isEmpty() && events.count() > 0 && events.avgPacketsWaiting()==0){
+  if (!FlashFirmware::isTrafficMuted() && !eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
     DynamicJsonDocument doc(4196);
-    JsonArray batch = doc.to<JsonArray>();
-    uint8_t eventsProcessed = 0;
-    while (!eventsQueue.isEmpty() && eventsProcessed < EVENTS_BATCH_MAX){
+    while (!eventsQueue.isEmpty()){
       ts_clunet_packet* tp = eventsQueue.front();
-      fillMessageJsonObject(batch.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
+      fillMessageJsonObject(doc.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
       eventsQueue.remove(tp);
-      eventsProcessed++;
     }
     
     String json;
@@ -1201,22 +748,16 @@ void loop() {
     events.send(json.c_str(), "DATA", ++event_id);
   }
 
-  if ((millis() - eventsHeartbeatAt) >= EVENTS_HEARTBEAT_INTERVAL_MS){
-    eventsHeartbeatAt = millis();
-    events.send("ping", "SERVICE", ++event_id);
-  }
-
   if (!FlashFirmware::isTrafficMuted() && apiResponse == NULL){
     while (!apiRequestsQueue.isEmpty()){
       api_request* ar = apiRequestsQueue.front();
-      if (ar->requestState != NULL && !ar->requestState->disconnected && ar->webRequest != NULL){
+      if (ar->webRequest != NULL){
         
         apiResponse = (api_response*)malloc(sizeof(api_response));
         if (apiResponse == NULL){
           break;
         }
         apiResponse->webRequest = ar->webRequest;
-        apiResponse->requestState = ar->requestState;
         apiResponse->info = ar->info;
         if (apiResponse->info){
           strcpy(apiResponse->infoId, ar->infoId);
@@ -1227,8 +768,12 @@ void loop() {
         }, ar->responseTimeout);
         
         if (apiResponse->requestId){
-          mirrorLocalPacketToUart(ar->address, ar->command, ar->data, ar->size);
-          ar->requestState = NULL;
+          apiResponse->webRequest->onDisconnect([](){
+            if (apiResponse != NULL){
+              apiResponse->webRequest = NULL;
+            }
+          });
+       
           apiRequestsQueue.remove(ar);
         }else{
           free(apiResponse);
@@ -1242,8 +787,6 @@ void loop() {
     }
   }
   
-  if (otaReady){
-    ArduinoOTA.handle();
-  }
+  ArduinoOTA.handle();
   yield();
 }
