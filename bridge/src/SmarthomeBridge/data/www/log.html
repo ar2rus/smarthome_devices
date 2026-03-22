@@ -32,10 +32,10 @@
 
       .shell {
         width: min(1460px, calc(100vw - 20px));
-        margin: 10px auto;
-        padding: 12px;
+        margin: 8px auto;
+        padding: 10px;
         border: 1px solid var(--line);
-        border-radius: 14px;
+        border-radius: 12px;
         background: var(--panel);
       }
 
@@ -49,33 +49,33 @@
 
       .title {
         margin: 0;
-        font-size: 24px;
+        font-size: 21px;
         line-height: 1.1;
       }
 
       .subtitle {
         margin: 4px 0 0;
-        font-size: 13px;
+        font-size: 12px;
         color: var(--muted);
       }
 
       .top-actions {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
       }
 
       .top-link,
       .status {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        padding: 7px 12px;
+        gap: 6px;
+        padding: 6px 10px;
         border: 1px solid var(--line);
         border-radius: 999px;
         background: #fff;
         white-space: nowrap;
-        font-size: 13px;
+        font-size: 12px;
       }
 
       .top-link {
@@ -87,7 +87,9 @@
       .top-button {
         cursor: pointer;
         background: #fff;
-        font: inherit;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 700;
       }
 
       .status-dot {
@@ -112,18 +114,17 @@
       .request {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 8px;
-        margin-bottom: 10px;
+        gap: 6px;
       }
 
       .request {
-        margin-top: 10px;
+        margin-top: 8px;
       }
 
       .field {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 3px;
       }
 
       .span-2 {
@@ -135,9 +136,9 @@
       }
 
       label {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.06em;
         color: var(--muted);
         text-transform: uppercase;
       }
@@ -148,7 +149,7 @@
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 9px;
-        padding: 8px 9px;
+        padding: 7px 8px;
         font: inherit;
         color: var(--text);
         background: #fff;
@@ -166,18 +167,58 @@
 
       .meta {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         margin-bottom: 8px;
         color: var(--muted);
         font-size: 12px;
+      }
+
+      .panel {
+        margin-bottom: 8px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fcfdff;
+        overflow: hidden;
+      }
+
+      .panel > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .panel > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .panel > summary::after {
+        content: "▾";
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .panel:not([open]) > summary::after {
+        content: "▸";
+      }
+
+      .panel-body {
+        padding: 0 10px 10px;
       }
 
       .table-wrap {
         border: 1px solid var(--line);
         border-radius: 12px;
         overflow: auto;
+        max-height: min(60vh, 740px);
       }
 
       table {
@@ -190,8 +231,8 @@
         position: sticky;
         top: 0;
         z-index: 1;
-        padding: 8px;
-        font-size: 11px;
+        padding: 6px 7px;
+        font-size: 10px;
         text-align: left;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -200,8 +241,8 @@
       }
 
       tbody td {
-        padding: 8px;
-        font-size: 13px;
+        padding: 6px 7px;
+        font-size: 12px;
         border-bottom: 1px solid #edf1f6;
         vertical-align: top;
       }
@@ -212,7 +253,7 @@
 
       .mono {
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        font-size: 12px;
+        font-size: 11px;
       }
 
       .tag {
@@ -229,19 +270,6 @@
         padding: 18px 10px;
         text-align: center;
         color: var(--muted);
-      }
-
-      .request-panel {
-        margin-top: 10px;
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 10px;
-        background: #fcfdff;
-      }
-
-      .request-title {
-        margin: 0 0 8px;
-        font-size: 14px;
       }
 
       pre {
@@ -280,6 +308,37 @@
         .actions {
           grid-column: span 2;
         }
+
+        .shell {
+          width: calc(100vw - 10px);
+          margin: 5px auto;
+          padding: 8px;
+          border-radius: 10px;
+        }
+
+        .title {
+          font-size: 18px;
+        }
+
+        .subtitle {
+          font-size: 11px;
+        }
+
+        .table-wrap {
+          max-height: 50vh;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .top-link,
+        .status {
+          padding: 5px 9px;
+          font-size: 11px;
+        }
+
+        table {
+          min-width: 760px;
+        }
       }
     </style>
   </head>
@@ -292,38 +351,75 @@
         </div>
         <div class="top-actions">
           <button id="discovery-btn" class="top-link top-button" type="button">Discovery</button>
-          <a class="top-link" href="/flash.html">Flash Firmware...</a>
+          <a class="top-link" href="/config">WiFi Config</a>
+          <a class="top-link" href="/flash">Flash Firmware...</a>
           <div id="status" class="status">
             <span class="status-dot"></span>
-            <span id="status-text">Connecting to /events...</span>
+            <span id="status-text">Reconnecting...</span>
           </div>
         </div>
       </section>
 
-      <section class="controls">
-        <div class="field span-2">
-          <label for="search">Search</label>
-          <input id="search" type="search" placeholder="Search device, command, hex payload, decoded text">
+      <details class="panel" id="filters-panel">
+        <summary>Search</summary>
+        <div class="panel-body">
+          <section class="controls">
+            <div class="field span-2">
+              <label for="search">Search</label>
+              <input id="search" type="search" placeholder="Search device, command, hex payload, decoded text">
+            </div>
+            <div class="field">
+              <label for="source-filter">Source</label>
+              <select id="source-filter"><option value="">All sources</option></select>
+            </div>
+            <div class="field">
+              <label for="destination-filter">Destination</label>
+              <select id="destination-filter"><option value="">All destinations</option></select>
+            </div>
+            <div class="field">
+              <label for="command-filter">Command</label>
+              <select id="command-filter"><option value="">All commands</option></select>
+            </div>
+            <div class="actions">
+              <button id="clear-btn" type="button">Clear Log</button>
+            </div>
+          </section>
         </div>
-        <div class="field">
-          <label for="source-filter">Source</label>
-          <select id="source-filter"><option value="">All sources</option></select>
+      </details>
+
+      <details class="panel" id="request-panel">
+        <summary>Request / Response</summary>
+        <div class="panel-body">
+          <div class="request">
+            <div class="field">
+              <label for="req-device">Device (a)</label>
+              <select id="req-device"><option value="255">255 - BROADCAST</option></select>
+            </div>
+            <div class="field">
+              <label for="req-command">Command (c)</label>
+              <select id="req-command"><option value="">Select command</option></select>
+            </div>
+            <div class="field span-2">
+              <label for="req-data">HEX data (d)</label>
+              <input id="req-data" type="text" placeholder="Optional, e.g. 0102A0">
+            </div>
+            <div class="field">
+              <label for="req-timeout">Timeout ms (t)</label>
+              <input id="req-timeout" type="number" min="10" max="10000" value="250">
+            </div>
+            <div class="field">
+              <label for="req-response-command">Response cmd (r)</label>
+              <input id="req-response-command" type="number" min="-1" max="255" placeholder="Optional">
+            </div>
+            <div class="actions span-3">
+              <button id="request-send" type="button">Send /request</button>
+            </div>
+          </div>
+          <pre id="request-output">Ready.</pre>
         </div>
-        <div class="field">
-          <label for="destination-filter">Destination</label>
-          <select id="destination-filter"><option value="">All destinations</option></select>
-        </div>
-        <div class="field">
-          <label for="command-filter">Command</label>
-          <select id="command-filter"><option value="">All commands</option></select>
-        </div>
-        <div class="actions">
-          <button id="clear-btn" type="button">Clear Log</button>
-        </div>
-      </section>
+      </details>
 
       <section class="meta">
-        <div id="registry-state">Loading registries...</div>
         <div id="rows-state">0 rows</div>
       </section>
 
@@ -344,36 +440,6 @@
           </tbody>
         </table>
       </section>
-
-      <section class="request-panel">
-        <h2 class="request-title">Request / Response</h2>
-        <div class="request">
-          <div class="field">
-            <label for="req-device">Device (a)</label>
-            <select id="req-device"><option value="255">255 - BROADCAST</option></select>
-          </div>
-          <div class="field">
-            <label for="req-command">Command (c)</label>
-            <select id="req-command"><option value="">Select command</option></select>
-          </div>
-          <div class="field span-2">
-            <label for="req-data">HEX data (d)</label>
-            <input id="req-data" type="text" placeholder="Optional, e.g. 0102A0">
-          </div>
-          <div class="field">
-            <label for="req-timeout">Timeout ms (t)</label>
-            <input id="req-timeout" type="number" min="10" max="10000" value="250">
-          </div>
-          <div class="field">
-            <label for="req-response-command">Response cmd (r)</label>
-            <input id="req-response-command" type="number" min="-1" max="255" placeholder="Optional">
-          </div>
-          <div class="actions span-3">
-            <button id="request-send" type="button">Send /request</button>
-          </div>
-        </div>
-        <pre id="request-output">Ready.</pre>
-      </section>
     </main>
 
     <script>
@@ -383,7 +449,11 @@
       var reconnectTimer = null;
       var reconnectDelayMs = 1200;
       var lastEventAt = 0;
+      var lastHeartbeatAt = 0;
       var connectStateAt = 0;
+      var connectStallTimeoutMs = 6000;
+      var heartbeatTimeoutMs = 7000;
+      var pageNavigating = false;
 
       var sourceSelect = document.getElementById("source-filter");
       var destinationSelect = document.getElementById("destination-filter");
@@ -391,7 +461,6 @@
       var searchInput = document.getElementById("search");
       var rowsContainer = document.getElementById("rows");
       var rowsState = document.getElementById("rows-state");
-      var registryState = document.getElementById("registry-state");
       var statusNode = document.getElementById("status");
       var statusText = document.getElementById("status-text");
       var reqOutput = document.getElementById("request-output");
@@ -428,7 +497,9 @@
           return String(value);
         }
 
-        return new Date(timestamp).toLocaleString();
+        var date = new Date(timestamp);
+        var ms = String(date.getMilliseconds()).padStart(3, "0");
+        return date.toLocaleString() + "." + ms;
       }
 
       function formatMessage(message) {
@@ -577,15 +648,33 @@
       }
 
       function setStatus(kind, text) {
+        if (pageNavigating) {
+          return;
+        }
         statusNode.className = "status" + (kind ? " " + kind : "");
         statusText.textContent = text;
       }
 
-      function scheduleReconnect(reason) {
+      function setConnectionState(state) {
+        if (state === "connected") {
+          setStatus("connected", "Connected");
+          return;
+        }
+        if (state === "disconnected") {
+          setStatus("error", "Disconnected");
+          return;
+        }
+        setStatus("", "Reconnecting...");
+      }
+
+      function scheduleReconnect(reason, asError) {
+        if (pageNavigating) {
+          return;
+        }
         if (reconnectTimer) {
           return;
         }
-        setStatus("", reason || "Reconnecting to /events...");
+        setConnectionState(asError ? "disconnected" : "reconnecting");
         reconnectTimer = setTimeout(function() {
           reconnectTimer = null;
           connectEvents();
@@ -594,7 +683,7 @@
 
       function connectEvents() {
         if (!window.EventSource) {
-          setStatus("error", "EventSource is not supported");
+          setConnectionState("disconnected");
           return;
         }
 
@@ -605,6 +694,7 @@
 
         eventSource = new EventSource("/events");
         connectStateAt = Date.now();
+        setConnectionState("reconnecting");
 
         eventSource.addEventListener("open", function() {
           if (reconnectTimer) {
@@ -613,33 +703,42 @@
           }
           connectStateAt = Date.now();
           lastEventAt = Date.now();
-          setStatus("connected", "Connected to /events");
+          lastHeartbeatAt = lastEventAt;
+          setConnectionState("connected");
         });
 
         eventSource.addEventListener("error", function() {
+          if (pageNavigating) {
+            return;
+          }
           if (!eventSource) {
             return;
           }
           if (eventSource.readyState === EventSource.CONNECTING) {
-            setStatus("", "Reconnecting to /events...");
+            setConnectionState("reconnecting");
             return;
           }
-          setStatus("error", "Disconnected from /events");
-          scheduleReconnect("Reconnecting to /events...");
+          setConnectionState("disconnected");
+          scheduleReconnect("", true);
+        });
+
+        eventSource.addEventListener("SERVICE", function() {
+          lastHeartbeatAt = Date.now();
+          lastEventAt = lastHeartbeatAt;
         });
 
         eventSource.addEventListener("DATA", function(event) {
           lastEventAt = Date.now();
+          lastHeartbeatAt = lastEventAt;
           try {
             appendEvents(JSON.parse(event.data));
           } catch (error) {
-            setStatus("error", "Bad DATA payload: " + error.message);
+            setConnectionState("disconnected");
           }
         });
       }
 
       function loadRegistries() {
-        registryState.textContent = "Loading registries...";
         return Promise.all([
           fetch("/registry/commands").then(function(response) { return response.json(); }),
           fetch("/registry/devices").then(function(response) { return response.json(); })
@@ -647,10 +746,9 @@
           registry.commands = result[0] || {};
           registry.devices = result[1] || {};
           syncRegistryFilters();
-          registryState.textContent = "Registries loaded";
           renderRows();
         }).catch(function(error) {
-          registryState.textContent = "Registry loading failed: " + error.message;
+          reqOutput.textContent = "Registry loading failed: " + error.message;
         });
       }
 
@@ -735,34 +833,48 @@
       });
       document.getElementById("request-send").addEventListener("click", sendRequest);
       document.getElementById("discovery-btn").addEventListener("click", sendDiscovery);
+      document.querySelectorAll("a.top-link").forEach(function(node) {
+        node.addEventListener("click", function() {
+          pageNavigating = true;
+        });
+      });
 
       setInterval(function() {
+        if (pageNavigating) {
+          return;
+        }
         if (!eventSource) {
-          scheduleReconnect("Reconnecting to /events...");
+          scheduleReconnect("", false);
           return;
         }
 
         if (eventSource.readyState === EventSource.CLOSED) {
-          scheduleReconnect("Reconnecting to /events...");
+          scheduleReconnect("", true);
           return;
         }
 
-        if (eventSource.readyState === EventSource.CONNECTING && (Date.now() - connectStateAt > 30000)) {
+        if (eventSource.readyState === EventSource.CONNECTING && (Date.now() - connectStateAt > connectStallTimeoutMs)) {
           try { eventSource.close(); } catch (e) {}
           eventSource = null;
-          scheduleReconnect("Connection stalled, reconnecting...");
+          scheduleReconnect("", true);
           return;
         }
 
-        if (eventSource.readyState === EventSource.OPEN && lastEventAt && (Date.now() - lastEventAt > 45000)) {
+        if (eventSource.readyState === EventSource.OPEN && lastHeartbeatAt && (Date.now() - lastHeartbeatAt > heartbeatTimeoutMs)) {
           try { eventSource.close(); } catch (e) {}
           eventSource = null;
-          scheduleReconnect("No events recently, reconnecting...");
+          scheduleReconnect("", true);
         }
-      }, 5000);
+      }, 2000);
 
       window.addEventListener("online", function() {
-        scheduleReconnect("Network online, reconnecting...");
+        scheduleReconnect("", false);
+      });
+      window.addEventListener("beforeunload", function() {
+        pageNavigating = true;
+        if (eventSource) {
+          try { eventSource.close(); } catch (e) {}
+        }
       });
 
       loadRegistries();

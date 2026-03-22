@@ -1,12 +1,15 @@
 #ifndef SmarthomeBridge_h
 #define SmarthomeBridge_h
 
+class AsyncWebServerRequest;
+struct clunet_packet;
+struct clunet_response;
+
 #define CLUNET_ID 0x80
 #define CLUNET_DEVICE "SmarthomeBridge"
 
-#define TIMEZONE TZ_Europe_Samara
-
 #define LED_BLUE_PORT 5
+#define CLUNET_CONNECT_RETRY_INTERVAL_MS 5000UL
 
 typedef struct{
   uint32_t timestamp_sec;
