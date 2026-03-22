@@ -13,7 +13,7 @@
 /*0 dec*/
 
 /* Device name */
-#define CLUNET_DEVICE_NAME "SmarthomeBridge"
+#define CLUNET_DEVICE_NAME "Supradin"
 
 /* Buffer sized (memory usage) */
 /* 128 + header + crc; so we can send <=128 bytes */
