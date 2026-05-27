@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Light Config</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background: #f4f6f8;
+            color: #1f2933;
+        }
+        .layout {
+            max-width: 760px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+        }
+        h1, h2 {
+            margin-top: 0;
+        }
+        h1 {
+            margin-bottom: 8px;
+        }
+        .topLinks {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-left: auto;
+            margin-bottom: 0;
+        }
+        .headerRow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .linkButton, button {
+            appearance: none;
+            border: 0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            background: #243b53;
+            color: #fff;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .linkButton.secondary {
+            background: #9fb3c8;
+            color: #102a43;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+        .badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #d9e2ec;
+            color: #102a43;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .note {
+            margin: 12px 0 0;
+            padding: 12px;
+            border-radius: 8px;
+            background: #fff7d6;
+            color: #7c5e10;
+        }
+        .message {
+            display: none;
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .message.show {
+            display: block;
+        }
+        .message.success {
+            background: #e3f9e5;
+            color: #1f7a38;
+        }
+        .message.error {
+            background: #ffe3e3;
+            color: #b42318;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid #cbd2d9;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fff;
+        }
+        .checkboxRow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+        .checkboxRow input {
+            width: auto;
+        }
+        .muted {
+            color: #52606d;
+            font-size: 13px;
+        }
+        .statusList {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .statusItem {
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .statusItem strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #486581;
+        }
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        @media (max-width: 640px) {
+            .headerRow {
+                align-items: flex-start;
+            }
+            .topLinks {
+                width: 100%;
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <div class="card">
+            <div class="headerRow">
+                <h1>Настройки Kitchen Light</h1>
+                <div class="topLinks">
+                    <a class="linkButton secondary" href="/">Главная</a>
+                </div>
+            </div>
+            <div id="message" class="message"></div>
+            <span id="modeBadge" class="badge">Загрузка</span>
+            <p id="modeDescription" class="muted">Читаю текущую конфигурацию устройства.</p>
+            <div class="statusList">
+                <div class="statusItem">
+                    <strong>AP SSID</strong>
+                    <span id="apSsid">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>AP пароль</strong>
+                    <span id="apPassword">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>AP IP</strong>
+                    <span id="apIp">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>IP клиента</strong>
+                    <span id="stationIp">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>MQTT</strong>
+                    <span id="mqttStatus">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>Сохраненный WiFi</strong>
+                    <span id="savedWifi">-</span>
+                </div>
+            </div>
+            <div id="apOnlyNote" class="note" style="display:none;">
+                В режиме AP доступна только страница конфигурации. MQTT и работа в домашней сети появятся после сохранения настроек WiFi и перезагрузки устройства.
+            </div>
+        </div>
+
+        <form id="configForm">
+            <div class="card">
+                <h2>WiFi</h2>
+                <p class="muted">Если оставить SSID пустым, после перезагрузки устройство останется в режиме точки доступа.</p>
+                <div class="grid">
+                    <div>
+                        <label for="wifiSsid">SSID</label>
+                        <input id="wifiSsid" maxlength="32" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="wifiPassword">Пароль</label>
+                        <input id="wifiPassword" type="password" maxlength="64" autocomplete="off">
+                    </div>
+                </div>
+                <label class="checkboxRow" for="useStaticIp">
+                    <input id="useStaticIp" type="checkbox">
+                    <span>Использовать статический IP</span>
+                </label>
+                <div class="grid">
+                    <div>
+                        <label for="wifiIp">IP</label>
+                        <input id="wifiIp" maxlength="15" inputmode="decimal" placeholder="192.168.1.120">
+                    </div>
+                    <div>
+                        <label for="wifiGateway">Gateway</label>
+                        <input id="wifiGateway" maxlength="15" inputmode="decimal" placeholder="192.168.1.1">
+                    </div>
+                    <div>
+                        <label for="wifiSubnet">Subnet mask</label>
+                        <input id="wifiSubnet" maxlength="15" inputmode="decimal" placeholder="255.255.255.0">
+                    </div>
+                    <div>
+                        <label for="wifiDns">DNS</label>
+                        <input id="wifiDns" maxlength="15" inputmode="decimal" placeholder="192.168.1.1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>MQTT</h2>
+                <p class="muted">Пустой `host` отключает MQTT.</p>
+                <div class="grid">
+                    <div>
+                        <label for="mqttHost">Host</label>
+                        <input id="mqttHost" maxlength="63" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="mqttPort">Port</label>
+                        <input id="mqttPort" type="number" min="1" max="65535" value="1883">
+                    </div>
+                    <div>
+                        <label for="mqttUser">User</label>
+                        <input id="mqttUser" maxlength="32" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="mqttPassword">Password</label>
+                        <input id="mqttPassword" type="password" maxlength="64" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="saveButton" type="submit">Сохранить и перезагрузить</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function setMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = `message show ${type}`;
+        }
+
+        function setMode(network, mqtt) {
+            const modeBadge = document.getElementById('modeBadge');
+            const modeDescription = document.getElementById('modeDescription');
+            const apOnlyNote = document.getElementById('apOnlyNote');
+
+            const labels = {
+                idle: 'Ожидание',
+                sta_connecting: 'Подключение',
+                sta_connected: 'Клиент WiFi',
+                ap: 'Точка доступа'
+            };
+
+            const modeLabel = labels[network.mode] || network.mode || 'Неизвестно';
+            modeBadge.textContent = modeLabel;
+
+            if (network.mode === 'ap') {
+                modeDescription.textContent = 'Устройство подняло свою точку доступа и ждёт сетевые настройки.';
+                apOnlyNote.style.display = 'block';
+            } else if (network.mode === 'sta_connecting') {
+                modeDescription.textContent = 'Устройство пытается подключиться к сохранённой WiFi сети.';
+                apOnlyNote.style.display = 'none';
+            } else if (network.mode === 'sta_connected') {
+                modeDescription.textContent = 'Устройство работает в домашней WiFi сети.';
+                apOnlyNote.style.display = 'none';
+            } else {
+                modeDescription.textContent = 'Состояние сети не определено.';
+                apOnlyNote.style.display = 'none';
+            }
+
+            document.getElementById('apSsid').textContent = network.apSsid || '-';
+            document.getElementById('apPassword').textContent = network.apPassword || '-';
+            document.getElementById('apIp').textContent = network.apIp || '-';
+            document.getElementById('stationIp').textContent = network.stationIp || '-';
+            document.getElementById('savedWifi').textContent = network.savedWifi ? 'да' : 'нет';
+            document.getElementById('mqttStatus').textContent = mqtt.enabled
+                ? (mqtt.connected ? 'подключен' : 'настроен, нет соединения')
+                : 'отключен';
+        }
+
+        function syncStaticIpFields() {
+            const disabled = !document.getElementById('useStaticIp').checked;
+            ['wifiIp', 'wifiGateway', 'wifiSubnet', 'wifiDns'].forEach(id => {
+                document.getElementById(id).disabled = disabled;
+            });
+        }
+
+        function fillForm(data) {
+            document.getElementById('wifiSsid').value = data.wifi.ssid || '';
+            document.getElementById('wifiPassword').value = data.wifi.password || '';
+            document.getElementById('useStaticIp').checked = Boolean(data.wifi.useStaticIp);
+            document.getElementById('wifiIp').value = data.wifi.ip || '';
+            document.getElementById('wifiGateway').value = data.wifi.gateway || '';
+            document.getElementById('wifiSubnet').value = data.wifi.subnet || '';
+            document.getElementById('wifiDns').value = data.wifi.dns || '';
+
+            document.getElementById('mqttHost').value = data.mqtt.host || '';
+            document.getElementById('mqttPort').value = data.mqtt.port || 1883;
+            document.getElementById('mqttUser').value = data.mqtt.user || '';
+            document.getElementById('mqttPassword').value = data.mqtt.password || '';
+
+            setMode(data.network, data.mqtt);
+            syncStaticIpFields();
+        }
+
+        async function loadConfig() {
+            const response = await fetch('/api/config');
+            if (!response.ok) {
+                throw new Error('Не удалось загрузить конфигурацию');
+            }
+
+            const data = await response.json();
+            fillForm(data);
+        }
+
+        async function handleSubmit(event) {
+            event.preventDefault();
+
+            const saveButton = document.getElementById('saveButton');
+            saveButton.disabled = true;
+
+            const payload = {
+                wifi: {
+                    ssid: document.getElementById('wifiSsid').value.trim(),
+                    password: document.getElementById('wifiPassword').value.trim(),
+                    useStaticIp: document.getElementById('useStaticIp').checked,
+                    ip: document.getElementById('wifiIp').value.trim(),
+                    gateway: document.getElementById('wifiGateway').value.trim(),
+                    subnet: document.getElementById('wifiSubnet').value.trim(),
+                    dns: document.getElementById('wifiDns').value.trim()
+                },
+                mqtt: {
+                    host: document.getElementById('mqttHost').value.trim(),
+                    port: Number(document.getElementById('mqttPort').value || 0),
+                    user: document.getElementById('mqttUser').value.trim(),
+                    password: document.getElementById('mqttPassword').value.trim()
+                }
+            };
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || 'Ошибка сохранения');
+                }
+
+                setMessage(result.message || 'Настройки сохранены', 'success');
+                fillForm(result);
+            } catch (error) {
+                setMessage(error.message || 'Ошибка сохранения', 'error');
+            } finally {
+                saveButton.disabled = false;
+            }
+        }
+
+        async function init() {
+            document.getElementById('configForm').addEventListener('submit', handleSubmit);
+            document.getElementById('useStaticIp').addEventListener('change', syncStaticIpFields);
+
+            try {
+                await loadConfig();
+            } catch (error) {
+                setMessage(error.message || 'Ошибка загрузки страницы', 'error');
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

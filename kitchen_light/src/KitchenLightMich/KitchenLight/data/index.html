@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Light</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background: #f4f6f8;
+            color: #1f2933;
+        }
+        .layout {
+            max-width: 760px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+        }
+        h1, h2 {
+            margin-top: 0;
+        }
+        h1 {
+            margin-bottom: 8px;
+        }
+        .topLinks,
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .topLinks {
+            margin-left: auto;
+            margin-bottom: 0;
+        }
+        .headerRow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .linkButton, button {
+            appearance: none;
+            border: 0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            background: #243b53;
+            color: #fff;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .linkButton.secondary, button.secondary {
+            background: #9fb3c8;
+            color: #102a43;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+        .badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #d9e2ec;
+            color: #102a43;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .message {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .message.show {
+            display: block;
+        }
+        .message.success {
+            background: #e3f9e5;
+            color: #1f7a38;
+        }
+        .message.error {
+            background: #ffe3e3;
+            color: #b42318;
+        }
+        .statusList {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .statusItem {
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .statusItem strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #486581;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .sliderRow {
+            margin-top: 12px;
+        }
+        .sliderMeta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .sliderValue {
+            font-size: 24px;
+            font-weight: 700;
+            color: #102a43;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 0;
+        }
+        .muted {
+            color: #52606d;
+            font-size: 13px;
+        }
+        @media (max-width: 640px) {
+            .headerRow {
+                align-items: flex-start;
+            }
+            .topLinks {
+                width: 100%;
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <div class="card">
+            <div class="headerRow">
+                <h1>Kitchen Light</h1>
+                <div class="topLinks">
+                    <button id="refreshButton" class="secondary" type="button">Обновить</button>
+                    <a class="linkButton secondary" href="/config">Конфиг</a>
+                </div>
+            </div>
+            <span id="powerBadge" class="badge">Загрузка</span>
+            <p id="powerStateText" class="muted">Читаю текущее состояние света.</p>
+            <div id="message" class="message"></div>
+        </div>
+
+        <div class="card">
+            <h2>Управление</h2>
+            <div class="actions">
+                <button id="onButton" type="button">Включить</button>
+                <button id="offButton" class="secondary" type="button">Выключить</button>
+                <button id="toggleButton" class="secondary" type="button">Переключить</button>
+            </div>
+            <div class="sliderRow">
+                <div class="sliderMeta">
+                    <strong>Яркость</strong>
+                    <span id="brightnessValue" class="sliderValue">255</span>
+                </div>
+                <input id="brightness" type="range" min="1" max="255" value="255">
+                <p class="muted">Ползунок отправляет значение сразу после короткой паузы.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Статус</h2>
+            <div class="statusList">
+                <div class="statusItem">
+                    <strong>Свет</strong>
+                    <span id="powerState">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>Яркость</strong>
+                    <span id="brightnessState">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>PWM</strong>
+                    <span id="pwmState">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>Запомнено кнопкой</strong>
+                    <span id="buttonBrightnessState">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>WiFi</strong>
+                    <span id="wifiMode">-</span>
+                </div>
+                <div class="statusItem">
+                    <strong>MQTT</strong>
+                    <span id="mqttState">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sliderTimer = null;
+
+        function setMessage(text, type) {
+            const node = document.getElementById('message');
+            node.textContent = text;
+            node.className = `message show ${type}`;
+        }
+
+        function updateView(state) {
+            document.getElementById('powerBadge').textContent = state.on ? 'Свет включен' : 'Свет выключен';
+            document.getElementById('powerStateText').textContent = state.on
+                ? 'Свет сейчас активен и готов к изменению яркости.'
+                : 'Свет сейчас выключен.';
+            document.getElementById('powerState').textContent = state.on ? 'включен' : 'выключен';
+            document.getElementById('brightnessState').textContent = String(state.brightness ?? '-');
+            document.getElementById('pwmState').textContent = state.pwm ? 'активен' : 'выключен';
+            document.getElementById('buttonBrightnessState').textContent = String(state.buttonBrightness ?? '-');
+            document.getElementById('wifiMode').textContent = state.wifiMode || '-';
+            document.getElementById('mqttState').textContent = state.mqttConnected ? 'подключен' : 'нет соединения';
+
+            const brightness = Number(state.brightness || 255);
+            document.getElementById('brightness').value = Math.max(1, brightness);
+            document.getElementById('brightnessValue').textContent = brightness;
+        }
+
+        async function loadState() {
+            const response = await fetch('/api/light/state');
+            if (!response.ok) {
+                throw new Error('Не удалось получить статус света');
+            }
+
+            const data = await response.json();
+            updateView(data);
+        }
+
+        async function sendRequest(url, successMessage) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Ошибка запроса: ${response.status}`);
+            }
+            if (successMessage) {
+                setMessage(successMessage, 'success');
+            }
+            await loadState();
+        }
+
+        async function applyBrightness(value) {
+            await sendRequest(`/on?d=${value}`, `Яркость установлена: ${value}`);
+        }
+
+        function scheduleBrightnessSend(value) {
+            document.getElementById('brightnessValue').textContent = value;
+            clearTimeout(sliderTimer);
+            sliderTimer = setTimeout(() => {
+                applyBrightness(value).catch(error => setMessage(error.message || 'Ошибка установки яркости', 'error'));
+            }, 180);
+        }
+
+        function attachEvents() {
+            document.getElementById('onButton').addEventListener('click', () => {
+                sendRequest('/on', 'Свет включен').catch(error => setMessage(error.message || 'Ошибка включения', 'error'));
+            });
+            document.getElementById('offButton').addEventListener('click', () => {
+                sendRequest('/off', 'Свет выключен').catch(error => setMessage(error.message || 'Ошибка выключения', 'error'));
+            });
+            document.getElementById('toggleButton').addEventListener('click', () => {
+                sendRequest('/toggle', 'Состояние переключено').catch(error => setMessage(error.message || 'Ошибка переключения', 'error'));
+            });
+            document.getElementById('refreshButton').addEventListener('click', () => {
+                loadState().catch(error => setMessage(error.message || 'Ошибка обновления', 'error'));
+            });
+            document.getElementById('brightness').addEventListener('input', event => {
+                scheduleBrightnessSend(event.target.value);
+            });
+        }
+
+        async function init() {
+            attachEvents();
+            try {
+                await loadState();
+                setInterval(() => {
+                    loadState().catch(() => {});
+                }, 3000);
+            } catch (error) {
+                setMessage(error.message || 'Ошибка загрузки UI', 'error');
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
