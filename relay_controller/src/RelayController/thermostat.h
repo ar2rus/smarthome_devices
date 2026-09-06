@@ -1,7 +1,6 @@
 #ifndef THERMOSTAT_H
 #define THERMOSTAT_H
 
-using namespace std;
 #include <functional>
 #include <vector>
 #include <string>

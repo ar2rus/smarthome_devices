@@ -1,11 +1,23 @@
 #ifndef RelayController_h
 #define RelayController_h
 
+#include <Arduino.h>
+#include <time.h>
 #include <vector>
 #include "Thermostat.h"
 #include "TimeZones.h"
 
 #define MQTT_CLIENT_ID "relay-controller"
+
+#define SETTINGS_STORAGE_MAGIC 0x52434F4EUL
+#define SETTINGS_STORAGE_VERSION 1
+
+#define WIFI_CONNECT_TIMEOUT_MS 60000UL
+#define WIFI_CONNECT_RETRY_INTERVAL_MS 5000UL
+#define WIFI_AP_RESTART_TIMEOUT_MS (15UL * 60UL * 1000UL)
+#define WIFI_AP_PASSWORD "12345678"
+#define WIFI_AP_SSID_PREFIX "RelayController"
+#define CONFIG_REBOOT_DELAY_MS 1500UL
 
 #define MQTT_TOPIC_DEVICE "home/" MQTT_CLIENT_ID
 #define MQTT_TOPIC_STATUS MQTT_TOPIC_DEVICE "/status"
@@ -19,6 +31,60 @@
 
 #define MQTT_TOPIC_ONEWIRE MQTT_TOPIC_DEVICE "/onewire"
 #define MQTT_TOPIC_ONEWIRE_STATE MQTT_TOPIC_ONEWIRE "/state"
+#define MQTT_TOPIC_ONEWIRE_SCAN MQTT_TOPIC_ONEWIRE "/scan"
+#define MQTT_TOPIC_ONEWIRE_SET MQTT_TOPIC_ONEWIRE "/set"
+#define MQTT_TOPIC_ONEWIRE_SET_ON MQTT_TOPIC_ONEWIRE_SET "/on"
+#define MQTT_TOPIC_ONEWIRE_SET_OFF MQTT_TOPIC_ONEWIRE_SET "/off"
+
+enum WifiState {
+  WIFI_STATE_IDLE,
+  WIFI_STATE_CONNECTING,
+  WIFI_STATE_STA_CONNECTED,
+  WIFI_STATE_AP_MODE
+};
+
+struct PersistedWifiSettings {
+  char ssid[33];
+  char password[65];
+  uint8_t useStaticIp;
+  char ip[16];
+  char gateway[16];
+  char subnet[16];
+  char dns[16];
+};
+
+struct PersistedMqttSettings {
+  char host[64];
+  uint16_t port;
+  char user[33];
+  char password[65];
+};
+
+struct PersistedSettings {
+  uint32_t magic;
+  uint16_t version;
+  PersistedWifiSettings wifi;
+  PersistedMqttSettings mqtt;
+};
+
+struct DS18B20Reading {
+  float temperature;
+  time_t timestamp;
+  unsigned long lastReadMs;
+  bool hasRecentReading;
+
+  bool hasValue() const {
+    return hasRecentReading || timestamp > 0;
+  }
+
+  bool hasActualValue() const {
+    static const unsigned long ACTUAL_VALUE_MAX_AGE_MS = 30UL * 60UL * 1000UL;
+    if (!hasRecentReading) {
+      return false;
+    }
+    return static_cast<unsigned long>(millis() - lastReadMs) <= ACTUAL_VALUE_MAX_AGE_MS;
+  }
+};
 
 
 #define BUTTON_PIN 2
@@ -29,7 +95,7 @@
 #define ONE_WIRE_PIN 14
 
 #define ONE_WIRE_NUM_DEVICES 7
-#define ONE_WIRE_UPDATE_PERIOD 15
+#define ONE_WIRE_UPDATE_PERIOD 10
 
 #define DS18B20_NUM_REQUESTS (ONE_WIRE_NUM_DEVICES + 1)
 #define DS18B20_REQUEST_PERIOD ((ONE_WIRE_UPDATE_PERIOD * 1000) / DS18B20_NUM_REQUESTS)
@@ -79,6 +145,7 @@ static const uint8_t SHIFT_REGISTER_LATCH_PIN = 3;
 static const uint8_t SHIFT_REGISTER_CLOCK_PIN = 0;
 
 static const uint8_t SHIFT_REGISTER_WIFI_LED_BIT = 0;
+static const uint8_t SHIFT_REGISTER_ONEWIRE_LED_BIT = 1;
 
 // Определение для каналов нагрева
 #define THERMOSTAT_CHANNELS_NUM 3
@@ -86,7 +153,7 @@ static const uint8_t SHIFT_REGISTER_WIFI_LED_BIT = 0;
 #define THERMOSTAT_BATHROOM_WALL_CHANNEL 1 
 #define THERMOSTAT_TOILET_FLOOR_CHANNEL 2
 
-static const uint8_t SHIFT_REGISTER_THERMOSTAT_LED_BITS[THERMOSTAT_CHANNELS_NUM] = {1, 2, 3};
+static const uint8_t SHIFT_REGISTER_THERMOSTAT_LED_BITS[THERMOSTAT_CHANNELS_NUM] = {2, 3, 4};
 
 // Определение для каналов вентиляторов
 #define RELAY_CHANNELS_NUM 2

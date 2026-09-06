@@ -12,13 +12,13 @@
 #include <ESP8266WiFi.h>
 #include <ArduinoOTA.h>
 #include <ESPAsyncWebServer.h>
-#include <AsyncMqttClient.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
 #include "RelayController.h"
-#include "Credentials.h"
+#include "Config.h"
+#include "MQTT.h"
 
 #include "Thermostat.h"
 #include "Relay.h"
@@ -29,7 +29,7 @@
 #include <ArduinoJson.h>
 
 #include <time.h>
-#include <LittleFS.h>  // Используем LittleFS
+#include <LittleFS.h>
 
 #include <vector>
 
@@ -42,63 +42,33 @@ Thermostat* thermostats[THERMOSTAT_CHANNELS_NUM];
 // Массив контроллеров вентиляторов
 Relay* relays[RELAY_CHANNELS_NUM];
 
-static const long MIN_VALID_EPOCH = 1609459200; // 2021-01-01
-
 bool oneWirePowerEnabled = false;
 bool ds18b20NeedsRequest = true;
-
-void publishMqttOneWireState(bool enabled, time_t transitionTs);
-void publishMqttButtonEvent(const char* eventType);
-void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length);
-void connectMqtt();
-void onMqttMessage(
-  char* topic,
-  char* payload,
-  AsyncMqttClientMessageProperties properties,
-  size_t len,
-  size_t index,
-  size_t total
-);
-void publishMqttStartMessages();
 void applyShiftRegisterState();
 void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on);
 void updateStatusLeds(unsigned long nowMs);
-void beginWifiConnection(unsigned long nowMs);
+bool isOneWireAlive();
 
 void applyOneWireEnable(bool enabled){
   if (oneWirePowerEnabled != enabled) {
     oneWirePowerEnabled = enabled;
     digitalWrite(ONE_WIRE_SUPPLY_PIN, enabled ? HIGH : LOW);
 
+    unsigned long nowMs = millis();
     if (enabled) {
       // After power restore the sensors need a fresh conversion request.
       ds18b20NeedsRequest = true;
     }
 
-    publishMqttOneWireState(enabled, time(nullptr));
+    if (mqttClient.connected()) {
+      publishMqttOneWireState(enabled);
+    }
+    updateStatusLeds(nowMs);
   }
 }
 
 OneWire oneWire(ONE_WIRE_PIN);
 DallasTemperature DS18B20(&oneWire);
-
-struct DS18B20Reading {
-  float temperature;
-  time_t timestamp;
-
-  bool hasValue() const {
-    return timestamp > 0;
-  }
-
-  bool hasActualValue() const {
-    static const time_t ACTUAL_VALUE_MAX_AGE_SEC = 30 * 60;
-    if (!hasValue()) {
-      return false;
-    }
-    time_t now = time(nullptr);
-    return now >= timestamp && (now - timestamp) <= ACTUAL_VALUE_MAX_AGE_SEC;
-  }
-};
 
 DS18B20Reading DS18B20_values[ONE_WIRE_NUM_DEVICES];
 
@@ -116,51 +86,39 @@ void apply_relay_state(int index){
   digitalWrite(RELAY_PIN[index], relay_states[index] ? HIGH : LOW);
 }
 
-const char *ssid = AP_SSID;
-const char *pass = AP_PASSWORD;
-
-IPAddress ip DEVICE_STATIC_IP;
-IPAddress gateway DEVICE_GATEWAY_IP;
-IPAddress subnet DEVICE_SUBNET_MASK;
-IPAddress dnsAddr DEVICE_DNS_IP;
-
 AsyncWebServer server(80); // Порт 80
 bool littleFsAvailable = false;
 
-AsyncMqttClient mqttClient;
-char mqttIncomingPayloadBuffer[256];
-bool mqttWasConnected = false;
 uint8_t shiftRegisterState = 0xFF;
-
-static const char* NTP_SERVER_1 = "pool.ntp.org";
-static const char* NTP_SERVER_2 = "time.nist.gov";
-static const char* TIME_SETTINGS_FILE = "/time.json";
-
+unsigned long lastShiftRegisterRefreshMs = 0;
+bool oneWireWatchdogRestartInProgress = false;
 
 static const unsigned long ONE_WIRE_WATCHDOG_RESET_OFF_MS = 30UL * 1000UL;
 static const unsigned long ONE_WIRE_WATCHDOG_GRACE_MS = 2 * ONE_WIRE_UPDATE_PERIOD * 1000UL;
-
 static const unsigned long MQTT_RECONNECT_PERIOD_MS = 5000UL;
-static const unsigned long WIFI_RECONNECT_PERIOD_MS = 5000UL;
 static const unsigned long WIFI_LED_BLINK_PERIOD_MS = 500UL;
+static const unsigned long SHIFT_REGISTER_REFRESH_PERIOD_MS = 1000UL;
 
 unsigned long lastMqttReconnect = 0;
-unsigned long lastWifiReconnect = 0;
 
 OneWireWatchdog oneWireWatchdog(
   ONE_WIRE_WATCHDOG_GRACE_MS,
   ONE_WIRE_WATCHDOG_RESET_OFF_MS,
   [](bool enabled) {
+    if (!enabled) {
+      oneWireWatchdogRestartInProgress = true;
+    } else if (oneWireWatchdogRestartInProgress) {
+      oneWireWatchdogRestartInProgress = false;
+    }
     applyOneWireEnable(enabled);
   }
 );
-
-String currentTimeZoneId = DEFAULT_TIMEZONE_ID;
 
 void applyShiftRegisterState() {
   digitalWrite(SHIFT_REGISTER_LATCH_PIN, LOW);
   shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, MSBFIRST, shiftRegisterState);
   digitalWrite(SHIFT_REGISTER_LATCH_PIN, HIGH);
+  lastShiftRegisterRefreshMs = millis();
 }
 
 void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on) {
@@ -178,393 +136,29 @@ void setShiftRegisterLedBit(uint8_t* value, uint8_t bitIndex, bool on) {
 void updateStatusLeds(unsigned long nowMs) {
   bool wifiConnected = WiFi.status() == WL_CONNECTED;
   bool wifiLedOn = wifiConnected || (((nowMs / WIFI_LED_BLINK_PERIOD_MS) % 2U) == 0U);
+  bool oneWireLedOn = false;
+
+  if (oneWireWatchdogRestartInProgress) {
+    oneWireLedOn = (((nowMs / WIFI_LED_BLINK_PERIOD_MS) % 2U) == 0U);
+  } else if (oneWirePowerEnabled) {
+    oneWireLedOn = isOneWireAlive();
+  }
 
   uint8_t nextState = 0xFF;
   setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_WIFI_LED_BIT, wifiLedOn);
+  setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_ONEWIRE_LED_BIT, oneWireLedOn);
   for (uint8_t i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
     setShiftRegisterLedBit(&nextState, SHIFT_REGISTER_THERMOSTAT_LED_BITS[i], relay_states[THERMOSTAT_CHANNELS_CONFIG[i].relayPin]);
   }
 
-  if (nextState != shiftRegisterState) {
+  bool stateChanged = nextState != shiftRegisterState;
+  if (stateChanged) {
     shiftRegisterState = nextState;
+  }
+
+  if (stateChanged || (nowMs - lastShiftRegisterRefreshMs) >= SHIFT_REGISTER_REFRESH_PERIOD_MS) {
     applyShiftRegisterState();
   }
-}
-
-void beginWifiConnection(unsigned long nowMs) {
-  WiFi.config(ip, gateway, subnet, dnsAddr);
-  WiFi.begin(ssid, pass);
-  lastWifiReconnect = nowMs;
-}
-
-String formatDeviceId(const uint8_t* address) {
-  char buffer[17];
-  snprintf(
-    buffer,
-    sizeof(buffer),
-    "%02X%02X%02X%02X%02X%02X%02X%02X",
-    address[0], address[1], address[2], address[3],
-    address[4], address[5], address[6], address[7]
-  );
-  return String(buffer);
-}
-
-String mqttSensorMetaPayload(int sensorIndex) {
-  String payload = "{";
-  payload += "\"type\":\"DS18B20\",";
-  payload += "\"units\":{";
-  payload += "\"temperature\":\"C\"";
-  payload += "},";
-  payload += "\"location\":\"" + String(DS18B20_DEVICES_LOCATIONS[sensorIndex]) + "\"";
-  payload += "}";
-  return payload;
-}
-
-String mqttSensorStatePayload(int sensorIndex) {
-  String payload = "{";
-  payload += "\"temperature\":" + String(DS18B20_values[sensorIndex].temperature, 2) + ",";
-  payload += "\"timestamp\":" + String(static_cast<unsigned long>(DS18B20_values[sensorIndex].timestamp));
-  payload += "}";
-  return payload;
-}
-
-String mqttSensorTopicBase(int sensorIndex) {
-  return String(MQTT_TOPIC_SENSOR) + "/" + formatDeviceId(DS18B20_DEVICES[sensorIndex]);
-}
-
-String mqttSensorMetaTopic(int sensorIndex) {
-  return mqttSensorTopicBase(sensorIndex) + "/meta";
-}
-
-String mqttSensorStateTopic(int sensorIndex) {
-  return mqttSensorTopicBase(sensorIndex) + "/state";
-}
-
-String mqttRelayTopicBase(int relayIndex) {
-  return String(MQTT_TOPIC_RELAY) + "/" + RELAY_CHANNELS_CONFIG[relayIndex].topicName;
-}
-
-String mqttRelayStateTopic(int relayIndex) {
-  return mqttRelayTopicBase(relayIndex) + "/state";
-}
-
-String mqttRelayMetaTopic(int relayIndex) {
-  return mqttRelayTopicBase(relayIndex) + "/meta";
-}
-
-String mqttRelaySetOnTopic(int relayIndex) {
-  return mqttRelayTopicBase(relayIndex) + "/set/on";
-}
-
-String mqttRelaySetOffTopic(int relayIndex) {
-  return mqttRelayTopicBase(relayIndex) + "/set/off";
-}
-
-String mqttRelaySetToggleTopic(int relayIndex) {
-  return mqttRelayTopicBase(relayIndex) + "/set/toggle";
-}
-
-String mqttOneWireStatePayload(bool enabled, time_t transitionTs) {
-  String payload = "{";
-  payload += "\"enabled\":";
-  payload += enabled ? "true" : "false";
-  if (transitionTs > MIN_VALID_EPOCH) {
-    payload += ",\"timestamp\":";
-    payload += String(static_cast<unsigned long>(transitionTs));
-  }
-  payload += "}";
-  return payload;
-}
-
-String mqttRelayStatePayload(const RelayState& state) {
-  String payload = "{";
-  payload += "\"on\":";
-  payload += state.on ? "true" : "false";
-  payload += ",\"relayState\":";
-  payload += state.relayState ? "true" : "false";
-  payload += ",\"remainingTime\":";
-  payload += String(state.remainingTime);
-  payload += "}";
-  return payload;
-}
-
-String mqttRelayMetaPayload(int relayIndex) {
-  String payload = "{";
-  payload += "\"location\":\"" + String(RELAY_CHANNELS_CONFIG[relayIndex].location) + "\"";
-  payload += "}";
-  return payload;
-}
-
-void publishMqttRelayMeta(int relayIndex) {
-  if (!mqttClient.connected()) {
-    return;
-  }
-
-  String topic = mqttRelayMetaTopic(relayIndex);
-  String payload = mqttRelayMetaPayload(relayIndex);
-  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
-}
-
-void publishMqttAllRelaysMeta() {
-  for (int i = 0; i < RELAY_CHANNELS_NUM; i++) {
-    publishMqttRelayMeta(i);
-  }
-}
-
-void publishMqttRelayState(int relayIndex, const RelayState& state) {
-  if (!mqttClient.connected() || relays[relayIndex] == nullptr) {
-    return;
-  }
-
-  String topic = mqttRelayStateTopic(relayIndex);
-  String payload = mqttRelayStatePayload(state);
-  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
-}
-
-void publishMqttRelayState(int relayIndex) {
-  if (relays[relayIndex] == nullptr) {
-    return;
-  }
-  publishMqttRelayState(relayIndex, relays[relayIndex]->getState());
-}
-
-void publishMqttAllRelaysState() {
-  for (int i = 0; i < RELAY_CHANNELS_NUM; i++) {
-    publishMqttRelayState(i);
-  }
-}
-
-String mqttThermostatTopicBase(int channelIndex) {
-  return String(MQTT_TOPIC_THERMOSTAT) + "/" + THERMOSTAT_CHANNELS_CONFIG[channelIndex].topicName;
-}
-
-String mqttThermostatStateTopic(int channelIndex) {
-  return mqttThermostatTopicBase(channelIndex) + "/state";
-}
-
-String mqttThermostatMetaTopic(int channelIndex) {
-  return mqttThermostatTopicBase(channelIndex) + "/meta";
-}
-
-String mqttThermostatMetaPayload(int channelIndex) {
-  String payload = "{";
-  payload += "\"location\":\"" + String(THERMOSTAT_CHANNELS_CONFIG[channelIndex].location) + "\"";
-  payload += "}";
-  return payload;
-}
-
-String mqttThermostatStatePayload(const ThermostatState& state) {
-  String payload = "{";
-  payload += "\"on\":";
-  payload += state.on ? "true" : "false";
-  payload += ",\"relayState\":";
-  payload += state.relayState ? "true" : "false";
-  payload += ",\"currentTemperature\":";
-  payload += String(state.currentTemperature, 2);
-  payload += ",\"desiredTemperature\":";
-  payload += String(state.desiredTemperature, 2);
-  payload += "}";
-  return payload;
-}
-
-void publishMqttThermostatMeta(int channelIndex) {
-  if (!mqttClient.connected()) {
-    return;
-  }
-
-  String topic = mqttThermostatMetaTopic(channelIndex);
-  String payload = mqttThermostatMetaPayload(channelIndex);
-  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
-}
-
-void publishMqttAllThermostatMeta() {
-  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
-    publishMqttThermostatMeta(i);
-  }
-}
-
-void publishMqttThermostatState(int channelIndex, const ThermostatState& state) {
-  if (!mqttClient.connected()) {
-    return;
-  }
-
-  String topic = mqttThermostatStateTopic(channelIndex);
-  String payload = mqttThermostatStatePayload(state);
-  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
-}
-
-void publishMqttAllThermostatState() {
-  for (int i = 0; i < THERMOSTAT_CHANNELS_NUM; i++) {
-    if (thermostats[i] == nullptr) {
-      continue;
-    }
-
-    ThermostatState state;
-    thermostats[i]->getState(&state);
-    publishMqttThermostatState(i, state);
-  }
-}
-
-bool parseRelayDurationMinutes(const uint8_t* payload, unsigned int length, unsigned long& durationMinutes) {
-  if (length == 0) {
-    return false;
-  }
-
-  DynamicJsonDocument doc(128);
-  DeserializationError error = deserializeJson(doc, reinterpret_cast<const char*>(payload), length);
-  if (error || !doc.containsKey("durationMinutes")) {
-    return false;
-  }
-
-  long value = doc["durationMinutes"].as<long>();
-  if (value <= 0 || value > 180) {
-    return false;
-  }
-
-  durationMinutes = static_cast<unsigned long>(value);
-  return true;
-}
-
-void subscribeMqttRelayCommandTopics() {
-  for (int i = 0; i < RELAY_CHANNELS_NUM; i++) {
-    String setOnTopic = mqttRelaySetOnTopic(i);
-    String setOffTopic = mqttRelaySetOffTopic(i);
-    String setToggleTopic = mqttRelaySetToggleTopic(i);
-    mqttClient.subscribe(setOnTopic.c_str(), 1);
-    mqttClient.subscribe(setOffTopic.c_str(), 1);
-    mqttClient.subscribe(setToggleTopic.c_str(), 1);
-  }
-}
-
-void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length) {
-  for (int i = 0; i < RELAY_CHANNELS_NUM; i++) {
-    if (relays[i] == nullptr) {
-      continue;
-    }
-
-    String setOnTopic = mqttRelaySetOnTopic(i);
-    if (setOnTopic == topic) {
-      unsigned long durationMinutes = 0;
-      if (parseRelayDurationMinutes(payload, length, durationMinutes)) {
-        relays[i]->turnOnWithTimer(durationMinutes);
-      } else {
-        relays[i]->turnOnWithTimer();
-      }
-      return;
-    }
-
-    String setOffTopic = mqttRelaySetOffTopic(i);
-    if (setOffTopic == topic) {
-      relays[i]->turnOff();
-      return;
-    }
-
-    String setToggleTopic = mqttRelaySetToggleTopic(i);
-    if (setToggleTopic == topic) {
-      relays[i]->toggle();
-      return;
-    }
-  }
-}
-
-void publishMqttSensorMeta(int sensorIndex) {
-  if (!mqttClient.connected()) {
-    return;
-  }
-  String topic = mqttSensorMetaTopic(sensorIndex);
-  String payload = mqttSensorMetaPayload(sensorIndex);
-  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
-}
-
-void publishMqttAllSensorsMeta() {
-  for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
-    publishMqttSensorMeta(i);
-  }
-}
-
-void publishMqttSensorState(int sensorIndex) {
-  if (!mqttClient.connected() || !DS18B20_values[sensorIndex].hasActualValue()) {
-    return;
-  }
-
-  String topic = mqttSensorStateTopic(sensorIndex);
-  String payload = mqttSensorStatePayload(sensorIndex);
-  mqttClient.publish(topic.c_str(), 0, true, payload.c_str());
-}
-
-void publishMqttAllSensorsState() {
-  for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
-    publishMqttSensorState(i);
-  }
-}
-
-void publishMqttOneWireState(bool enabled, time_t transitionTs) {
-  if (!mqttClient.connected()) {
-    return;
-  }
-
-  String payload = mqttOneWireStatePayload(enabled, transitionTs);
-  mqttClient.publish(MQTT_TOPIC_ONEWIRE_STATE, 0, true, payload.c_str());
-}
-
-void publishMqttButtonEvent(const char* eventType) {
-  if (!mqttClient.connected()) {
-    return;
-  }
-
-  mqttClient.publish(MQTT_TOPIC_BUTTON_EVENT, 0, false, eventType);
-}
-
-void connectMqtt() {
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
-  if (!mqttClient.connected()) {
-    mqttClient.connect();
-  }
-}
-
-void onMqttMessage(
-  char* topic,
-  char* payload,
-  AsyncMqttClientMessageProperties properties,
-  size_t len,
-  size_t index,
-  size_t total
-) {
-  (void)properties;
-  if (topic == nullptr) {
-    return;
-  }
-
-  if (total == 0) {
-    mqttMessageReceived(topic, reinterpret_cast<uint8_t*>(mqttIncomingPayloadBuffer), 0);
-    return;
-  }
-
-  if (total >= sizeof(mqttIncomingPayloadBuffer)) {
-    return;
-  }
-
-  if (index + len > total) {
-    return;
-  }
-
-  memcpy(mqttIncomingPayloadBuffer + index, payload, len);
-  if (index + len == total) {
-    mqttMessageReceived(topic, reinterpret_cast<uint8_t*>(mqttIncomingPayloadBuffer), total);
-  }
-}
-
-void publishMqttStartMessages() {
-  mqttClient.publish(MQTT_TOPIC_STATUS, 1, true, "online");
-  subscribeMqttRelayCommandTopics();
-  publishMqttAllSensorsMeta();
-  publishMqttAllSensorsState();
-  publishMqttAllRelaysMeta();
-  publishMqttAllRelaysState();
-  publishMqttAllThermostatMeta();
-  publishMqttAllThermostatState();
 }
 
 // Функция для загрузки настроек расписания из JSON
@@ -588,83 +182,6 @@ void saveScheduleToJson(JsonArray& array, const std::vector<ThermostatSchedule>&
     item["minute"] = schedule[i].minute;
     item["temperature"] = schedule[i].temperature;
     item["dayOfWeek"] = schedule[i].dayOfWeek;
-  }
-}
-
-bool applyTimeZoneById(const String& id) {
-  const TimeZoneOption* zone = findTimeZoneById(id);
-  if (zone == nullptr) {
-    return false;
-  }
-  currentTimeZoneId = zone->id;
-  configTime(getPosixTimeZone(zone->key), NTP_SERVER_1, NTP_SERVER_2);
-  return true;
-}
-
-void loadTimeSettingsFromFile() {
-  currentTimeZoneId = DEFAULT_TIMEZONE_ID;
-  if (!littleFsAvailable) {
-    return;
-  }
-
-  if (!LittleFS.exists(TIME_SETTINGS_FILE)) {
-    return;
-  }
-
-  File settingsFile = LittleFS.open(TIME_SETTINGS_FILE, "r");
-  if (!settingsFile) {
-    return;
-  }
-
-  DynamicJsonDocument doc(256);
-  DeserializationError error = deserializeJson(doc, settingsFile);
-  settingsFile.close();
-
-  if (error) {
-    return;
-  }
-
-  if (doc.containsKey("timezone")) {
-    String tzId = doc["timezone"].as<String>();
-    if (findTimeZoneById(tzId) != nullptr) {
-      currentTimeZoneId = tzId;
-    }
-  }
-}
-
-void saveTimeSettingsToFile() {
-  if (!littleFsAvailable) {
-    return;
-  }
-
-  DynamicJsonDocument doc(256);
-  doc["timezone"] = currentTimeZoneId;
-
-  File settingsFile = LittleFS.open(TIME_SETTINGS_FILE, "w");
-  if (!settingsFile) {
-    return;
-  }
-
-  serializeJson(doc, settingsFile);
-  settingsFile.close();
-}
-
-void appendTimePayload(DynamicJsonDocument& doc) {
-  time_t now = time(nullptr);
-  bool valid = now > MIN_VALID_EPOCH;
-
-  doc["epoch"] = static_cast<long>(now);
-  doc["timeZone"] = currentTimeZoneId;
-  doc["valid"] = valid;
-
-  if (valid) {
-    struct tm timeInfo;
-    localtime_r(&now, &timeInfo);
-    char timeBuffer[16];
-    strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", &timeInfo);
-    doc["time"] = timeBuffer;
-  } else {
-    doc["time"] = "";
   }
 }
 
@@ -774,6 +291,8 @@ void setup() {
   // Serial.begin(115200);
   // Serial.println("Booting");
 
+  initializeConfig();
+
   pinMode(SHIFT_REGISTER_DATA_PIN, OUTPUT);
   pinMode(SHIFT_REGISTER_LATCH_PIN, OUTPUT);
   pinMode(SHIFT_REGISTER_CLOCK_PIN, OUTPUT);
@@ -842,9 +361,8 @@ void setup() {
   }
 
   WiFi.persistent(false);
-  WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  beginWifiConnection(millis());
+  WiFi.hostname(MQTT_CLIENT_ID);
   updateStatusLeds(millis());
 
   ArduinoOTA.setHostname("relay-controller");
@@ -855,17 +373,13 @@ void setup() {
 
   ArduinoOTA.begin();
 
-  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-  mqttClient.setClientId(MQTT_CLIENT_ID);
-  mqttClient.setCredentials(MQTT_USER, MQTT_PASSWORD);
-  mqttClient.setKeepAlive(30);
-  mqttClient.setWill(MQTT_TOPIC_STATUS, 1, true, "offline");
-  mqttClient.onMessage(onMqttMessage);
-  connectMqtt();
+  setupMqttClient();
 
   if (!applyTimeZoneById(currentTimeZoneId)) {
     applyTimeZoneById(getDefaultTimeZone()->id);
   }
+
+  updateWiFiState(millis());
 
   server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
@@ -873,7 +387,8 @@ void setup() {
 
 
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request){
-    ESP.restart();
+    scheduleReboot();
+    request->send(200, "text/plain", "Reboot scheduled\n");
   });
 
 
@@ -884,6 +399,7 @@ void setup() {
     for (int i = 0; i < ONE_WIRE_NUM_DEVICES; i++) {
       JsonObject sensorObj = sensors.createNestedObject();
       sensorObj["id"] = formatDeviceId(DS18B20_DEVICES[i]);
+      sensorObj["location"] = DS18B20_DEVICES_LOCATIONS[i];
       if (DS18B20_values[i].hasValue()) {
         sensorObj["temperature"] = DS18B20_values[i].temperature;
         sensorObj["timestamp"] = static_cast<long>(DS18B20_values[i].timestamp);
@@ -898,97 +414,7 @@ void setup() {
     request->send(200, "application/json", response);
   });
 
-  server.on("/api/time", HTTP_GET, [](AsyncWebServerRequest *request){
-    DynamicJsonDocument doc(256);
-    appendTimePayload(doc);
-
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
-  });
-
-  server.on("/api/timezones", HTTP_GET, [](AsyncWebServerRequest *request){
-    DynamicJsonDocument doc(2048);
-    doc["current"] = currentTimeZoneId;
-    JsonArray zones = doc.createNestedArray("zones");
-
-    for (size_t i = 0; i < TIME_ZONES_COUNT; i++) {
-      JsonObject zoneObj = zones.createNestedObject();
-      zoneObj["id"] = TIME_ZONES[i].id;
-      zoneObj["label"] = TIME_ZONES[i].label;
-    }
-
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
-  });
-
-  AsyncCallbackWebHandler* timeZoneHandler = new AsyncCallbackWebHandler();
-  timeZoneHandler->setUri("/api/timezone");
-  timeZoneHandler->setMethod(HTTP_POST);
-  timeZoneHandler->onRequest([](AsyncWebServerRequest *request) {});
-
-  timeZoneHandler->onBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    if (total > 0 && index == 0) {
-      request->_tempObject = malloc(total + 1);
-      if (request->_tempObject == NULL) {
-        request->send(500, "application/json", "{\"success\":false,\"message\":\"Недостаточно памяти\"}");
-        return;
-      }
-    }
-
-    if (request->_tempObject) {
-      memcpy((uint8_t*)request->_tempObject + index, data, len);
-
-      if (index + len == total) {
-        ((uint8_t*)request->_tempObject)[total] = '\0';
-        String jsonStr = String((char*)request->_tempObject);
-
-        DynamicJsonDocument doc(256);
-        DeserializationError error = deserializeJson(doc, jsonStr);
-
-        bool success = false;
-        String message = "";
-
-        if (!error) {
-          String tzId = "";
-          if (doc.containsKey("id")) {
-            tzId = doc["id"].as<String>();
-          } else if (doc.containsKey("timeZone")) {
-            tzId = doc["timeZone"].as<String>();
-          }
-
-          if (tzId.length() > 0) {
-            if (applyTimeZoneById(tzId)) {
-              saveTimeSettingsToFile();
-              success = true;
-              message = "Таймзона обновлена";
-            } else {
-              message = "Неизвестная таймзона";
-            }
-          } else {
-            message = "Отсутствует параметр id";
-          }
-        } else {
-          message = "Ошибка разбора JSON";
-        }
-
-        DynamicJsonDocument response(512);
-        response["success"] = success;
-        response["message"] = message;
-        appendTimePayload(response);
-
-        String responseStr;
-        serializeJson(response, responseStr);
-        request->send(success ? 200 : 400, "application/json", responseStr);
-
-        free(request->_tempObject);
-        request->_tempObject = NULL;
-      }
-    }
-  });
-
-  server.addHandler(timeZoneHandler);
+  setupConfigApiRoutes(server);
 
   // API для управления системой теплого пола
   AsyncCallbackWebHandler* thermostatControlHandler = new AsyncCallbackWebHandler();
@@ -1397,8 +823,16 @@ void setup() {
   newUpdateSettingsHandler->setUri("/api/thermostat/settings");
   server.addHandler(newUpdateSettingsHandler);
   
+  server.on("/config", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/config.html", "text/html");
+  });
+
   // Обработчик для корневого маршрута - отдаем index.html
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (wifiState == WIFI_STATE_AP_MODE) {
+      request->redirect("/config");
+      return;
+    }
     request->send(LittleFS, "/index.html", "text/html");
   });
   
@@ -1406,6 +840,10 @@ void setup() {
   server.serveStatic("/", LittleFS, "/");
   
   server.onNotFound( [](AsyncWebServerRequest *request) {
+    if (wifiState == WIFI_STATE_AP_MODE) {
+      request->redirect("/config");
+      return;
+    }
     server_response(request, 404);
   });
 
@@ -1417,10 +855,11 @@ void setup() {
   for (int i=0; i<ONE_WIRE_NUM_DEVICES; i++){
     DS18B20_values[i].temperature = 0;
     DS18B20_values[i].timestamp = 0;
+    DS18B20_values[i].lastReadMs = 0;
+    DS18B20_values[i].hasRecentReading = false;
   }
   DS18B20.begin();
   DS18B20.setResolution(10);
-  
   oneWireWatchdog.start(millis());
 
   // Настройка обработчика кнопки для управления вентилятором туалета
@@ -1463,20 +902,17 @@ int prev_n = -1;
 
 void loop() {
   unsigned long m = millis();
-  wl_status_t wifiStatus = WiFi.status();
+  updateWiFiState(m);
 
-  if (wifiStatus != WL_CONNECTED && (m - lastWifiReconnect) >= WIFI_RECONNECT_PERIOD_MS) {
-    beginWifiConnection(m);
-    wifiStatus = WiFi.status();
-  }
-
-  if (wifiStatus == WL_CONNECTED) {
-    if (!mqttClient.connected()) {
-      if (m - lastMqttReconnect >= MQTT_RECONNECT_PERIOD_MS) {
-        lastMqttReconnect = m;
-        connectMqtt();
-      }
-    }
+  if (
+    wifiState == WIFI_STATE_STA_CONNECTED &&
+    WiFi.status() == WL_CONNECTED &&
+    !mqttClient.connected() &&
+    hasConfiguredMqttSettings() &&
+    (m - lastMqttReconnect) >= MQTT_RECONNECT_PERIOD_MS
+  ) {
+    lastMqttReconnect = m;
+    connectMqtt();
   }
 
   if (mqttClient.connected()) {
@@ -1505,7 +941,10 @@ void loop() {
           float temperature = DS18B20.getTempC(DS18B20_DEVICES[n-1]);
           if (isValidT(temperature)){
             DS18B20_values[n-1].temperature = temperature;
-            DS18B20_values[n-1].timestamp = time(nullptr);
+            time_t ts = time(nullptr);
+            DS18B20_values[n-1].timestamp = ts;
+            DS18B20_values[n-1].lastReadMs = m;
+            DS18B20_values[n-1].hasRecentReading = true;
             publishMqttSensorState(n-1);
           }
         }
@@ -1532,6 +971,10 @@ void loop() {
   inputs.handle();
   updateStatusLeds(m);
   
+  if (rebootScheduledAt != 0 && static_cast<long>(m - rebootScheduledAt) >= 0) {
+    ESP.restart();
+  }
+
   ArduinoOTA.handle();
   yield();
 }
