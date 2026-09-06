@@ -24,6 +24,7 @@
 #include <time.h>
 #include <LittleFS.h>  // Используем LittleFS
 #include <ESPInputs.h>
+#include <EEPROM.h>
 
 #include "HumidityAutoController.h"
 #include "Adafruit_SHT31.h"
@@ -50,6 +51,13 @@ static float tempOffset = -1.6; // <-- тут оффсет температур�
 
 static unsigned long mqttPublishPeriodMs = 5000;
 static unsigned long mqttReconnectPeriodMs = 5000;
+static bool littleFsMounted = false;
+static bool eepromReady = false;
+
+constexpr uint16_t HUM_PARAMS_EEPROM_SIZE = 512;
+constexpr uint16_t HUM_PARAMS_EEPROM_ADDR = 0;
+constexpr uint32_t HUM_PARAMS_EEPROM_MAGIC = 0x42504631UL; // "BPF1"
+constexpr uint16_t HUM_PARAMS_EEPROM_VERSION = 1;
 
 float t, correctedT, h, correctedH;
 unsigned long lastMqttPublish = 0;
@@ -60,6 +68,22 @@ HumidityAutoController::Params humParams;
 void publishHumidityControllerEvent(HumidityAutoController::State state);
 void publishFanOnCommand();
 void publishFanToggleCommand();
+String jsonFloatOrNull(float value, int decimals);
+String paramsJson(const HumidityAutoController::Params& params);
+String diagnosticsStateJson(unsigned long nowMs);
+void registerDiagnosticsRoutes();
+void clampHumidityParams(HumidityAutoController::Params& params);
+bool loadHumidityParamsFromEeprom(HumidityAutoController::Params& outParams);
+bool saveHumidityParamsToEeprom(const HumidityAutoController::Params& params);
+uint32_t hashFnv1a(const uint8_t* data, size_t len);
+
+struct PersistedHumidityParams {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t payloadSize;
+  HumidityAutoController::Params params;
+  uint32_t checksum;
+};
 
 HumidityAutoController humidityCtrl(
   humParams,
@@ -217,6 +241,236 @@ void publishFanToggleCommand() {
   }
 }
 
+uint32_t hashFnv1a(const uint8_t* data, size_t len) {
+  uint32_t hash = 2166136261UL;
+  for (size_t i = 0; i < len; ++i) {
+    hash ^= static_cast<uint32_t>(data[i]);
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+void clampHumidityParams(HumidityAutoController::Params& params) {
+  params.emaAlpha = constrain(params.emaAlpha, 0.001f, 1.0f);
+  params.baselineAlpha = constrain(params.baselineAlpha, 0.0001f, 1.0f);
+  params.triggerDelta = constrain(params.triggerDelta, 0.1f, 50.0f);
+  params.triggerRate = constrain(params.triggerRate, 0.01f, 10.0f);
+  params.confirmMs = static_cast<unsigned long>(constrain(static_cast<long>(params.confirmMs), 0L, 120000L));
+  params.cooldownMs = static_cast<unsigned long>(constrain(static_cast<long>(params.cooldownMs), 0L, 7200000L));
+  params.windowMs = static_cast<unsigned long>(constrain(static_cast<long>(params.windowMs), 1000L, 120000L));
+  params.bufferSize = constrain(params.bufferSize, 20, 600);
+}
+
+bool loadHumidityParamsFromEeprom(HumidityAutoController::Params& outParams) {
+  if (!eepromReady) {
+    return false;
+  }
+
+  PersistedHumidityParams stored{};
+  EEPROM.get(HUM_PARAMS_EEPROM_ADDR, stored);
+
+  if (stored.magic != HUM_PARAMS_EEPROM_MAGIC ||
+      stored.version != HUM_PARAMS_EEPROM_VERSION ||
+      stored.payloadSize != sizeof(HumidityAutoController::Params)) {
+    return false;
+  }
+
+  PersistedHumidityParams check = stored;
+  check.checksum = 0;
+  uint32_t expected = hashFnv1a(
+    reinterpret_cast<const uint8_t*>(&check),
+    sizeof(PersistedHumidityParams)
+  );
+  if (stored.checksum != expected) {
+    return false;
+  }
+
+  outParams = stored.params;
+  clampHumidityParams(outParams);
+  return true;
+}
+
+bool saveHumidityParamsToEeprom(const HumidityAutoController::Params& params) {
+  if (!eepromReady) {
+    return false;
+  }
+
+  PersistedHumidityParams stored{};
+  stored.magic = HUM_PARAMS_EEPROM_MAGIC;
+  stored.version = HUM_PARAMS_EEPROM_VERSION;
+  stored.payloadSize = sizeof(HumidityAutoController::Params);
+  stored.params = params;
+  clampHumidityParams(stored.params);
+  stored.checksum = 0;
+  stored.checksum = hashFnv1a(
+    reinterpret_cast<const uint8_t*>(&stored),
+    sizeof(PersistedHumidityParams)
+  );
+
+  EEPROM.put(HUM_PARAMS_EEPROM_ADDR, stored);
+  return EEPROM.commit();
+}
+
+String jsonFloatOrNull(float value, int decimals) {
+  if (!isfinite(value)) {
+    return "null";
+  }
+  return String(value, decimals);
+}
+
+String paramsJson(const HumidityAutoController::Params& params) {
+  String payload = "{";
+  payload += "\"emaAlpha\":" + String(params.emaAlpha, 4) + ",";
+  payload += "\"baselineAlpha\":" + String(params.baselineAlpha, 4) + ",";
+  payload += "\"triggerDelta\":" + String(params.triggerDelta, 3) + ",";
+  payload += "\"triggerRate\":" + String(params.triggerRate, 3) + ",";
+  payload += "\"confirmMs\":" + String(params.confirmMs) + ",";
+  payload += "\"cooldownMs\":" + String(params.cooldownMs) + ",";
+  payload += "\"windowMs\":" + String(params.windowMs) + ",";
+  payload += "\"bufferSize\":" + String(params.bufferSize);
+  payload += "}";
+  return payload;
+}
+
+String diagnosticsStateJson(unsigned long nowMs) {
+  const HumidityAutoController::Params& params = humidityCtrl.params();
+  float filtered = humidityCtrl.filtered();
+  float baseline = humidityCtrl.baseline();
+  float delta = humidityCtrl.delta();
+  float growth = humidityCtrl.growthRate(nowMs);
+  bool deltaReached = isfinite(delta) && delta >= params.triggerDelta;
+  bool rateReached = isfinite(growth) && growth >= params.triggerRate;
+
+  String payload = "{";
+  payload += "\"timestamp\":" + String(currentTimestampSec(nowMs)) + ",";
+  payload += "\"uptimeMs\":" + String(nowMs) + ",";
+  payload += "\"state\":\"" + String(HumidityAutoController::stateString(humidityCtrl.state())) + "\",";
+  payload += "\"wifiConnected\":";
+  payload += (WiFi.status() == WL_CONNECTED) ? "true" : "false";
+  payload += ",";
+  payload += "\"sensor\":{";
+  payload += "\"temperature\":" + jsonFloatOrNull(correctedT, 2) + ",";
+  payload += "\"rawTemperature\":" + jsonFloatOrNull(t, 2) + ",";
+  payload += "\"humidity\":" + jsonFloatOrNull(correctedH, 2) + ",";
+  payload += "\"rawHumidity\":" + jsonFloatOrNull(h, 2);
+  payload += "},";
+  payload += "\"controller\":{";
+  payload += "\"raw\":" + jsonFloatOrNull(humidityCtrl.raw(), 2) + ",";
+  payload += "\"filtered\":" + jsonFloatOrNull(filtered, 2) + ",";
+  payload += "\"baseline\":" + jsonFloatOrNull(baseline, 2) + ",";
+  payload += "\"delta\":" + jsonFloatOrNull(delta, 2) + ",";
+  payload += "\"growthRate\":" + jsonFloatOrNull(growth, 3) + ",";
+  payload += "\"confirmMs\":" + String(humidityCtrl.confirmTime(nowMs)) + ",";
+  payload += "\"cooldownMs\":" + String(humidityCtrl.cooldownLeft(nowMs));
+  payload += "},";
+  payload += "\"thresholds\":{";
+  payload += "\"triggerDelta\":" + String(params.triggerDelta, 3) + ",";
+  payload += "\"triggerRate\":" + String(params.triggerRate, 3);
+  payload += "},";
+  payload += "\"conditions\":{";
+  payload += "\"deltaReached\":";
+  payload += deltaReached ? "true" : "false";
+  payload += ",";
+  payload += "\"rateReached\":";
+  payload += rateReached ? "true" : "false";
+  payload += "},";
+  payload += "\"params\":";
+  payload += paramsJson(params);
+  payload += "}";
+  return payload;
+}
+
+void registerDiagnosticsRoutes() {
+  auto serveInsightsPage = [](AsyncWebServerRequest *request) {
+    if (!littleFsMounted) {
+      request->send(503, "text/plain", "LittleFS is not mounted");
+      return;
+    }
+    request->send(LittleFS, "/diagnostics.html", "text/html");
+  };
+
+  server.on("/", HTTP_GET, serveInsightsPage);
+  server.on("/insights/humidity", HTTP_GET, serveInsightsPage);
+  server.on("/insights/humidity/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->redirect("/insights/humidity");
+  });
+
+  auto sendCurrentState = [](AsyncWebServerRequest *request) {
+    request->send(200, "application/json", diagnosticsStateJson(millis()));
+  };
+  auto sendParams = [](AsyncWebServerRequest *request) {
+    request->send(200, "application/json", paramsJson(humidityCtrl.params()));
+  };
+
+  server.on("/api/insights/humidity/current", HTTP_GET, sendCurrentState);
+  server.on("/api/insights/humidity/params", HTTP_GET, sendParams);
+
+  auto updateParams = [](AsyncWebServerRequest *request) {
+    HumidityAutoController::Params next = humidityCtrl.params();
+    bool hasAny = false;
+
+    if (request->hasParam("emaAlpha", true)) {
+      next.emaAlpha = constrain(request->getParam("emaAlpha", true)->value().toFloat(), 0.001f, 1.0f);
+      hasAny = true;
+    }
+    if (request->hasParam("baselineAlpha", true)) {
+      next.baselineAlpha = constrain(request->getParam("baselineAlpha", true)->value().toFloat(), 0.0001f, 1.0f);
+      hasAny = true;
+    }
+    if (request->hasParam("triggerDelta", true)) {
+      next.triggerDelta = constrain(request->getParam("triggerDelta", true)->value().toFloat(), 0.1f, 50.0f);
+      hasAny = true;
+    }
+    if (request->hasParam("triggerRate", true)) {
+      next.triggerRate = constrain(request->getParam("triggerRate", true)->value().toFloat(), 0.01f, 10.0f);
+      hasAny = true;
+    }
+    if (request->hasParam("confirmMs", true)) {
+      long value = request->getParam("confirmMs", true)->value().toInt();
+      next.confirmMs = static_cast<unsigned long>(constrain(value, 0L, 120000L));
+      hasAny = true;
+    }
+    if (request->hasParam("cooldownMs", true)) {
+      long value = request->getParam("cooldownMs", true)->value().toInt();
+      next.cooldownMs = static_cast<unsigned long>(constrain(value, 0L, 7200000L));
+      hasAny = true;
+    }
+    if (request->hasParam("windowMs", true)) {
+      long value = request->getParam("windowMs", true)->value().toInt();
+      next.windowMs = static_cast<unsigned long>(constrain(value, 1000L, 120000L));
+      hasAny = true;
+    }
+    if (request->hasParam("bufferSize", true)) {
+      int value = request->getParam("bufferSize", true)->value().toInt();
+      next.bufferSize = constrain(value, 20, 600);
+      hasAny = true;
+    }
+
+    if (!hasAny) {
+      request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid parameters\"}");
+      return;
+    }
+
+    clampHumidityParams(next);
+    if (!humidityCtrl.setParams(next)) {
+      request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid parameters\"}");
+      return;
+    }
+
+    humParams = next;
+
+    bool persisted = saveHumidityParamsToEeprom(next);
+    String response = "{\"success\":true,\"params\":";
+    response += paramsJson(humidityCtrl.params());
+    response += ",\"persisted\":";
+    response += persisted ? "true" : "false";
+    response += "}";
+    request->send(200, "application/json", response);
+  };
+
+  server.on("/api/insights/humidity/params", HTTP_POST, updateParams);
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
@@ -243,6 +497,25 @@ void setup() {
 
   configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
+  EEPROM.begin(HUM_PARAMS_EEPROM_SIZE);
+  eepromReady = true;
+  Serial.println("EEPROM initialized");
+
+  HumidityAutoController::Params persisted = humParams;
+  if (loadHumidityParamsFromEeprom(persisted) && humidityCtrl.setParams(persisted)) {
+    humParams = persisted;
+    Serial.println("Humidity params loaded from EEPROM");
+  } else {
+    Serial.println("Humidity params EEPROM: defaults");
+  }
+
+  littleFsMounted = LittleFS.begin();
+  if (!littleFsMounted) {
+    Serial.println("LittleFS mount failed");
+  } else {
+    Serial.println("LittleFS mounted");
+  }
+
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setKeepAlive(30);
   mqttClient.setClientId(MQTT_CLIENT_ID);
@@ -266,6 +539,8 @@ void setup() {
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request){
     ESP.restart();
   });
+
+  registerDiagnosticsRoutes();
 
   // Обработчик для корневого маршрута - отдаем index.html
 //  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){

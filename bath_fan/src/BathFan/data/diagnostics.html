@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bath Fan Diagnostics</title>
+  <style>
+    :root {
+      --bg-0: #f7f5ef;
+      --bg-1: #e7f0e7;
+      --card: rgba(255, 255, 255, 0.84);
+      --ink: #172026;
+      --muted: #63707a;
+      --line: rgba(23, 32, 38, 0.12);
+      --ok: #19794d;
+      --warn: #b15e00;
+      --bad: #b42318;
+      --raw: #6a4c93;
+      --filtered: #0f766e;
+      --baseline: #9a3412;
+      --delta: #0f4c81;
+      --rate: #c026d3;
+      --threshold: #b91c1c;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #fff 10%, transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, #e6f9f2 0%, transparent 55%),
+        linear-gradient(180deg, var(--bg-0), var(--bg-1));
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.7);
+      box-shadow: 0 12px 30px rgba(23, 32, 38, 0.09);
+      border-radius: 16px;
+      backdrop-filter: blur(6px);
+      padding: 14px;
+    }
+
+    .head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.15rem, 2vw, 1.45rem);
+      letter-spacing: 0.01em;
+    }
+
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .badge {
+      justify-self: end;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.86rem;
+      font-weight: 700;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: #fff;
+      color: var(--muted);
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+
+    .grid-kpi {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .kpi {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(255,255,255,0.58);
+    }
+    .kpi .label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .kpi .value {
+      margin-top: 3px;
+      font-size: 1.15rem;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .layout {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1fr 330px;
+      align-items: start;
+    }
+
+    .charts-col {
+      display: grid;
+      gap: 14px;
+    }
+
+    .chart-title {
+      margin: 0 0 8px 0;
+      font-size: 0.95rem;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    canvas {
+      width: 100%;
+      height: 280px;
+      display: block;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.8), rgba(255,255,255,0.6));
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 1rem;
+    }
+
+    .help {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.3;
+    }
+
+    form {
+      display: grid;
+      gap: 8px;
+    }
+    .field {
+      display: grid;
+      gap: 4px;
+    }
+    label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 9px;
+      padding: 9px 10px;
+      font-size: 0.94rem;
+      font-family: inherit;
+    }
+    input:focus, select:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.23);
+      border-color: rgba(15, 118, 110, 0.5);
+    }
+
+    .btn {
+      margin-top: 4px;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(135deg, #0f766e, #136f63);
+    }
+
+    .status {
+      min-height: 20px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .chart-head {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .chart-head .chart-title {
+      margin: 0;
+    }
+
+    .chart-tools {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .toolbtn {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.9);
+      color: var(--ink);
+      font-size: 0.82rem;
+      line-height: 1;
+      font-weight: 650;
+      padding: 8px 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .toolbtn.primary {
+      border-color: rgba(15, 118, 110, 0.35);
+      background: rgba(15, 118, 110, 0.12);
+      color: #0f5b56;
+    }
+
+    .toolbtn:hover {
+      border-color: rgba(23, 32, 38, 0.25);
+    }
+
+    .chart-view-info {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      canvas {
+        height: 240px;
+      }
+      .chart-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .chart-tools {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card head">
+      <div>
+        <h1>Humidity Trigger Diagnostics</h1>
+        <div class="sub">Realtime diagnostics with zoom, custom range selection and trigger threshold overlays.</div>
+      </div>
+      <div id="conn" class="badge">waiting...</div>
+    </section>
+
+    <section class="card">
+      <div class="grid-kpi">
+        <div class="kpi"><div class="label">State</div><div class="value" id="kState">-</div></div>
+        <div class="kpi"><div class="label">Humidity (corr)</div><div class="value" id="kHum">-</div></div>
+        <div class="kpi"><div class="label">Delta</div><div class="value" id="kDelta">-</div></div>
+        <div class="kpi"><div class="label">Growth rate</div><div class="value" id="kRate">-</div></div>
+        <div class="kpi"><div class="label">Confirm</div><div class="value" id="kConfirm">-</div></div>
+        <div class="kpi"><div class="label">Cooldown</div><div class="value" id="kCooldown">-</div></div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="charts-col">
+        <div class="card">
+          <div class="chart-head">
+            <h3 class="chart-title">Humidity Track: raw / filtered / baseline</h3>
+            <div class="chart-tools">
+              <button id="humZoomInBtn" class="toolbtn" type="button">Zoom +</button>
+              <button id="humZoomOutBtn" class="toolbtn" type="button">Zoom -</button>
+              <button id="humResetBtn" class="toolbtn" type="button">Reset</button>
+              <button id="humLiveBtn" class="toolbtn" type="button">Live</button>
+            </div>
+          </div>
+          <canvas id="humChart" width="920" height="280"></canvas>
+          <div class="legend">
+            <span><i class="dot" style="background:var(--raw)"></i>raw humidity</span>
+            <span><i class="dot" style="background:var(--filtered)"></i>filtered humidity</span>
+            <span><i class="dot" style="background:var(--baseline)"></i>baseline</span>
+          </div>
+          <div id="humViewInfo" class="chart-view-info">View: live window</div>
+        </div>
+
+        <div class="card">
+          <div class="chart-head">
+            <h3 class="chart-title">Decision Signals: delta and growth rate with thresholds</h3>
+            <div class="chart-tools">
+              <button id="algZoomInBtn" class="toolbtn" type="button">Zoom +</button>
+              <button id="algZoomOutBtn" class="toolbtn" type="button">Zoom -</button>
+              <button id="algResetBtn" class="toolbtn" type="button">Reset</button>
+              <button id="algLiveBtn" class="toolbtn" type="button">Live</button>
+            </div>
+          </div>
+          <canvas id="algChart" width="920" height="280"></canvas>
+          <div class="legend">
+            <span><i class="dot" style="background:var(--delta)"></i>delta</span>
+            <span><i class="dot" style="background:var(--rate)"></i>growth rate</span>
+            <span><i class="dot" style="background:var(--threshold)"></i>threshold lines</span>
+            <span><i class="dot" style="background:#d97706"></i>state change markers</span>
+          </div>
+          <div id="algViewInfo" class="chart-view-info">View: live window</div>
+        </div>
+      </div>
+
+      <aside class="card panel">
+        <h2>Algorithm Params</h2>
+        <p class="help">Values are applied immediately and persisted in EEPROM, so they survive reboot.</p>
+        <form id="paramsForm">
+          <div class="field"><label for="emaAlpha">emaAlpha</label><input id="emaAlpha" name="emaAlpha" type="number" step="0.001" min="0.001" max="1"></div>
+          <div class="field"><label for="baselineAlpha">baselineAlpha</label><input id="baselineAlpha" name="baselineAlpha" type="number" step="0.0001" min="0.0001" max="1"></div>
+          <div class="field"><label for="triggerDelta">triggerDelta</label><input id="triggerDelta" name="triggerDelta" type="number" step="0.1" min="0.1" max="50"></div>
+          <div class="field"><label for="triggerRate">triggerRate</label><input id="triggerRate" name="triggerRate" type="number" step="0.01" min="0.01" max="10"></div>
+          <div class="field"><label for="confirmMs">confirmMs</label><input id="confirmMs" name="confirmMs" type="number" step="100" min="0" max="120000"></div>
+          <div class="field"><label for="cooldownMs">cooldownMs</label><input id="cooldownMs" name="cooldownMs" type="number" step="1000" min="0" max="7200000"></div>
+          <div class="field"><label for="windowMs">windowMs</label><input id="windowMs" name="windowMs" type="number" step="1000" min="1000" max="120000"></div>
+          <div class="field"><label for="bufferSize">bufferSize</label><input id="bufferSize" name="bufferSize" type="number" step="1" min="20" max="600"></div>
+          <button class="btn" type="submit">Apply Params</button>
+        </form>
+        <div id="formStatus" class="status"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_VIEW_MS = 10 * 60 * 1000;
+    const POLL_MS = 1000;
+    const MAX_POINTS = 200000;
+    const history = [];
+    let pollFailCount = 0;
+    let dragSelection = null;
+    let hoverIndex = null;
+
+    const connBadge = document.getElementById("conn");
+    const formStatus = document.getElementById("formStatus");
+    const humCanvas = document.getElementById("humChart");
+    const algCanvas = document.getElementById("algChart");
+    const humCtx = humCanvas.getContext("2d");
+    const algCtx = algCanvas.getContext("2d");
+    const form = document.getElementById("paramsForm");
+    const humViewInfo = document.getElementById("humViewInfo");
+    const algViewInfo = document.getElementById("algViewInfo");
+    const viewState = { mode: "window", windowMs: DEFAULT_VIEW_MS, customRange: null };
+
+    function fmt(v, d = 2, suffix = "") {
+      if (v === null || v === undefined || Number.isNaN(v)) return "-";
+      return Number(v).toFixed(d) + suffix;
+    }
+
+    function setConn(text, cls) {
+      connBadge.textContent = text;
+      connBadge.className = "badge " + cls;
+    }
+
+    function pushSample(sample) {
+      history.push(sample);
+      while (history.length > MAX_POINTS) history.shift();
+    }
+
+    function formatDuration(ms) {
+      const sec = Math.round(ms / 1000);
+      if (sec < 60) return sec + "s";
+      const min = Math.round(sec / 60);
+      if (min < 60) return min + "m";
+      const h = (min / 60).toFixed(min % 60 === 0 ? 0 : 1);
+      return h + "h";
+    }
+
+    function getVisibleHistory() {
+      if (!history.length) return [];
+      const lastTs = history[history.length - 1].clientTs;
+      const firstTs = history[0].clientTs;
+      if (viewState.mode === "custom" && viewState.customRange) {
+        return history.filter((s) => s.clientTs >= viewState.customRange.start && s.clientTs <= viewState.customRange.end);
+      }
+      const start = Math.max(firstTs, lastTs - viewState.windowMs);
+      return history.filter((s) => s.clientTs >= start && s.clientTs <= lastTs);
+    }
+
+    function updateViewInfo(visible) {
+      const els = [humViewInfo, algViewInfo];
+      if (!history.length) {
+        els.forEach((el) => { el.textContent = "View: waiting for data"; });
+        return;
+      }
+      if (!visible.length) {
+        els.forEach((el) => { el.textContent = "View: selected range has no data"; });
+        return;
+      }
+      const span = visible[visible.length - 1].clientTs - visible[0].clientTs;
+      const modeLabel = viewState.mode === "custom" ? "custom" : "live window";
+      const text = `View: ${modeLabel}, ${formatDuration(span)}, samples=${visible.length}`;
+      els.forEach((el) => { el.textContent = text; });
+    }
+
+    function syncParamsForm(params) {
+      if (!params) return;
+      const fields = ["emaAlpha","baselineAlpha","triggerDelta","triggerRate","confirmMs","cooldownMs","windowMs","bufferSize"];
+      fields.forEach((name) => {
+        const el = form.elements[name];
+        if (el && document.activeElement !== el) el.value = params[name];
+      });
+    }
+
+    function updateKpi(data) {
+      document.getElementById("kState").textContent = data.state || "-";
+      document.getElementById("kHum").textContent = fmt(data.sensor?.humidity, 2, " %");
+      document.getElementById("kDelta").textContent = fmt(data.controller?.delta, 2);
+      document.getElementById("kRate").textContent = fmt(data.controller?.growthRate, 3);
+      document.getElementById("kConfirm").textContent = fmt((data.controller?.confirmMs || 0) / 1000, 1, " s");
+      document.getElementById("kCooldown").textContent = fmt((data.controller?.cooldownMs || 0) / 1000, 1, " s");
+    }
+
+    function drawGrid(ctx, lines = 5) {
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      ctx.strokeStyle = "rgba(23,32,38,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= lines; i += 1) {
+        const y = (h - 1) * (i / lines);
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+    }
+
+    function drawSeries(ctx, points, yMin, yMax, color, width = 2) {
+      if (!points.length) return;
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const range = (yMax - yMin) || 1;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < points.length; i += 1) {
+        const p = points[i];
+        if (p.v === null || Number.isNaN(p.v)) continue;
+        const x = (w - 1) * (i / Math.max(1, points.length - 1));
+        const y = h - 1 - ((p.v - yMin) / range) * (h - 1);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    function drawThreshold(ctx, value, yMin, yMax, color) {
+      if (value === null || value === undefined || Number.isNaN(value)) return;
+      const h = ctx.canvas.height;
+      const w = ctx.canvas.width;
+      const range = (yMax - yMin) || 1;
+      const y = h - 1 - ((value - yMin) / range) * (h - 1);
+      ctx.strokeStyle = color;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawRangeSelection(ctx, startIndex, endIndex, total) {
+      if (startIndex === null || endIndex === null || total < 2) return;
+      const left = Math.min(startIndex, endIndex);
+      const right = Math.max(startIndex, endIndex);
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const x1 = (w - 1) * (left / Math.max(1, total - 1));
+      const x2 = (w - 1) * (right / Math.max(1, total - 1));
+      ctx.fillStyle = "rgba(15,118,110,0.12)";
+      ctx.fillRect(x1, 0, Math.max(2, x2 - x1), h);
+    }
+
+    function drawTimeAxis(ctx, points) {
+      if (!points.length) return;
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const tickCount = Math.min(6, points.length);
+      ctx.font = "11px IBM Plex Sans, Avenir Next, Segoe UI, sans-serif";
+      ctx.fillStyle = "rgba(23,32,38,0.62)";
+      ctx.strokeStyle = "rgba(23,32,38,0.15)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < tickCount; i += 1) {
+        const ratio = tickCount === 1 ? 0 : i / (tickCount - 1);
+        const idx = Math.round(ratio * (points.length - 1));
+        const x = (w - 1) * (idx / Math.max(1, points.length - 1));
+        const label = new Date(points[idx].clientTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        ctx.beginPath();
+        ctx.moveTo(x, h - 16);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+        if (i === 0) continue; // avoid overlap with the left Y-axis labels
+        const textW = ctx.measureText(label).width;
+        const tx = Math.max(0, Math.min(w - textW - 2, x - textW / 2));
+        ctx.fillText(label, tx, h - 2);
+      }
+    }
+
+    function drawYAxis(ctx, yMin, yMax, decimals = 2) {
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const tickCount = 5;
+      const range = (yMax - yMin) || 1;
+      ctx.font = "11px IBM Plex Sans, Avenir Next, Segoe UI, sans-serif";
+      ctx.fillStyle = "rgba(23,32,38,0.70)";
+      ctx.strokeStyle = "rgba(23,32,38,0.22)";
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i <= tickCount; i += 1) {
+        const ratio = i / tickCount;
+        const y = (h - 1) * ratio;
+        const value = yMax - range * ratio;
+        const label = Number(value).toFixed(decimals);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(8, y);
+        ctx.stroke();
+        // Reserve bottom area for X-axis time labels to avoid overlap.
+        ctx.fillText(label, 10, Math.max(10, Math.min(h - 20, y - 2)));
+      }
+
+      // left axis line for readability
+      ctx.strokeStyle = "rgba(23,32,38,0.26)";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, h);
+      ctx.stroke();
+    }
+
+    function valueToY(value, yMin, yMax, h) {
+      if (value === null || value === undefined || Number.isNaN(value)) return null;
+      const range = (yMax - yMin) || 1;
+      return h - 1 - ((value - yMin) / range) * (h - 1);
+    }
+
+    function drawHoverCursor(ctx, points, yMin, yMax, markers) {
+      if (hoverIndex === null || !points.length) return;
+      const idx = Math.max(0, Math.min(points.length - 1, hoverIndex));
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const x = (w - 1) * (idx / Math.max(1, points.length - 1));
+
+      ctx.strokeStyle = "rgba(23,32,38,0.56)";
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      markers.forEach((marker) => {
+        const y = valueToY(marker.value, yMin, yMax, h);
+        if (y === null) return;
+        ctx.fillStyle = marker.color;
+        ctx.beginPath();
+        ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function xToIndex(canvas, x, length) {
+      const rect = canvas.getBoundingClientRect();
+      const localX = Math.max(0, Math.min(rect.width, x - rect.left));
+      const ratio = rect.width > 0 ? localX / rect.width : 0;
+      return Math.round(ratio * Math.max(0, length - 1));
+    }
+
+    function drawStateMarkers(ctx, points) {
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      for (let i = 1; i < points.length; i += 1) {
+        const prev = points[i - 1].state;
+        const curr = points[i].state;
+        if (!curr || curr === prev) continue;
+        let color = "rgba(107,114,128,0.75)";
+        if (curr === "HUMIDITY_RISING") color = "rgba(217,119,6,0.85)";
+        if (curr === "TRIGGERED") color = "rgba(185,28,28,0.85)";
+        if (curr === "IDLE") color = "rgba(75,85,99,0.75)";
+        const x = (w - 1) * (i / Math.max(1, points.length - 1));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+    }
+
+    function renderHumChart(visible) {
+      humCtx.clearRect(0, 0, humCanvas.width, humCanvas.height);
+      drawGrid(humCtx);
+      if (!visible.length) return;
+      const series = visible.map((s) => ({ raw: s.raw, filtered: s.filtered, baseline: s.baseline }));
+      const vals = series.flatMap((s) => [s.raw, s.filtered, s.baseline]).filter((v) => v !== null && !Number.isNaN(v));
+      const yMin = vals.length ? Math.min(...vals) - 1 : 0;
+      const yMax = vals.length ? Math.max(...vals) + 1 : 100;
+      drawYAxis(humCtx, yMin, yMax, 1);
+      drawSeries(humCtx, series.map((s) => ({ v: s.raw })), yMin, yMax, getComputedStyle(document.documentElement).getPropertyValue("--raw"));
+      drawSeries(humCtx, series.map((s) => ({ v: s.filtered })), yMin, yMax, getComputedStyle(document.documentElement).getPropertyValue("--filtered"), 2.4);
+      drawSeries(humCtx, series.map((s) => ({ v: s.baseline })), yMin, yMax, getComputedStyle(document.documentElement).getPropertyValue("--baseline"));
+      drawStateMarkers(humCtx, visible);
+      const p = visible[Math.max(0, Math.min(visible.length - 1, hoverIndex ?? 0))] || null;
+      drawHoverCursor(humCtx, visible, yMin, yMax, [
+        { value: p?.raw ?? null, color: getComputedStyle(document.documentElement).getPropertyValue("--raw") },
+        { value: p?.filtered ?? null, color: getComputedStyle(document.documentElement).getPropertyValue("--filtered") },
+        { value: p?.baseline ?? null, color: getComputedStyle(document.documentElement).getPropertyValue("--baseline") }
+      ]);
+      if (dragSelection) drawRangeSelection(humCtx, dragSelection.startIndex, dragSelection.endIndex, series.length);
+      drawTimeAxis(humCtx, visible);
+    }
+
+    function renderAlgChart(visible) {
+      algCtx.clearRect(0, 0, algCanvas.width, algCanvas.height);
+      drawGrid(algCtx);
+      if (!visible.length) return;
+      const series = visible.map((s) => ({ delta: s.delta, rate: s.rate, triggerDelta: s.triggerDelta, triggerRate: s.triggerRate, state: s.state }));
+      const dVals = series.map((s) => s.delta).filter((v) => v !== null && !Number.isNaN(v));
+      const rVals = series.map((s) => s.rate).filter((v) => v !== null && !Number.isNaN(v));
+      const tdVals = series.map((s) => s.triggerDelta).filter((v) => v !== null && !Number.isNaN(v));
+      const trVals = series.map((s) => s.triggerRate).filter((v) => v !== null && !Number.isNaN(v));
+      const all = [...dVals, ...rVals, ...tdVals, ...trVals];
+      const yMin = all.length ? Math.min(...all) - 0.5 : -1;
+      const yMax = all.length ? Math.max(...all) + 0.5 : 8;
+      drawYAxis(algCtx, yMin, yMax, 2);
+      drawSeries(algCtx, series.map((s) => ({ v: s.delta })), yMin, yMax, getComputedStyle(document.documentElement).getPropertyValue("--delta"), 2.3);
+      drawSeries(algCtx, series.map((s) => ({ v: s.rate })), yMin, yMax, getComputedStyle(document.documentElement).getPropertyValue("--rate"), 2.3);
+      drawThreshold(algCtx, series[series.length - 1].triggerDelta, yMin, yMax, getComputedStyle(document.documentElement).getPropertyValue("--threshold"));
+      drawThreshold(algCtx, series[series.length - 1].triggerRate, yMin, yMax, "rgba(185,28,28,0.75)");
+      drawStateMarkers(algCtx, series);
+      const p = visible[Math.max(0, Math.min(visible.length - 1, hoverIndex ?? 0))] || null;
+      drawHoverCursor(algCtx, visible, yMin, yMax, [
+        { value: p?.delta ?? null, color: getComputedStyle(document.documentElement).getPropertyValue("--delta") },
+        { value: p?.rate ?? null, color: getComputedStyle(document.documentElement).getPropertyValue("--rate") }
+      ]);
+      if (dragSelection) drawRangeSelection(algCtx, dragSelection.startIndex, dragSelection.endIndex, series.length);
+      drawTimeAxis(algCtx, visible);
+    }
+
+    function renderCharts() {
+      const visible = getVisibleHistory();
+      updateViewInfo(visible);
+      renderHumChart(visible);
+      renderAlgChart(visible);
+    }
+
+    function zoomChart(factor) {
+      if (viewState.mode === "custom" && viewState.customRange) {
+        const span = viewState.customRange.end - viewState.customRange.start;
+        const center = viewState.customRange.start + span / 2;
+        const nextSpan = Math.max(15000, Math.min(7 * 24 * 60 * 60 * 1000, span * factor));
+        viewState.customRange = { start: center - nextSpan / 2, end: center + nextSpan / 2 };
+      } else {
+        viewState.windowMs = Math.max(15000, Math.min(7 * 24 * 60 * 60 * 1000, viewState.windowMs * factor));
+      }
+      renderCharts();
+    }
+
+    function resetChart() {
+      viewState.mode = "window";
+      viewState.windowMs = DEFAULT_VIEW_MS;
+      viewState.customRange = null;
+      renderCharts();
+    }
+
+    function liveChart() {
+      viewState.mode = "window";
+      viewState.customRange = null;
+      renderCharts();
+    }
+
+    function installWheelZoom(canvas) {
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        if (!history.length) return;
+        const factor = event.deltaY < 0 ? 0.8 : 1.25;
+        zoomChart(factor);
+      }, { passive: false });
+    }
+
+    function installDragZoom(canvas) {
+      canvas.addEventListener("mousedown", (event) => {
+        const visible = getVisibleHistory();
+        if (visible.length < 3) return;
+        dragSelection = {
+          canvas,
+          startIndex: xToIndex(canvas, event.clientX, visible.length),
+          endIndex: xToIndex(canvas, event.clientX, visible.length)
+        };
+        renderCharts();
+      });
+    }
+
+    function installHoverCursor(canvas) {
+      canvas.addEventListener("mousemove", (event) => {
+        if (dragSelection) return;
+        const visible = getVisibleHistory();
+        if (!visible.length) return;
+        hoverIndex = xToIndex(canvas, event.clientX, visible.length);
+        renderCharts();
+      });
+      canvas.addEventListener("mouseleave", () => {
+        if (dragSelection) return;
+        hoverIndex = null;
+        renderCharts();
+      });
+    }
+
+    window.addEventListener("mousemove", (event) => {
+      if (!dragSelection) return;
+      const visible = getVisibleHistory();
+      if (!visible.length) return;
+      dragSelection.endIndex = xToIndex(dragSelection.canvas, event.clientX, visible.length);
+      renderCharts();
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!dragSelection) return;
+      const visible = getVisibleHistory();
+      if (visible.length >= 3) {
+        const left = Math.min(dragSelection.startIndex, dragSelection.endIndex);
+        const right = Math.max(dragSelection.startIndex, dragSelection.endIndex);
+        if (right - left >= 2) {
+          viewState.mode = "custom";
+          viewState.customRange = { start: visible[left].clientTs, end: visible[right].clientTs };
+        }
+      }
+      dragSelection = null;
+      renderCharts();
+    });
+
+    function ingest(data) {
+      updateKpi(data);
+      syncParamsForm(data.params);
+      pushSample({
+        clientTs: Date.now(),
+        raw: data.controller?.raw ?? null,
+        filtered: data.controller?.filtered ?? null,
+        baseline: data.controller?.baseline ?? null,
+        delta: data.controller?.delta ?? null,
+        rate: data.controller?.growthRate ?? null,
+        triggerDelta: data.thresholds?.triggerDelta ?? null,
+        triggerRate: data.thresholds?.triggerRate ?? null,
+        triggered: data.state === "TRIGGERED",
+        state: data.state || null
+      });
+      renderCharts();
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/insights/humidity/current", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        pollFailCount = 0;
+        setConn("connected", "ok");
+        ingest(data);
+      } catch (err) {
+        pollFailCount += 1;
+        setConn("disconnected", "bad");
+        if (pollFailCount === 1) formStatus.textContent = "Cannot reach /api/insights/humidity/current";
+      }
+    }
+
+    form.addEventListener("submit", async (evt) => {
+      evt.preventDefault();
+      formStatus.textContent = "Applying...";
+      const body = new URLSearchParams(new FormData(form));
+      try {
+        const res = await fetch("/api/insights/humidity/params", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || ("HTTP " + res.status));
+        syncParamsForm(data.params);
+        formStatus.textContent = data.persisted ? "Params applied and saved to EEPROM" : "Params applied, but EEPROM save failed";
+      } catch (err) {
+        formStatus.textContent = "Apply failed: " + err.message;
+      }
+    });
+
+    document.getElementById("humZoomInBtn").addEventListener("click", () => zoomChart(0.6));
+    document.getElementById("humZoomOutBtn").addEventListener("click", () => zoomChart(1.6));
+    document.getElementById("humResetBtn").addEventListener("click", () => resetChart());
+    document.getElementById("humLiveBtn").addEventListener("click", () => liveChart());
+
+    document.getElementById("algZoomInBtn").addEventListener("click", () => zoomChart(0.6));
+    document.getElementById("algZoomOutBtn").addEventListener("click", () => zoomChart(1.6));
+    document.getElementById("algResetBtn").addEventListener("click", () => resetChart());
+    document.getElementById("algLiveBtn").addEventListener("click", () => liveChart());
+
+    installWheelZoom(humCanvas);
+    installWheelZoom(algCanvas);
+    installDragZoom(humCanvas);
+    installDragZoom(algCanvas);
+    installHoverCursor(humCanvas);
+    installHoverCursor(algCanvas);
+
+    setConn("connecting...", "warn");
+    renderCharts();
+    poll();
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>

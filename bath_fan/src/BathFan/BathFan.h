@@ -25,8 +25,8 @@
 #define MQTT_TOPIC_BUTTON MQTT_TOPIC_DEVICE "/button"
 #define MQTT_TOPIC_BUTTON_EVENT MQTT_TOPIC_BUTTON "/event"
 
-#define MQTT_TOPIC_FAN_BATHROOM_ON "home/relay-controller/fan-controller/fan-bathroom/set/on"
-#define MQTT_TOPIC_FAN_BATHROOM_TOGGLE "home/relay-controller/fan-controller/fan-bathroom/set/toggle"
+#define MQTT_TOPIC_FAN_BATHROOM_ON "home/relay-controller/relay/fan-bathroom/set/on"
+#define MQTT_TOPIC_FAN_BATHROOM_TOGGLE "home/relay-controller/relay/fan-bathroom/set/toggle"
 
 #define FAN_BATHROOM_ON_DURATION_MINUTES 30
 

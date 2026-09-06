@@ -55,6 +55,8 @@ public:
     return calcGrowthRate(nowMs);
   }
 
+  const Params& params() const { return params_; }
+
   unsigned long confirmTime(unsigned long nowMs) const {
     if (state_ != State::HUMIDITY_RISING) return 0;
     return nowMs - riseConfirmStart_;
@@ -68,6 +70,27 @@ public:
   }
 
   State state() const { return state_; }
+
+  bool setParams(const Params& newParams) {
+    if (newParams.bufferSize < 2) {
+      return false;
+    }
+
+    bool needResize = newParams.bufferSize != params_.bufferSize;
+    params_ = newParams;
+
+    if (needResize) {
+      delete[] buffer_;
+      buffer_ = new Reading[params_.bufferSize];
+      bufIndex_ = 0;
+      bufFilled_ = false;
+    }
+
+    // Reset transient state to make retuning deterministic.
+    state_ = State::IDLE;
+    riseConfirmStart_ = 0;
+    return true;
+  }
 
   static const char* stateString(State state) {
     switch (state) {
