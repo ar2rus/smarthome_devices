@@ -176,9 +176,9 @@
             <div class="sliderRow">
                 <div class="sliderMeta">
                     <strong>Яркость</strong>
-                    <span id="brightnessValue" class="sliderValue">255</span>
+                    <span id="brightnessValue" class="sliderValue">1023</span>
                 </div>
-                <input id="brightness" type="range" min="1" max="255" value="255">
+                <input id="brightness" type="range" min="1" max="1023" value="1023">
                 <p class="muted">Ползунок отправляет значение сразу после короткой паузы.</p>
             </div>
         </div>
@@ -235,8 +235,8 @@
             document.getElementById('wifiMode').textContent = state.wifiMode || '-';
             document.getElementById('mqttState').textContent = state.mqttConnected ? 'подключен' : 'нет соединения';
 
-            const brightness = Number(state.brightness || 255);
-            document.getElementById('brightness').value = Math.max(1, brightness);
+            const brightness = Number(state.brightness ?? 0);
+            document.getElementById('brightness').value = Math.max(1, Math.min(1023, brightness || 1));
             document.getElementById('brightnessValue').textContent = brightness;
         }
 

@@ -49,7 +49,9 @@ static String mqttLightMetaPayload() {
   String payload = "{";
   payload += "\"location\":\"kitchen\",";
   payload += "\"supportsBrightness\":true,";
-  payload += "\"brightnessRange\":{\"min\":0,\"max\":255}";
+  payload += "\"brightnessRange\":{\"min\":0,\"max\":";
+  payload += String(PWM_RANGE);
+  payload += "}";
   payload += "}";
   return payload;
 }

@@ -63,6 +63,14 @@ uint32_t clunetDiscoveryLastSource = 0;
 unsigned long clunetDiscoveryLastSeenAt = 0;
 unsigned long clunetDiscoveryLastResponseSentAt = 0;
 
+int clunetDimmerToPwm(int value) {
+  return (value * PWM_RANGE + CLUNET_DIMMER_RANGE / 2) / CLUNET_DIMMER_RANGE;
+}
+
+int pwmToClunetDimmer(int value) {
+  return (value * CLUNET_DIMMER_RANGE + PWM_RANGE / 2) / PWM_RANGE;
+}
+
 void initializeClunetHandlers() {
   if (clunet_handlers_initialized) {
     return;
@@ -119,7 +127,7 @@ void initializeClunetHandlers() {
           } else if (packet->size == 2) {
             //у нас только один канал. Проверяем, что команда для него
             if ((packet->data[0] >> (RELAY_0_ID - 1)) & 0x01) {
-              dimmer_exec(packet->data[1], false);
+              dimmer_exec(clunetDimmerToPwm(packet->data[1]), false);
               dimmerResponse(packet->src);
               publishMqttLightState();
             }
@@ -249,7 +257,7 @@ void setup() {
           }
           break;
         case 1:
-          if(request->hasArg("d")){//dimmer: 0 - 255
+          if(request->hasArg("d")){//dimmer: 0 - 1023
             String arg = request->arg("d");
             
             //check digits in arg value
@@ -264,7 +272,7 @@ void setup() {
             }
 
             r = 400;
-            if (num_digits && num_digits <= 3) {  //0-255, maximum 3 digits
+            if (num_digits && num_digits <= 4) {  //0-1023, maximum 4 digits
               if (dimmer_exec(arg.toInt(), true)) {
                 r = 200;
               }
@@ -721,7 +729,7 @@ bool switch_toggle(bool send_response) {
 }
 
 void dimmerResponse(unsigned char address) {
-  char data[] = {1, RELAY_0_ID, dimmer_value};
+  char data[] = {1, RELAY_0_ID, (char)pwmToClunetDimmer(dimmer_value)};
   clunet.send(address, CLUNET_COMMAND_DIMMER_INFO, data, sizeof(data));
 }
 
