@@ -234,18 +234,6 @@
       </div>
 
       <div class="card">
-        <h2>Установить время вручную</h2>
-        <div class="grid">
-          <div>
-            <label for="manualTime">Дата и время</label>
-            <input id="manualTime" type="datetime-local" step="1" min="2021-01-01T00:00:00" max="2037-12-31T23:59:59">
-          </div>
-        </div>
-        <p class="muted">Вводится время в действующем часовом поясе Bridge. При следующей доступной синхронизации NTP оно может быть уточнено.</p>
-        <div class="actions"><button id="setTimeButton" type="button">Установить время</button></div>
-      </div>
-
-      <div class="card">
         <div class="actions">
           <button id="saveButton" type="submit">Сохранить и перезагрузить</button>
           <button id="startAp" class="secondary" type="button">Перейти в режим точки доступа</button>
@@ -291,19 +279,6 @@
         }).format(now);
       } catch (_) {
         byId('deviceTime').textContent = now.toLocaleString('ru-RU');
-      }
-    }
-
-    function manualTimeValue(epochMs) {
-      const date = new Date(epochMs);
-      try {
-        const parts = new Intl.DateTimeFormat('en-CA', {
-          timeZone: byId('timeZone').value || 'Europe/Samara', year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-        }).formatToParts(date).reduce((result, part) => { result[part.type] = part.value; return result; }, {});
-        return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
-      } catch (_) {
-        return '';
       }
     }
 
@@ -358,7 +333,6 @@
       clockEpochMs = Number(data.epoch || 0) * 1000;
       clockLoadedAtMs = Date.now();
       clockValid = Boolean(data.timeValid);
-      byId('manualTime').value = clockValid ? manualTimeValue(clockEpochMs) : '';
       syncStaticFields();
       syncPassword();
       renderTime();
@@ -424,29 +398,6 @@
       } catch (error) {
         showMessage(error.message || 'Не удалось включить точку доступа', true);
         byId('startAp').disabled = false;
-      }
-    });
-
-    byId('setTimeButton').addEventListener('click', async () => {
-      const local = byId('manualTime').value;
-      if (!local) {
-        showMessage('Укажите дату и время', true);
-        return;
-      }
-      byId('setTimeButton').disabled = true;
-      showMessage('Устанавливаю время…', false);
-      try {
-        const result = await jsonRequest('/api/time', {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({local})
-        });
-        clockEpochMs = Number(result.epoch || 0) * 1000;
-        clockLoadedAtMs = Date.now(); clockValid = true;
-        renderTime();
-        showMessage(result.message || 'Время установлено', false);
-      } catch (error) {
-        showMessage(error.message || 'Не удалось установить время', true);
-      } finally {
-        byId('setTimeButton').disabled = false;
       }
     });
 
