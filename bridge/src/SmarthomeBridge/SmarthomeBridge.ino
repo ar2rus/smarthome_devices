@@ -52,6 +52,8 @@ uint32_t suppressedEvents = 0, unobservedEvents = 0, hardwareOverruns = 0, hardw
 #define MULTICAST_MESSAGES_PER_LOOP 8
 #define EVENT_MESSAGES_PER_LOOP 4
 #define DISCOVERY_RESPONSE_TIMEOUT_MS 1500
+#define WIRED_BRIDGE_ID 0x00
+#define TIME_INFO_PACKET_SIZE 7
 
 api_request_state* retainApiRequestState(api_request_state* state);
 void releaseApiRequestState(api_request_state* state);
@@ -131,6 +133,21 @@ bool queuePacket(PacketQueue& queue, clunet_packet* packet, uint32_t& drops){
 
 bool toWire(uint8_t destination) { return destination < 0x80 || destination == CLUNET_ADDRESS_BROADCAST; }
 
+bool getBridgeTimeInfo(char* data) {
+  time_t now = time(nullptr);
+  if (!now) return false;
+  tm localTime;
+  if (!localtime_r(&now, &localTime) || localTime.tm_year <= 100) return false;
+  data[0] = localTime.tm_year + 1900 - 2000;
+  data[1] = localTime.tm_mon + 1;
+  data[2] = localTime.tm_mday;
+  data[3] = localTime.tm_hour;
+  data[4] = localTime.tm_min;
+  data[5] = localTime.tm_sec;
+  data[6] = localTime.tm_wday ? localTime.tm_wday : 7;
+  return true;
+}
+
 bool queueUart(clunet_packet* packet, IPAddress remoteIP = IPAddress(), uint16_t remotePort = 0) {
   const uint8_t maxSize = packet->command == CLUNET_COMMAND_BOOT_CONTROL ? 68 : 64;
   if (packet->size > maxSize || !FlashFirmware::shouldForwardMulticastToUart(packet, remoteIP, remotePort)) { ++uartDrops; return false; }
@@ -140,6 +157,20 @@ bool queueUart(clunet_packet* packet, IPAddress remoteIP = IPAddress(), uint16_t
   if (!queuePacket(uartQueue, packet, uartDrops)) return false;
   FlashFirmware::recordForwardedPacket(packet, remoteIP, remotePort);
   return true;
+}
+
+void respondToWiredTimeRequest(clunet_packet* request) {
+  if (request->src == WIRED_BRIDGE_ID || CLUNET_MULTICAST_DEVICE(request->src) ||
+      request->dst != WIRED_BRIDGE_ID || request->command != CLUNET_COMMAND_TIME) return;
+
+  char responseBytes[CLUNET_PACKET_OFFSET_DATA + TIME_INFO_PACKET_SIZE];
+  clunet_packet* response = reinterpret_cast<clunet_packet*>(responseBytes);
+  response->src = WIRED_BRIDGE_ID;
+  response->dst = request->src;
+  response->command = CLUNET_COMMAND_TIME_INFO;
+  response->size = TIME_INFO_PACKET_SIZE;
+  if (!getBridgeTimeInfo(response->data) || !queueUart(response)) return;
+  observePacket(response);
 }
 
 void observePacket(clunet_packet* packet) {
@@ -774,6 +805,7 @@ void on_uart_message(uint8_t code, char* data, uint8_t length){
         }
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
            if (!consumedByFlash){
+             respondToWiredTimeRequest(packet);
              clunet.ingest(packet, length);
              if (clunetConnected) queuePacket(multicastQueue, packet, multicastDrops);
            }
