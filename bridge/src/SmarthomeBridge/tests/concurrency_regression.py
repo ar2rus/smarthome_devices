@@ -134,6 +134,7 @@ extra = r'''
 #include <functional>
 namespace upload_test {
 using String=std::string;
+namespace NetworkConfig { bool stationConnected(){ return true; } }
 struct AsyncResponseStream{};
 struct AsyncWebServerRequest {
  int status=0;std::function<void()> disconnected;

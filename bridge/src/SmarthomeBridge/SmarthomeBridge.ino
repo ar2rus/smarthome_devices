@@ -28,20 +28,12 @@
 #include "SmarthomeBridge.h"
 #include "FlashFirmware.h"
 #include "BridgeTransport.h"
-//#include "Credentials.h"
+#include "NetworkConfig.h"
 
 #ifdef DEFAULT_MAX_SSE_CLIENTS
   #undef DEFAULT_MAX_SSE_CLIENTS 
   #define DEFAULT_MAX_SSE_CLIENTS 10
 #endif
-
-const char *ssid = "gNet-aux";
-const char *pass = "medvedAn86B";
-
-IPAddress ip(192, 168, 50, 243);     //Node static IP
-IPAddress gateway(192, 168, 50, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dnsAddr(192, 168, 50, 1);
 
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
@@ -51,7 +43,7 @@ ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 uint32_t event_id = 0;
 uint32_t bootId = 0;
 uint32_t uartDrops = 0, multicastDrops = 0, eventDrops = 0, invalidUart = 0, uartCrcErrors = 0, uartTimeouts = 0;
-uint32_t uartOverflows = 0, minHeap = UINT32_MAX, maxLoopMicros = 0, reconnects = 0;
+uint32_t uartOverflows = 0, minHeap = UINT32_MAX, maxLoopMicros = 0;
 uint32_t uartLastRxAt = 0;
 uint16_t routingBudget = 2000;
 uint32_t suppressedEvents = 0, unobservedEvents = 0, hardwareOverruns = 0, hardwareRxErrors = 0;
@@ -75,6 +67,7 @@ BoundedQueue<ts_clunet_packet*, EVENTS_QUEUE_MAX_LENGTH> eventsQueue = BoundedQu
 BoundedQueue<api_request*, 8> apiRequestsQueue = BoundedQueue<api_request*, 8>(deleteApiRequest);
 api_response* apiResponse = NULL;
 bool clunetConnected = false;
+bool littleFsAvailable = false;
 uint32_t discoveryResponsesSniffed = 0;
 uint32_t discoveryResponsesMatchedActiveRequest = 0;
 uint32_t discoveryResponsesReturnedToHttp = 0;
@@ -166,7 +159,7 @@ void observePacket(clunet_packet* packet) {
 }
 
 size_t routeLocalPacket(clunet_packet* packet) {
-  if (FlashFirmware::isTrafficMuted()) return 0;
+  if (!NetworkConfig::stationConnected() || FlashFirmware::isTrafficMuted()) return 0;
   if (toWire(packet->dst)) {
     if (!queueUart(packet)) return 0;
     // Publication is best effort and must not gate local CLUNET delivery.
@@ -228,7 +221,7 @@ void freeApiResponse(){
 
 void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
                 int responseFilterCommand, long responseTimeout, bool _infoRequest, String _infoRequestId){
-    if (FlashFirmware::isTrafficMuted() || apiRequestsQueue.full() || ESP.getFreeHeap() < 12000) {
+    if (!NetworkConfig::stationConnected() || FlashFirmware::isTrafficMuted() || apiRequestsQueue.full() || ESP.getFreeHeap() < 12000) {
       webRequest->send(503, "text/plain", "bridge busy"); return;
     }
     if (size > (toWire(address) ? 64 : CLUNET_PACKET_DATA_SIZE) || responseTimeout < 1 || responseTimeout > 5000 ||
@@ -422,6 +415,11 @@ void info_fan(AsyncWebServerRequest* request){
     _request(request, address_param(request), CLUNET_COMMAND_FAN, &data, 1, CLUNET_COMMAND_FAN_INFO, 250, true, "");
 }
 
+bool networkTransitionAllowed(){
+  return !FlashFirmware::isTrafficMuted() && !BridgeTransport::busy() && uartQueue.isEmpty() &&
+         multicastQueue.isEmpty() && apiRequestsQueue.isEmpty() && apiResponse == NULL;
+}
+
 void setup() {
   Serial1.begin(115200);
   Serial1.println("\n\nHello");
@@ -432,32 +430,24 @@ void setup() {
   bootId = ESP.random();
   FlashFirmware::init();
 
-  if (!LittleFS.begin()) {
+  littleFsAvailable = LittleFS.begin();
+  if (!littleFsAvailable) {
     Serial1.println("LittleFS mount failed");
   }
-
-  WiFi.mode(WIFI_STA);
-
-  WiFi.persistent(false);
-  WiFi.setAutoReconnect(true);
-  WiFi.config(ip, gateway, subnet, dnsAddr);
-  WiFi.begin(ssid, pass);
+  NetworkConfig::begin();
 
   pinMode(LED_BLUE_PORT, OUTPUT);  
   analogWrite(LED_BLUE_PORT, 12);
   
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-
   ArduinoOTA.setHostname("smarthome-bridge");
   ArduinoOTA.onStart([]() {
     Serial1.println("ArduinoOTA start update");
     if (ArduinoOTA.getCommand() == U_FS) {
+      littleFsAvailable = false;
       LittleFS.end();
     }
   });
   ArduinoOTA.begin();
-
-  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
   clunet.ignoreOwnDatagrams(true);
   clunet.onRouteSend(routeLocalPacket);
@@ -560,7 +550,12 @@ void setup() {
 
   server.on("/bridge/status", HTTP_GET, [](AsyncWebServerRequest* request) {
     DynamicJsonDocument doc(2048);
-    doc["wifiStaConnected"] = WiFi.status() == WL_CONNECTED;
+    doc["wifiStaConnected"] = NetworkConfig::stationConnected();
+    doc["wifiMode"] = NetworkConfig::modeName();
+    doc["wifiConfigured"] = NetworkConfig::hasSavedSettings();
+    doc["wifiStationIp"] = WiFi.localIP().toString();
+    doc["wifiApSsid"] = NetworkConfig::accessPointName();
+    doc["wifiApIp"] = WiFi.softAPIP().toString();
     doc["clunetReady"] = clunetConnected;
     doc["trafficMuted"] = FlashFirmware::isTrafficMuted();
     doc["udpPacketsSeen"] = clunet.udpPacketsSeen();
@@ -610,7 +605,7 @@ void setup() {
     doc["maxFreeBlock"] = ESP.getMaxFreeBlockSize();
     doc["maxLoopMicros"] = maxLoopMicros;
     doc["resetReason"] = ESP.getResetReason();
-    doc["reconnects"] = reconnects;
+    doc["reconnects"] = NetworkConfig::reconnectCount();
 
     AsyncResponseStream* response = request->beginResponseStream("application/json");
     serializeJson(doc, *response);
@@ -660,9 +655,10 @@ void setup() {
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest*) {
     ESP.restart();
   });
+  NetworkConfig::setupRoutes(server, littleFsAvailable, networkTransitionAllowed);
   FlashFirmware::setupRoutes(server);
 
-  events.authorizeConnect([](AsyncWebServerRequest*){ return events.count() < 4 && ESP.getFreeHeap() > 14000; });
+  events.authorizeConnect([](AsyncWebServerRequest*){ return NetworkConfig::stationConnected() && events.count() < 4 && ESP.getFreeHeap() > 14000; });
   events.onConnect([](AsyncEventSourceClient *client){
      String state = String("{\"bootId\":") + bootId + ",\"sequence\":" + event_id + ",\"uptimeMs\":" + millis() + ",\"muted\":" + (FlashFirmware::isTrafficMuted() ? "true" : "false") + ",\"resync\":true}";
      client->send(state.c_str(), "RESET", event_id, 3000);
@@ -671,13 +667,18 @@ void setup() {
   server.addHandler(&events);
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-  server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html");
+  server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html").setFilter([](AsyncWebServerRequest*) {
+    return NetworkConfig::stationConnected();
+  });
 
 #if SMARTHOME_HAS_FILE_EDITOR
-  server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
+  server.addHandler(new SPIFFSEditor("user", "111", LittleFS)).setFilter([](AsyncWebServerRequest*) {
+    return NetworkConfig::stationConnected();
+  });
 #endif
 
   server.onNotFound([](AsyncWebServerRequest *request){
+    if (NetworkConfig::accessPointMode()) { request->redirect("/config"); return; }
     request->send(404);
   });
   
@@ -896,6 +897,7 @@ void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t time
 
 void loop() {
   uint32_t loopStarted = micros();
+  NetworkConfig::process();
   if (Serial.hasOverrun()) ++hardwareOverruns;
   if (Serial.hasRxError()) ++hardwareRxErrors;
   uint16_t readBudget = 256;
@@ -913,7 +915,7 @@ void loop() {
     FlashFirmware::forwardTransportResult(tx);
   }
   FlashFirmware::process();
-  if (apiResponse && (!getApiRequestWebRequest(apiResponse->state) || FlashFirmware::isTrafficMuted())) {
+  if (apiResponse && (!getApiRequestWebRequest(apiResponse->state) || !NetworkConfig::stationConnected() || FlashFirmware::isTrafficMuted())) {
     AsyncWebServerRequest* request = getApiRequestWebRequest(apiResponse->state);
     if (request) request->send(503, "text/plain", "bridge maintenance");
     clunet.cancelRequest(); freeApiResponse();
@@ -925,12 +927,12 @@ void loop() {
   if (clunetConnected && multicastInterface != WiFi.localIP()) {
     clunet.close(); clunetConnected = false; multicastQueue.clear();
   }
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!NetworkConfig::stationConnected()) {
     if (clunetConnected) { clunet.close(); clunetConnected = false; multicastQueue.clear(); }
   } else if (!clunetConnected && static_cast<int32_t>(now - nextNetworkAttempt) >= 0) {
     nextNetworkAttempt = now + 2000;
     clunetConnected = clunet.connect();
-    if (clunetConnected) { multicastInterface = WiFi.localIP(); ++reconnects; }
+    if (clunetConnected) multicastInterface = WiFi.localIP();
   }
 
   if (!uartQueue.isEmpty()) {
@@ -985,7 +987,7 @@ void loop() {
     events.send(status.c_str(), "SERVICE");
   }
 
-  if (!FlashFirmware::isTrafficMuted() && apiResponse == NULL){
+  if (NetworkConfig::stationConnected() && !FlashFirmware::isTrafficMuted() && apiResponse == NULL){
     while (!apiRequestsQueue.isEmpty()){
       api_request* ar = apiRequestsQueue.front();
       AsyncWebServerRequest* webRequest = getApiRequestWebRequest(ar->state);
@@ -1051,6 +1053,6 @@ void loop() {
   
   minHeap = min(minHeap, ESP.getFreeHeap());
   maxLoopMicros = max(maxLoopMicros, static_cast<uint32_t>(micros() - loopStarted));
-  ArduinoOTA.handle();
+  if (NetworkConfig::stationConnected()) ArduinoOTA.handle();
   yield();
 }

@@ -3,6 +3,7 @@
 #include "BootloaderLease.h"
 #include "LegacyFlashFlow.h"
 #include "BridgeTransport.h"
+#include "NetworkConfig.h"
 
 #include "ClunetCommands.h"
 
@@ -748,6 +749,10 @@ void setupRoutes(AsyncWebServer& server){
   });
 
   server.on("/flash/start", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (!NetworkConfig::stationConnected()) {
+      request->send(503, "application/json", "{\"ok\":false,\"error\":\"station WiFi is not connected\"}");
+      return;
+    }
     if (flashUpload.inProgress || flashUploadRequest){
       request->send(409, "application/json", "{\"ok\":false,\"error\":\"firmware upload is in progress\"}");
       return;
@@ -790,6 +795,10 @@ void setupRoutes(AsyncWebServer& server){
   });
 
   server.on("/flash/firmware", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (!NetworkConfig::stationConnected()) {
+      request->send(503, "application/json", "{\"ok\":false,\"error\":\"station WiFi is not connected\"}");
+      return;
+    }
     if (request != flashUploadRequest) {
       request->send(409, "application/json", "{\"ok\":false,\"error\":\"another upload or flash owns the buffer\"}");
       return;
@@ -807,6 +816,7 @@ void setupRoutes(AsyncWebServer& server){
     fillFlashStatusResponse(response);
     request->send(response);
   }, [](AsyncWebServerRequest* request, String /*filename*/, size_t index, uint8_t *data, size_t len, bool final) {
+    if (!NetworkConfig::stationConnected()) return;
     if (index == 0){
       if (flashSession.active || flashUploadRequest) return;
       flashUploadRequest = request;

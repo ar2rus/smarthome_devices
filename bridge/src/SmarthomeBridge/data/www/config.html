@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmarthomeBridge — WiFi</title>
+  <style>
+    :root { color-scheme: dark; --bg:#071017; --card:#101d26; --line:#263b48; --text:#eff6f8; --muted:#93a8b4; --accent:#59cfba; --danger:#ef8276; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 20% 0,#173044,var(--bg) 45%); color:var(--text); font:15px/1.45 system-ui,sans-serif; }
+    main { width:min(760px,calc(100% - 28px)); margin:28px auto; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+    h1 { margin:0; font-size:clamp(25px,5vw,38px); }
+    h2 { margin:0 0 14px; font-size:19px; }
+    .back { color:var(--accent); text-decoration:none; padding-top:10px; }
+    .card { background:linear-gradient(145deg,#13232e,var(--card)); border:1px solid var(--line); border-radius:18px; padding:20px; margin:14px 0; box-shadow:0 16px 40px #0005; }
+    .status { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .status div { padding:12px; border-radius:11px; background:#0a151c; }
+    .status small { display:block; color:var(--muted); margin-bottom:3px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    label { display:block; color:var(--muted); margin:12px 0 5px; }
+    input { width:100%; padding:11px 12px; border:1px solid #405664; border-radius:9px; background:#09151c; color:var(--text); font:inherit; }
+    input:disabled { opacity:.42; }
+    .check { display:flex; align-items:center; gap:9px; color:var(--text); }
+    .check input { width:auto; }
+    .hint { color:var(--muted); font-size:13px; }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+    button { border:0; border-radius:9px; padding:11px 16px; font:600 14px system-ui; cursor:pointer; background:var(--accent); color:#06130f; }
+    button.secondary { background:#263b48; color:var(--text); }
+    button:disabled { opacity:.5; cursor:wait; }
+    #message { min-height:22px; margin-top:13px; color:#ffd27d; white-space:pre-wrap; }
+    #message.error { color:var(--danger); }
+    @media(max-width:620px) { .grid,.status { grid-template-columns:1fr; } header { display:block; } .back { display:inline-block; } }
+  </style>
+</head>
+<body>
+<main>
+  <header><div><h1>Настройка WiFi</h1><div class="hint">SmarthomeBridge</div></div><a class="back" href="/log.html">Журнал</a></header>
+  <section class="card">
+    <div class="status">
+      <div><small>Режим</small><strong id="mode">Загрузка…</strong></div>
+      <div><small>Адрес</small><strong id="address">—</strong></div>
+      <div><small>Точка доступа</small><strong id="apSsid">—</strong></div>
+      <div><small>Сохранённая сеть</small><strong id="saved">—</strong></div>
+    </div>
+  </section>
+  <form id="form" class="card">
+    <h2>Домашняя сеть</h2>
+    <label for="ssid">SSID</label>
+    <input id="ssid" maxlength="32" autocomplete="off" required>
+    <label for="password">Новый пароль</label>
+    <input id="password" type="password" maxlength="64" autocomplete="new-password" placeholder="Пусто — оставить сохранённый пароль">
+    <label class="check"><input id="clearPassword" type="checkbox">Очистить пароль и использовать открытую сеть</label>
+    <p id="passwordHint" class="hint"></p>
+    <label class="check"><input id="useStaticIp" type="checkbox">Использовать статический IP</label>
+    <div class="grid">
+      <div><label for="ip">IP</label><input id="ip" maxlength="15" placeholder="192.168.50.243"></div>
+      <div><label for="gateway">Gateway</label><input id="gateway" maxlength="15" placeholder="192.168.50.1"></div>
+      <div><label for="subnet">Mask</label><input id="subnet" maxlength="15" placeholder="255.255.255.0"></div>
+      <div><label for="dns">DNS</label><input id="dns" maxlength="15" placeholder="Пусто — использовать gateway"></div>
+    </div>
+    <div class="actions">
+      <button id="save" type="submit">Сохранить и перезагрузить</button>
+      <button id="startAp" class="secondary" type="button">Перейти в режим точки доступа</button>
+    </div>
+    <div id="message"></div>
+  </form>
+  <p class="hint">Если подключение к сохранённой сети не установится за 60 секунд, мост автоматически вернётся в режим точки доступа. Пароль точки доступа: 12345678.</p>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  let originalSsid = '';
+  let passwordConfigured = false;
+
+  function message(text, error) {
+    const element = byId('message');
+    element.textContent = text || '';
+    element.className = error ? 'error' : '';
+  }
+
+  function syncStaticFields() {
+    const disabled = !byId('useStaticIp').checked;
+    ['ip','gateway','subnet','dns'].forEach(id => byId(id).disabled = disabled);
+  }
+
+  function syncPassword() {
+    byId('password').disabled = byId('clearPassword').checked;
+  }
+
+  function apply(data) {
+    const wifi = data.wifi || {};
+    const network = data.network || {};
+    originalSsid = wifi.ssid || '';
+    passwordConfigured = Boolean(wifi.passwordConfigured);
+    byId('ssid').value = originalSsid;
+    byId('password').value = '';
+    byId('clearPassword').checked = false;
+    byId('useStaticIp').checked = Boolean(wifi.useStaticIp);
+    ['ip','gateway','subnet','dns'].forEach(id => byId(id).value = wifi[id] || '');
+    const labels = {sta_connected:'Клиент WiFi',sta_connecting:'Подключение',ap:'Точка доступа',idle:'Ожидание'};
+    byId('mode').textContent = labels[network.mode] || network.mode || '—';
+    byId('address').textContent = network.mode === 'ap' ? (network.apIp || '192.168.4.1') : (network.stationIp || '—');
+    byId('apSsid').textContent = network.apSsid || '—';
+    byId('saved').textContent = network.saved ? originalSsid : 'нет';
+    byId('passwordHint').textContent = passwordConfigured ? 'Пароль сохранён. Оставьте поле пустым, чтобы его не менять.' : 'Для защищённой сети укажите пароль длиной не менее 8 символов.';
+    syncStaticFields(); syncPassword();
+  }
+
+  async function jsonRequest(url, options) {
+    const response = await fetch(url, options || {});
+    const data = await response.json();
+    if (!response.ok || data.success === false) throw new Error(data.message || `HTTP ${response.status}`);
+    return data;
+  }
+
+  async function load() {
+    try { apply(await jsonRequest('/api/network/config')); }
+    catch (error) { message(error.message || 'Не удалось загрузить настройки', true); }
+  }
+
+  byId('useStaticIp').addEventListener('change', syncStaticFields);
+  byId('clearPassword').addEventListener('change', syncPassword);
+  byId('form').addEventListener('submit', async event => {
+    event.preventDefault(); message('Сохранение…'); byId('save').disabled = true;
+    const wifi = {
+      ssid: byId('ssid').value,
+      useStaticIp: byId('useStaticIp').checked,
+      ip: byId('ip').value,
+      gateway: byId('gateway').value,
+      subnet: byId('subnet').value,
+      dns: byId('dns').value
+    };
+    if (byId('clearPassword').checked) wifi.password = '';
+    else if (byId('password').value) wifi.password = byId('password').value;
+    else if (byId('ssid').value !== originalSsid) wifi.password = '';
+    try {
+      const result = await jsonRequest('/api/network/config', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wifi})});
+      message(result.message + '. Соединение с устройством закроется.');
+    } catch (error) { message(error.message || 'Не удалось сохранить настройки', true); byId('save').disabled = false; }
+  });
+  byId('startAp').addEventListener('click', async () => {
+    byId('startAp').disabled = true; message('Переключение…');
+    try {
+      const result = await jsonRequest('/api/network/ap', {method:'POST'});
+      message(result.message + `. Подключитесь к ${byId('apSsid').textContent}.`);
+    } catch (error) { message(error.message || 'Не удалось включить точку доступа', true); byId('startAp').disabled = false; }
+  });
+  load();
+</script>
+</body>
+</html>
