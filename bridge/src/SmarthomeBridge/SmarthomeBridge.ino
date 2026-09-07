@@ -961,8 +961,10 @@ void loop() {
     ts_clunet_packet* tp = eventsQueue.front();
     processedEventSequence = tp->sequence;
     if (eventsQueue.age(now) > 2000) { ++eventDrops; eventsQueue.remove(tp); continue; }
-    JsonDocument doc;
-    JsonObject row = doc.to<JsonArray>().add<JsonObject>();
+    // Keep this compatible with ArduinoJson 6.x used by the Windows build.
+    DynamicJsonDocument doc(1024);
+    JsonArray rows = doc.to<JsonArray>();
+    JsonObject row = rows.createNestedObject();
     fillMessageJsonObject(row, tp->timestamp_sec, tp->timestamp_ms, tp->packet);
     row["seq"] = tp->sequence; row["bootId"] = bootId;
     row["uptimeMs"] = millis(); row["queuedMs"] = eventsQueue.age(now);
