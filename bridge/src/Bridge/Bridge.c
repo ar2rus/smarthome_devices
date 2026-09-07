@@ -101,7 +101,7 @@ ISR(USART_RXC_vect){
 	unsigned char status = UCSRA;
 	char byte = UDR;
 	uart_rx_last_at = systime;
-	if (status & ((1<<FE)|(1<<DOR)|(1<<PE))) { uart_hardware_errors++; uart_rx_overflow = 1; return; }
+	if (status & ((1<<FE)|(1<<DOR)|(1<<UPE))) { uart_hardware_errors++; uart_rx_overflow = 1; return; }
 	if (uart_rx_data_len < UART_RX_BUF_LENGTH){
 		uart_rx_data[uart_rx_data_len++] = byte;
 	}else{

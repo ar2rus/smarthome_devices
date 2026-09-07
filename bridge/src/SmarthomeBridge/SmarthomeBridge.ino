@@ -13,7 +13,10 @@
 #include <ArduinoJson.h>
 
 #include <LittleFS.h>
+#include "OptionalFileEditor.h"
+#if SMARTHOME_HAS_FILE_EDITOR
 #include <SPIFFSEditor.h>
+#endif
 
 #include <ClunetMulticast.h>
 #include <MessageDecoder.h>
@@ -670,7 +673,9 @@ void setup() {
 
   server.serveStatic("/", LittleFS, "/www/").setDefaultFile("log.html");
 
+#if SMARTHOME_HAS_FILE_EDITOR
   server.addHandler(new SPIFFSEditor("user", "111", LittleFS));
+#endif
 
   server.onNotFound([](AsyncWebServerRequest *request){
     request->send(404);
