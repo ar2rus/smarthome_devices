@@ -45,10 +45,19 @@ public:
 };
 static constexpr uint32_t SETTINGS_MAGIC = 0x53484257UL;
 static constexpr uint16_t SETTINGS_VERSION = 1;
+static constexpr uint32_t TIMEZONE_MAGIC = 0x5348545AUL;
+static constexpr uint16_t TIMEZONE_VERSION = 1;
+struct TimeZoneOption {};
+static const TimeZoneOption TEST_ZONE = {};
+static const TimeZoneOption* findTimeZoneById(const char* id){
+  return id && (!std::strcmp(id,"Europe/Samara") || !std::strcmp(id,"UTC")) ? &TEST_ZONE : nullptr;
+}
 '''
 for signature in ['struct __attribute__((packed)) StoredSettings',
+                  'struct __attribute__((packed)) StoredTimeZone',
                   'static uint32_t crc32(', 'static uint32_t settingsCrc(',
-                  'static bool parseIp(', 'static bool settingsValid(']:
+                  'static uint32_t timeZoneCrc(', 'static bool parseIp(',
+                  'static bool settingsValid(', 'static bool timeZoneValid(']:
     code += declaration(signature) + '\n'
 code += r'''
 int main(){
@@ -64,7 +73,12 @@ int main(){
   std::strcpy(value.dns,"999.1.1.1");value.crc=settingsCrc(value);assert(!settingsValid(value));
   std::strcpy(value.dns,"192.168.50.1");value.crc=settingsCrc(value);assert(settingsValid(value));
   value.password[sizeof(value.password)-1]='x';value.crc=settingsCrc(value);assert(!settingsValid(value));
-  puts("PASS: settings CRC, corruption detection, DHCP/static-IP validation and terminators");
+  value.password[sizeof(value.password)-1]=0;value.crc=settingsCrc(value);assert(settingsValid(value));
+  StoredTimeZone zone={};assert(!timeZoneValid(zone));
+  zone.magic=TIMEZONE_MAGIC;zone.version=TIMEZONE_VERSION;std::strcpy(zone.id,"Europe/Samara");
+  zone.crc=timeZoneCrc(zone);assert(timeZoneValid(zone));
+  std::strcpy(zone.id,"Bad/Zone");zone.crc=timeZoneCrc(zone);assert(!timeZoneValid(zone));
+  puts("PASS: settings CRC, corruption detection, network/timezone validation and terminators");
 }
 '''
 (work / 'network.cpp').write_text(code)
@@ -81,8 +95,12 @@ assert 'dnsServer.processNextRequest();' in source
 assert 'now - stateStartedAt >= CONNECT_TIMEOUT_MS' in source
 assert 'transitionAllowed()' in source and 'scheduledApAt' in source
 assert 'FALLBACK_PAGE' in source and '/www/config.html' in source
-assert 'Пароль точки доступа: 12345678' in page
+assert 'background: #f4f6f8' in page and 'Настройки SmarthomeBridge' in page
+assert 'id="apPassword"' in page and 'id="deviceTime"' in page
+assert 'id="timeZone"' in page and '/api/timezones' in page
+assert "timeZone: byId('timeZone').value" in page
+assert 'configTime(getPosixTimeZone(zone->key)' in source
 script = re.search(r'<script>(.*)</script>', page, re.S)
 assert script
 subprocess.run(['node', '--check', '-'], input=script.group(1), text=True, check=True)
-print('PASS: no compiled home credentials, password not returned, 60 s fallback, captive DNS, embedded UI and STA traffic gating')
+print('PASS: no home credentials, 60 s fallback, captive DNS, white config UI, timezone persistence and STA traffic gating')
