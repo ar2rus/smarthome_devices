@@ -31,6 +31,7 @@ code = r'''
 #include <cstring>
 #include <cstddef>
 #include <cstdlib>
+#include <ctime>
 class IPAddress {
   uint8_t bytes[4] = {};
 public:
@@ -57,7 +58,8 @@ for signature in ['struct __attribute__((packed)) StoredSettings',
                   'struct __attribute__((packed)) StoredTimeZone',
                   'static uint32_t crc32(', 'static uint32_t settingsCrc(',
                   'static uint32_t timeZoneCrc(', 'static bool parseIp(',
-                  'static bool settingsValid(', 'static bool timeZoneValid(']:
+                  'static bool settingsValid(', 'static bool timeZoneValid(',
+                  'static bool parseDecimal(', 'static bool parseManualTime(']:
     code += declaration(signature) + '\n'
 code += r'''
 int main(){
@@ -78,6 +80,13 @@ int main(){
   zone.magic=TIMEZONE_MAGIC;zone.version=TIMEZONE_VERSION;std::strcpy(zone.id,"Europe/Samara");
   zone.crc=timeZoneCrc(zone);assert(timeZoneValid(zone));
   std::strcpy(zone.id,"Bad/Zone");zone.crc=timeZoneCrc(zone);assert(!timeZoneValid(zone));
+  time_t epoch=0;
+  assert(parseManualTime("2026-09-07T18:21:42",epoch) && epoch >= 1609459200);
+  assert(parseManualTime("2026-09-07T18:21",epoch));
+  assert(!parseManualTime("2026-02-30T18:21",epoch));
+  assert(!parseManualTime("2020-12-31T23:59",epoch));
+  assert(!parseManualTime("2038-01-01T00:00",epoch));
+  assert(!parseManualTime("2026-09-07 18:21",epoch));
   puts("PASS: settings CRC, corruption detection, network/timezone validation and terminators");
 }
 '''
@@ -98,9 +107,11 @@ assert 'FALLBACK_PAGE' in source and '/www/config.html' in source
 assert 'background: #f4f6f8' in page and 'Настройки SmarthomeBridge' in page
 assert 'id="apPassword"' in page and 'id="deviceTime"' in page
 assert 'id="timeZone"' in page and '/api/timezones' in page
+assert 'id="manualTime"' in page and '/api/time' in page
 assert "timeZone: byId('timeZone').value" in page
 assert 'configTime(getPosixTimeZone(zone->key)' in source
+assert 'setUri("/api/time")' in source and 'settimeofday(&value, nullptr)' in source
 script = re.search(r'<script>(.*)</script>', page, re.S)
 assert script
 subprocess.run(['node', '--check', '-'], input=script.group(1), text=True, check=True)
-print('PASS: no home credentials, 60 s fallback, captive DNS, white config UI, timezone persistence and STA traffic gating')
+print('PASS: settings validation, manual clock parsing, captive config UI, timezone persistence and STA traffic gating')

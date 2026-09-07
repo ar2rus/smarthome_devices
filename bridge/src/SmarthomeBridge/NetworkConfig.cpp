@@ -6,6 +6,7 @@
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
+#include <sys/time.h>
 #include <time.h>
 
 namespace NetworkConfig {
@@ -110,6 +111,39 @@ static bool timeZoneValid(const StoredTimeZone& value) {
   return value.magic == TIMEZONE_MAGIC && value.version == TIMEZONE_VERSION &&
          !value.id[sizeof(value.id) - 1] && findTimeZoneById(value.id) &&
          value.crc == timeZoneCrc(value);
+}
+
+static bool parseDecimal(const char* value, uint8_t length, int& number) {
+  number = 0;
+  for (uint8_t index = 0; index < length; ++index) {
+    if (value[index] < '0' || value[index] > '9') return false;
+    number = number * 10 + value[index] - '0';
+  }
+  return true;
+}
+
+static bool parseManualTime(const char* value, time_t& epoch) {
+  if (!value) return false;
+  size_t length = strlen(value);
+  if (length != 16 && length != 19) return false;
+  if (value[4] != '-' || value[7] != '-' || value[10] != 'T' || value[13] != ':' ||
+      (length == 19 && (value[16] != ':' || value[19] != 0))) return false;
+  int year, month, day, hour, minute, second = 0;
+  if (!parseDecimal(value, 4, year) || !parseDecimal(value + 5, 2, month) || !parseDecimal(value + 8, 2, day) ||
+      !parseDecimal(value + 11, 2, hour) || !parseDecimal(value + 14, 2, minute) ||
+      (length == 19 && !parseDecimal(value + 17, 2, second))) return false;
+  if (year < 2021 || year > 2037 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hour > 23 || minute > 59 || second > 59) return false;
+  tm local = {};
+  local.tm_year = year - 1900; local.tm_mon = month - 1; local.tm_mday = day;
+  local.tm_hour = hour; local.tm_min = minute; local.tm_sec = second; local.tm_isdst = -1;
+  tm requested = local;
+  epoch = mktime(&local);
+  if (epoch < 1609459200) return false;
+  tm check = {};
+  if (!localtime_r(&epoch, &check)) return false;
+  return check.tm_year == requested.tm_year && check.tm_mon == requested.tm_mon && check.tm_mday == requested.tm_mday &&
+         check.tm_hour == requested.tm_hour && check.tm_min == requested.tm_min && check.tm_sec == requested.tm_sec;
 }
 
 static const char* currentTimeZone() {
@@ -321,6 +355,27 @@ void setupRoutes(AsyncWebServer& server, bool littleFsAvailable, bool (*transiti
     String response; serializeJson(doc, response);
     request->send(200, "application/json", response);
   });
+  AsyncCallbackWebHandler* setTime = new AsyncCallbackWebHandler();
+  setTime->setUri("/api/time"); setTime->setMethod(HTTP_POST);
+  setTime->onRequest([](AsyncWebServerRequest*) {});
+  setTime->onBody([](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+    if (!collectBody(request, data, len, index, total) || index + len != total) return;
+    DynamicJsonDocument doc(256);
+    DeserializationError parseError = deserializeJson(doc, static_cast<char*>(request->_tempObject));
+    const char* local = parseError ? nullptr : doc["local"].as<const char*>();
+    time_t epoch = 0;
+    bool valid = !parseError && parseManualTime(local, epoch);
+    free(request->_tempObject); request->_tempObject = nullptr;
+    if (!valid) { request->send(400, "application/json", "{\"success\":false,\"message\":\"Введите корректные дату и время от 2021 до 2037 года\"}"); return; }
+    timeval value = {}; value.tv_sec = epoch;
+    if (settimeofday(&value, nullptr) != 0) { request->send(503, "application/json", "{\"success\":false,\"message\":\"Не удалось установить время\"}"); return; }
+    DynamicJsonDocument responseDoc(128);
+    responseDoc["success"] = true; responseDoc["epoch"] = static_cast<uint32_t>(epoch);
+    responseDoc["message"] = "Время установлено";
+    String response; serializeJson(responseDoc, response);
+    request->send(200, "application/json", response);
+  });
+  server.addHandler(setTime);
   AsyncCallbackWebHandler* save = new AsyncCallbackWebHandler();
   save->setUri("/api/network/config"); save->setMethod(HTTP_POST);
   save->onRequest([](AsyncWebServerRequest*) {});
