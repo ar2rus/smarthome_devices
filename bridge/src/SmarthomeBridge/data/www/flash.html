@@ -236,7 +236,7 @@
         <h1>Firmware Flash</h1>
         <a class="back-link" href="/log.html">Back to Log</a>
       </div>
-      <p class="hint">Upload Intel HEX (up to 8KB after parsing), choose target, start flashing.</p>
+      <p class="hint">Upload Intel HEX, choose target and confirm its application area. The bootloader stays unchanged.</p>
 
       <section class="grid">
         <div class="field file">
@@ -250,6 +250,11 @@
           </select>
         </div>
         <div class="field">
+          <label for="limit">Application area (bytes)</label>
+          <input id="limit" type="number" min="32" max="8192" step="32" value="7168">
+          <p class="hint">7168 for the current ATmega8 bridge. Match this boundary to the target device; exclude its bootloader.</p>
+        </div>
+        <div class="field">
           <label for="rt">Response timeout (ms)</label>
           <input id="rt" type="number" min="100" max="10000" value="1500">
         </div>
@@ -258,7 +263,7 @@
             <span class="label-row">
               Boot timeout (ms)
               <button id="bt-help-btn" class="hint-icon" type="button" aria-label="Boot timeout help" aria-expanded="false">i</button>
-              <span id="bt-help-pop" class="hint-pop" role="tooltip" hidden>0 = wait indefinitely until you press Abort.</span>
+              <span id="bt-help-pop" class="hint-pop" role="tooltip" hidden>0 uses the default boot timeout. A session is limited to 5 minutes.</span>
             </span>
           </label>
           <input id="bt" type="number" min="0" max="10000" value="2500">
@@ -272,6 +277,7 @@
 
       <div class="bar"><span id="progress"></span></div>
       <div id="summary">Idle</div>
+      <p class="hint">100% means blocks were acknowledged. Completion also checks application availability; it cannot verify the image stored on the device.</p>
       <pre id="status">Loading...</pre>
     </main>
 
@@ -377,6 +383,7 @@
       function startFlash() {
         var params = new URLSearchParams();
         params.set("a", targetEl.value);
+        params.set("limit", document.getElementById("limit").value || "7168");
         params.set("rt", document.getElementById("rt").value || "1500");
         params.set("bt", document.getElementById("bt").value || "2500");
 

@@ -25,12 +25,12 @@ typedef struct {
 #define FIFO( size )\
 	struct {\
 		clunet_msg buf[size];\
-		unsigned char tail;\
-		unsigned char head;\
+		volatile unsigned char tail;\
+		volatile unsigned char head;\
 	}
 
 //количество элементов в очереди
-#define FIFO_COUNT(fifo)     (fifo.head-fifo.tail)
+#define FIFO_COUNT(fifo)     ((unsigned char)(fifo.head-fifo.tail))
 
 //размер fifo
 #define FIFO_SIZE(fifo)      ( sizeof(fifo.buf)/sizeof(fifo.buf[0]) )

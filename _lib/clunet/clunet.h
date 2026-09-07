@@ -16,6 +16,7 @@
 #define CLUNET_SENDING_STATE_PRIO1 2
 #define CLUNET_SENDING_STATE_PRIO2 3
 #define CLUNET_SENDING_STATE_DATA 4
+#define CLUNET_SENDING_STATE_PREPARING 5
 #define CLUNET_SENDING_STATE_WAITING_LINE 6
 #define CLUNET_SENDING_STATE_PREINIT 7
 #define CLUNET_SENDING_STATE_STOP 8
@@ -517,8 +518,13 @@ void clunet_init();
 
 // Отправка пакета от любого имени
 void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size);
+unsigned char clunet_try_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size);
 
 // Отправка пакета от своего имени
+extern volatile unsigned char clunetTrackedResult;
+unsigned char clunet_try_send_tracked(unsigned char src, unsigned char dst, unsigned char prio, unsigned char command, char* data, unsigned char size);
+void clunet_expire_tracked(void);
+
 void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size);
 
 // Отправка пакета от любого имени предварительно дождавшись отправки предыдущего сообщения

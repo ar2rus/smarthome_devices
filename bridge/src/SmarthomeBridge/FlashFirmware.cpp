@@ -1,10 +1,14 @@
 #include "FlashFirmware.h"
+#include "SmarthomeBridge.h"
+#include "BootloaderLease.h"
+#include "LegacyFlashFlow.h"
+#include "BridgeTransport.h"
 
 #include "ClunetCommands.h"
 
-extern LinkedList<clunet_packet*> uartQueue;
-extern LinkedList<clunet_packet*> multicastQueue;
-extern volatile unsigned char uart_rx_data_len;
+extern PacketQueue uartQueue;
+extern PacketQueue multicastQueue;
+extern volatile uint16_t uart_rx_data_len;
 extern bool uart_rx_overflow;
 
 extern uint8_t uart_can_send(uint8_t length);
@@ -13,7 +17,6 @@ extern uint8_t uart_send_message(char code, char* data, uint8_t length);
 namespace FlashFirmware {
 
 static constexpr uint8_t UART_MESSAGE_CODE_CLUNET = 1;
-static constexpr unsigned long BOOTLOADER_ACTIVITY_TIMEOUT = 10000;
 static constexpr uint8_t FLASH_LOCAL_SRC_ADDRESS = 0xEE;
 static constexpr uint16_t FLASH_FIRMWARE_MAX_SIZE = 8192;
 static constexpr uint8_t FLASH_WRITE_CHUNK_MAX = 64;
@@ -41,7 +44,10 @@ enum flash_stage : uint8_t {
   FLASH_STAGE_WAIT_WRITTEN = 6,
   FLASH_STAGE_SEND_DONE = 7,
   FLASH_STAGE_DONE = 8,
-  FLASH_STAGE_ERROR = 9
+  FLASH_STAGE_ERROR = 9,
+  FLASH_STAGE_WAIT_DONE = 10,
+  FLASH_STAGE_VERIFY = 11,
+  FLASH_STAGE_UNCONFIRMED = 12
 };
 
 typedef struct {
@@ -64,20 +70,29 @@ typedef struct {
   uint16_t bootTimeoutMs;
   uint16_t pageSize;
   uint16_t firmwareLength;
+  uint16_t applicationLimit;
   uint16_t firmwareOffset;
   uint16_t pendingChunkLength;
   uint8_t currentPage;
   uint16_t currentPageOffset;
   unsigned long writeSentAt;
   unsigned long waitDeadline;
+  unsigned long verifyStartedAt;
+  unsigned long probeSentAt;
+  uint32_t probeToken;
+  bool applicationResponded;
   unsigned long startedAt;
   unsigned long finishedAt;
   char status[96];
   char error[96];
 } flash_session_state;
 
-static uint8_t bootloaderTargetAddress = 0;
-static unsigned long bootloaderActivityDeadline = 0;
+static BootloaderLease bootloaderLease;
+static LegacyFlashFlow externalFlow;
+static bool legacyApplicationSeen = false;
+static uint8_t firmwareWritten[FLASH_FIRMWARE_MAX_SIZE / 8];
+static uint32_t firmwareCrc32 = 0;
+static AsyncWebServerRequest* flashUploadRequest = nullptr;
 
 static flash_upload_state flashUpload = {};
 static flash_session_state flashSession = {};
@@ -95,7 +110,10 @@ static const __FlashStringHelper* flashStageName(flash_stage stage){
     case FLASH_STAGE_SEND_WRITE: return F("send_write");
     case FLASH_STAGE_WAIT_WRITTEN: return F("wait_written");
     case FLASH_STAGE_SEND_DONE: return F("send_done");
-    case FLASH_STAGE_DONE: return F("done");
+    case FLASH_STAGE_DONE: return F("application_responded");
+    case FLASH_STAGE_WAIT_DONE: return F("waiting_done_transmission");
+    case FLASH_STAGE_VERIFY: return F("verifying_application");
+    case FLASH_STAGE_UNCONFIRMED: return F("unconfirmed");
     case FLASH_STAGE_ERROR: return F("error");
     default: return F("unknown");
   }
@@ -125,6 +143,7 @@ static void flashSetUploadError(const char* message){
 }
 
 static void flashSetSessionError(const char* message){
+  if (flashSession.active) BridgeTransport::cancel();
   flashSession.active = false;
   flashSession.stage = FLASH_STAGE_ERROR;
   flashSession.finishedAt = millis();
@@ -141,6 +160,8 @@ static void flashSetSessionError(const char* message){
 static void flashResetUploadState(){
   memset(&flashUpload, 0, sizeof(flashUpload));
   memset(flashFirmware, 0xFF, sizeof(flashFirmware));
+  memset(firmwareWritten, 0, sizeof(firmwareWritten));
+  firmwareCrc32 = 0;
   flashFirmwareLength = 0;
   flashFirmwareReady = false;
 }
@@ -172,6 +193,7 @@ static bool flashProcessHexLine(const char* line, uint16_t lineLength){
   if (!lineLength){
     return true;
   }
+  if (flashUpload.eofSeen) { flashSetUploadError("record after HEX EOF"); return false; }
   if (line[0] != ':'){
     flashSetUploadError("invalid HEX line prefix");
     return false;
@@ -227,12 +249,19 @@ static bool flashProcessHexLine(const char* line, uint16_t lineLength){
   switch(recordType){
     case 0: {
       uint32_t offset = flashUpload.baseOffset + recordOffset;
-      if (offset + recordLength > FLASH_FIRMWARE_MAX_SIZE){
+      if (offset > FLASH_FIRMWARE_MAX_SIZE || recordLength > FLASH_FIRMWARE_MAX_SIZE - offset){
         flashSetUploadError("firmware exceeds 8KB limit");
         return false;
       }
-      if (recordLength){
-        memcpy(flashFirmware + offset, recordData, recordLength);
+      for (uint16_t i = 0; i < recordLength; ++i) {
+        uint32_t at = offset + i;
+        if ((firmwareWritten[at / 8] & (1 << (at % 8))) && flashFirmware[at] != recordData[i]) {
+          flashSetUploadError("conflicting HEX records"); return false;
+        }
+      }
+      for (uint16_t i = 0; i < recordLength; ++i) {
+        uint32_t at = offset + i;
+        flashFirmware[at] = recordData[i]; firmwareWritten[at / 8] |= 1 << (at % 8);
       }
       uint16_t firmwareLength = static_cast<uint16_t>(offset + recordLength);
       if (firmwareLength > flashUpload.firmwareLength){
@@ -241,24 +270,29 @@ static bool flashProcessHexLine(const char* line, uint16_t lineLength){
       break;
     }
     case 1:
+      if (recordLength || recordOffset) { flashSetUploadError("invalid HEX EOF"); return false; }
       flashUpload.eofSeen = true;
       break;
     case 2:
-      if (recordLength != 2){
+      if (recordLength != 2 || recordOffset){
         flashSetUploadError("invalid HEX segment address");
         return false;
       }
-      flashUpload.baseOffset = static_cast<uint32_t>(((recordData[0] << 8) | recordData[1]) << 4);
+      flashUpload.baseOffset = (static_cast<uint32_t>((recordData[0] << 8) | recordData[1]) << 4);
       break;
     case 4:
-      if (recordLength != 2){
+      if (recordLength != 2 || recordOffset){
         flashSetUploadError("invalid HEX linear address");
         return false;
       }
-      flashUpload.baseOffset = static_cast<uint32_t>(((recordData[0] << 8) | recordData[1]) << 16);
+      flashUpload.baseOffset = (static_cast<uint32_t>((recordData[0] << 8) | recordData[1]) << 16);
+      break;
+    case 3:
+    case 5:
+      if (recordLength != 4 || recordOffset) { flashSetUploadError("invalid HEX start address"); return false; }
       break;
     default:
-      break;
+      flashSetUploadError("unsupported HEX record"); return false;
   }
 
   return true;
@@ -310,8 +344,17 @@ static void flashUploadFinalize(){
     return;
   }
 
+  if ((firmwareWritten[0] & 3) != 3 || (flashFirmware[0] == 0xFF && flashFirmware[1] == 0xFF)) {
+    flashSetUploadError("reset vector is missing"); return;
+  }
   flashFirmwareReady = true;
-  flashFirmwareLength = flashUpload.firmwareLength;
+  flashFirmwareLength = (flashUpload.firmwareLength + 1u) & ~1u; // Legacy page writes use 16-bit words.
+  uint32_t crc = 0xFFFFFFFFUL;
+  for (uint16_t i = 0; i < flashFirmwareLength; ++i) {
+    crc ^= flashFirmware[i];
+    for (uint8_t bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320UL : 0);
+  }
+  firmwareCrc32 = ~crc;
   flashUpload.error[0] = 0;
 }
 
@@ -334,26 +377,28 @@ static bool flashSendClunetPacket(uint8_t dst, uint8_t command, const uint8_t* d
     memcpy(packet + 4, data, size);
   }
 
-  if (!uart_send_message(UART_MESSAGE_CODE_CLUNET, packet, packetLength)){
-    return false;
-  }
+  bool sent = dst == 0 ? uart_send_message(UART_MESSAGE_CODE_CLUNET, packet, packetLength) :
+    BridgeTransport::start(BridgeTransport::FLASH, packet, packetLength, 1000);
+  if (!sent) return false;
 
-  touchBootloaderActivity(dst);
+  bootloaderLease.claim(dst, FLASH_LOCAL_SRC_ADDRESS, 0, 0, millis());
   return true;
 }
 
-static void clearPacketQueue(LinkedList<clunet_packet*>& queue){
+static void clearPacketQueue(PacketQueue& queue){
   while (!queue.isEmpty()){
     queue.remove(queue.front());
   }
 }
 
-static void flashStartSession(uint8_t target, uint16_t responseTimeoutMs, uint16_t bootTimeoutMs){
+static void flashStartSession(uint8_t target, uint16_t responseTimeoutMs, uint16_t bootTimeoutMs, uint16_t applicationLimit){
   memset(&flashSession, 0, sizeof(flashSession));
 
   flashSession.active = true;
   flashSession.stage = FLASH_STAGE_SEND_REBOOT;
   flashSession.target = target;
+  flashSession.applicationLimit = applicationLimit;
+  legacyApplicationSeen = false;
   flashSession.responseTimeoutMs = responseTimeoutMs ? responseTimeoutMs : FLASH_DEFAULT_RESPONSE_TIMEOUT;
   flashSession.bootTimeoutMs = bootTimeoutMs ? bootTimeoutMs : FLASH_DEFAULT_BOOT_TIMEOUT;
   flashSession.firmwareLength = flashFirmwareLength;
@@ -367,7 +412,7 @@ static void flashStartSession(uint8_t target, uint16_t responseTimeoutMs, uint16
   }
   uart_rx_data_len = 0;
   uart_rx_overflow = false;
-  touchBootloaderActivity(target);
+  bootloaderLease.claim(target, FLASH_LOCAL_SRC_ADDRESS, 0, 0, millis());
 }
 
 static void flashAbortSession(const char* reason){
@@ -381,28 +426,30 @@ bool handleBootControlResponse(clunet_packet* packet){
   if (!packet || !flashSession.active || packet->command != CLUNET_COMMAND_BOOT_CONTROL){
     return false;
   }
-  if (packet->src != flashSession.target || packet->size < 1){
+  if (packet->src != flashSession.target || packet->size < 1 ||
+      (packet->dst != CLUNET_ADDRESS_BROADCAST && packet->dst != FLASH_LOCAL_SRC_ADDRESS)){
     return false;
   }
 
   uint8_t subcommand = static_cast<uint8_t>(packet->data[0]);
-  if (subcommand == COMMAND_FIRMWARE_UPDATE_ERROR){
+  if (subcommand == COMMAND_FIRMWARE_UPDATE_ERROR && packet->size == 1){
     flashSetSessionError("device reported bootloader error");
     return true;
   }
 
   switch(flashSession.stage){
     case FLASH_STAGE_WAIT_START:
-      if (subcommand == COMMAND_FIRMWARE_UPDATE_START){
+      if (subcommand == COMMAND_FIRMWARE_UPDATE_START && packet->size == 1){
         flashSession.stage = FLASH_STAGE_SEND_INIT;
         flashSetStatus("bootloader detected, sending init");
       }
       break;
     case FLASH_STAGE_WAIT_READY:
-      if (subcommand == COMMAND_FIRMWARE_UPDATE_READY && packet->size >= 3){
+      if (subcommand == COMMAND_FIRMWARE_UPDATE_READY && packet->size == 3){
         uint16_t pageSize = static_cast<uint8_t>(packet->data[1]) |
           (static_cast<uint16_t>(static_cast<uint8_t>(packet->data[2])) << 8);
-        if (!pageSize || pageSize > FLASH_FIRMWARE_MAX_SIZE){
+        if (!LegacyFlashFlow::validPageSize(pageSize) || flashSession.applicationLimit % pageSize ||
+            ((flashSession.firmwareLength + pageSize - 1u) / pageSize) > 128){
           flashSetSessionError("invalid page size from bootloader");
         } else {
           flashSession.pageSize = pageSize;
@@ -412,7 +459,7 @@ bool handleBootControlResponse(clunet_packet* packet){
       }
       break;
     case FLASH_STAGE_WAIT_WRITTEN:
-      if (subcommand == COMMAND_FIRMWARE_UPDATE_WRITTEN){
+      if (subcommand == COMMAND_FIRMWARE_UPDATE_WRITTEN && packet->size == 1){
         if ((millis() - flashSession.writeSentAt) < FLASH_MIN_WRITE_ACK_DELAY_MS){
           return true;
         }
@@ -435,7 +482,18 @@ bool handleBootControlResponse(clunet_packet* packet){
 }
 
 static void flashProcessSession(){
-  if (!flashSession.active){
+  auto transmitted = BridgeTransport::take(BridgeTransport::FLASH);
+  BridgeTransport::take(BridgeTransport::PROBE);
+  if (!flashSession.active) return;
+  if (transmitted != BridgeTransport::NO_RESULT) {
+    if (transmitted != BridgeTransport::TRANSMITTED) { flashSetSessionError("UART/CLUNET transmission not confirmed; no WRITE retry"); return; }
+    if (flashSession.stage == FLASH_STAGE_WAIT_DONE) {
+      flashSession.stage = FLASH_STAGE_VERIFY; flashSession.verifyStartedAt = millis(); flashSetStatus("data sent; checking application");
+    }
+  }
+
+  if (millis() - flashSession.startedAt >= 300000UL){
+    flashSetSessionError("flash session exceeded 5 minutes");
     return;
   }
 
@@ -458,7 +516,7 @@ static void flashProcessSession(){
       uint8_t data[] = {COMMAND_FIRMWARE_UPDATE_INIT};
       if (flashSendClunetPacket(flashSession.target, CLUNET_COMMAND_BOOT_CONTROL, data, sizeof(data))){
         flashSession.stage = FLASH_STAGE_WAIT_READY;
-        flashSession.waitDeadline = millis() + flashSession.responseTimeoutMs;
+        flashSession.waitDeadline = millis() + flashSession.responseTimeoutMs + (flashSession.target ? 1000 : 0);
         flashSetStatus("waiting bootloader ready");
       }
       break;
@@ -504,17 +562,36 @@ static void flashProcessSession(){
         flashSession.pendingChunkLength = chunkLength;
         flashSession.writeSentAt = millis();
         flashSession.stage = FLASH_STAGE_WAIT_WRITTEN;
-        flashSession.waitDeadline = millis() + flashSession.responseTimeoutMs;
+        flashSession.waitDeadline = millis() + flashSession.responseTimeoutMs + (flashSession.target ? 1000 : 0);
       }
       break;
     }
     case FLASH_STAGE_SEND_DONE: {
       uint8_t data[] = {COMMAND_FIRMWARE_UPDATE_DONE};
       if (flashSendClunetPacket(flashSession.target, CLUNET_COMMAND_BOOT_CONTROL, data, sizeof(data))){
-        flashSession.active = false;
-        flashSession.stage = FLASH_STAGE_DONE;
-        flashSession.finishedAt = millis();
-        flashSetStatus("firmware flashed");
+        flashSession.stage = flashSession.target ? FLASH_STAGE_WAIT_DONE : FLASH_STAGE_VERIFY;
+        flashSession.verifyStartedAt = millis();
+        flashSession.probeToken = micros() ^ millis() ^ 0xA58137UL;
+        flashSetStatus("data sent; application not yet confirmed");
+      }
+      break;
+    }
+    case FLASH_STAGE_VERIFY: {
+      uint32_t now = millis();
+      if (!flashSession.target && legacyApplicationSeen && BridgeTransport::diagnostics().protocol == 2 &&
+          BridgeTransport::diagnostics().lastReplyAt > flashSession.verifyStartedAt && now - BridgeTransport::diagnostics().lastReplyAt < 500) {
+        flashSession.applicationResponded = true;
+      }
+      if (flashSession.applicationResponded) {
+        flashSession.stage = FLASH_STAGE_DONE; flashSession.active = false; flashSession.finishedAt = now;
+        flashSetStatus("application responds; image integrity is not verified");
+      } else if (now - flashSession.verifyStartedAt >= 6000) {
+        flashSession.stage = FLASH_STAGE_UNCONFIRMED; flashSession.active = false; flashSession.finishedAt = now;
+        flashSetStatus("data sent; application startup unconfirmed");
+      } else if (flashSession.target && now - flashSession.verifyStartedAt >= 500 && now - flashSession.probeSentAt >= 1000) {
+        char packet[8] = {char(FLASH_LOCAL_SRC_ADDRESS), char(flashSession.target), char(CLUNET_COMMAND_PING), 4};
+        memcpy(packet + 4, &flashSession.probeToken, 4);
+        if (BridgeTransport::start(BridgeTransport::PROBE, packet, sizeof(packet), 500)) flashSession.probeSentAt = now;
       }
       break;
     }
@@ -541,6 +618,10 @@ static void fillFlashStatusResponse(AsyncResponseStream* response){
   response->print(flashFirmwareReady ? F("true") : F("false"));
   response->print(F(",\"firmwareBytes\":"));
   response->print(flashFirmwareLength);
+  response->print(F(",\"imageCrc32\":")); response->print(firmwareCrc32);
+  response->print(F(",\"applicationLimit\":")); response->print(flashSession.applicationLimit);
+  response->print(F(",\"applicationResponded\":")); response->print(flashSession.applicationResponded ? F("true") : F("false"));
+  response->print(F(",\"imageVerified\":false"));
   response->print(F(",\"uploadInProgress\":"));
   response->print(flashUpload.inProgress ? F("true") : F("false"));
   response->print(F(",\"uploadRawBytes\":"));
@@ -583,36 +664,73 @@ void init(){
   memset(&flashSession, 0, sizeof(flashSession));
   flashSession.stage = FLASH_STAGE_IDLE;
   flashSetStatus("idle");
-  bootloaderTargetAddress = 0;
-  bootloaderActivityDeadline = 0;
+  bootloaderLease = BootloaderLease();
+  flashUploadRequest = nullptr; externalFlow = LegacyFlashFlow(); legacyApplicationSeen = false;
 }
 
 bool isBootloaderUartIsolated(uint8_t address){
-  return bootloaderActivityDeadline != 0 && (long)(millis() - bootloaderActivityDeadline) < 0 &&
-    (address == 0 || address == bootloaderTargetAddress);
+  return bootloaderLease.matchesTarget(address, millis());
 }
 
 bool isTrafficMuted(){
-  return isBootloaderUartIsolated();
+  return flashSession.active || isBootloaderUartIsolated();
 }
 
-void touchBootloaderActivity(uint8_t address){
-  bootloaderTargetAddress = address;
-  bootloaderActivityDeadline = millis() + BOOTLOADER_ACTIVITY_TIMEOUT;
+bool legacyUartActive(){
+  return !legacyApplicationSeen && ((flashSession.active && flashSession.target == 0) || bootloaderLease.targetIs(0, millis()));
+}
+void forwardTransportResult(uint8_t result){
+  if (result != BridgeTransport::TRANSMITTED) externalFlow.fail();
+}
+void observeApplicationPacket(clunet_packet* packet){
+  if (!packet) return;
+  if (packet->src == 0 && packet->command == CLUNET_COMMAND_BOOT_COMPLETED) legacyApplicationSeen = true;
+  if (flashSession.active && flashSession.stage == FLASH_STAGE_VERIFY && packet->src == flashSession.target &&
+      packet->command == CLUNET_COMMAND_PING_REPLY && packet->size == 4 && !memcmp(packet->data, &flashSession.probeToken, 4)) {
+    flashSession.applicationResponded = true;
+  }
+}
+void observeBootloaderResponse(clunet_packet* packet){
+  if (!packet || packet->size < 1 || packet->src >= 0x80) return;
+  if (flashSession.active && packet->src != flashSession.target) return;
+  bool start = static_cast<uint8_t>(packet->data[0]) == COMMAND_FIRMWARE_UPDATE_START;
+  if (start && packet->src == 0) { legacyApplicationSeen = false; BridgeTransport::legacyBootStarted(); }
+  if (!flashSession.active && bootloaderLease.targetIs(packet->src, millis())) externalFlow.response(packet->data, packet->size);
+  bootloaderLease.observe(packet->src, start, millis());
 }
 
-bool shouldForwardMulticastToUart(clunet_packet* packet){
-  if (!packet){
-    return false;
+bool forwardingStartsBootloaderSession(clunet_packet* packet){
+  return packet->command == CLUNET_COMMAND_BOOT_CONTROL && !bootloaderLease.owned(millis());
+}
+
+bool shouldForwardMulticastToUart(clunet_packet* packet, IPAddress remoteIP, uint16_t remotePort){
+  if (!packet || flashSession.active) return false;
+  if (packet->command != CLUNET_COMMAND_BOOT_CONTROL) return !isBootloaderUartIsolated();
+  // Raw HTTP boot commands have no persistent sender identity; use /flash instead.
+  if (packet->size < 1 || packet->dst >= 0x80 || !static_cast<uint32_t>(remoteIP) || !remotePort) return false;
+  LegacyFlashFlow initial;
+  const auto& flow = bootloaderLease.owned(millis()) ? externalFlow : initial;
+  if (!flow.allows(packet->data, packet->size, millis())) return false;
+  return bootloaderLease.allows(packet->dst, packet->src, static_cast<uint32_t>(remoteIP), remotePort, millis());
+}
+
+void recordForwardedPacket(clunet_packet* packet, IPAddress remoteIP, uint16_t remotePort){
+  if (packet->command == CLUNET_COMMAND_BOOT_CONTROL) {
+    if (!bootloaderLease.owned(millis())) externalFlow = LegacyFlashFlow();
+    externalFlow.submitted(packet->data, packet->size, millis());
+    bootloaderLease.claim(packet->dst, packet->src, static_cast<uint32_t>(remoteIP), remotePort, millis());
   }
-  bool bootControl = packet->command == CLUNET_COMMAND_BOOT_CONTROL;
-  bool allowedIsolatedBootControl = !flashSession.active &&
-      bootControl && packet->dst == bootloaderTargetAddress;
-  bool allowedToUart = !isBootloaderUartIsolated() || allowedIsolatedBootControl;
-  if (bootControl && !flashSession.active){
-    touchBootloaderActivity(packet->dst);
+}
+
+static bool flashParseUnsigned(const char* text, uint16_t maximum, uint16_t& result){
+  if (!text || !*text) return false;
+  uint32_t value = 0;
+  for (const char* p = text; *p; ++p) {
+    if (*p < '0' || *p > '9') return false;
+    value = value * 10 + (*p - '0');
+    if (value > maximum) return false;
   }
-  return allowedToUart;
+  result = static_cast<uint16_t>(value); return true;
 }
 
 void setupRoutes(AsyncWebServer& server){
@@ -630,7 +748,7 @@ void setupRoutes(AsyncWebServer& server){
   });
 
   server.on("/flash/start", HTTP_POST, [](AsyncWebServerRequest* request) {
-    if (flashUpload.inProgress){
+    if (flashUpload.inProgress || flashUploadRequest){
       request->send(409, "application/json", "{\"ok\":false,\"error\":\"firmware upload is in progress\"}");
       return;
     }
@@ -638,7 +756,7 @@ void setupRoutes(AsyncWebServer& server){
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"firmware is not uploaded\"}");
       return;
     }
-    if (flashSession.active){
+    if (flashSession.active || isBootloaderUartIsolated() || BridgeTransport::busy()){
       request->send(409, "application/json", "{\"ok\":false,\"error\":\"flashing already active\"}");
       return;
     }
@@ -647,11 +765,16 @@ void setupRoutes(AsyncWebServer& server){
       return;
     }
 
-    uint8_t target = static_cast<uint8_t>(request->getParam("a", true)->value().toInt());
-    uint16_t responseTimeoutMs = request->hasParam("rt", true) ?
-      static_cast<uint16_t>(request->getParam("rt", true)->value().toInt()) : FLASH_DEFAULT_RESPONSE_TIMEOUT;
-    uint16_t bootTimeoutMs = request->hasParam("bt", true) ?
-      static_cast<uint16_t>(request->getParam("bt", true)->value().toInt()) : FLASH_DEFAULT_BOOT_TIMEOUT;
+    uint16_t targetValue = 0, limit = 7168;
+    uint16_t responseTimeoutMs = FLASH_DEFAULT_RESPONSE_TIMEOUT, bootTimeoutMs = FLASH_DEFAULT_BOOT_TIMEOUT;
+    if (!flashParseUnsigned(request->getParam("a", true)->value().c_str(), 127, targetValue) ||
+        (request->hasParam("limit", true) && !flashParseUnsigned(request->getParam("limit", true)->value().c_str(), FLASH_FIRMWARE_MAX_SIZE, limit)) ||
+        (request->hasParam("rt", true) && !flashParseUnsigned(request->getParam("rt", true)->value().c_str(), 60000, responseTimeoutMs)) ||
+        (request->hasParam("bt", true) && !flashParseUnsigned(request->getParam("bt", true)->value().c_str(), 60000, bootTimeoutMs)) ||
+        limit < 32 || (targetValue == 0 && limit > 7168) || flashFirmwareLength > limit) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid target, timeout or application boundary\"}"); return;
+    }
+    uint8_t target = static_cast<uint8_t>(targetValue);
 
     if (responseTimeoutMs < 100){
       responseTimeoutMs = 100;
@@ -660,13 +783,18 @@ void setupRoutes(AsyncWebServer& server){
       bootTimeoutMs = 100;
     }
 
-    flashStartSession(target, responseTimeoutMs, bootTimeoutMs);
+    flashStartSession(target, responseTimeoutMs, bootTimeoutMs, limit);
     AsyncResponseStream* response = beginFlashResponse(request);
     fillFlashStatusResponse(response);
     request->send(response);
   });
 
   server.on("/flash/firmware", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (request != flashUploadRequest) {
+      request->send(409, "application/json", "{\"ok\":false,\"error\":\"another upload or flash owns the buffer\"}");
+      return;
+    }
+    flashUploadRequest = nullptr;
     if (flashUpload.hasError){
       request->send(400, "application/json", String("{\"ok\":false,\"error\":\"") + flashUpload.error + "\"}");
       return;
@@ -678,18 +806,26 @@ void setupRoutes(AsyncWebServer& server){
     AsyncResponseStream* response = beginFlashResponse(request);
     fillFlashStatusResponse(response);
     request->send(response);
-  }, [](AsyncWebServerRequest* /*request*/, String /*filename*/, size_t index, uint8_t *data, size_t len, bool final) {
+  }, [](AsyncWebServerRequest* request, String /*filename*/, size_t index, uint8_t *data, size_t len, bool final) {
     if (index == 0){
+      if (flashSession.active || flashUploadRequest) return;
+      flashUploadRequest = request;
+      request->onDisconnect([request](){
+        if (flashUploadRequest == request) {
+          flashUploadRequest = nullptr;
+          flashUpload.inProgress = false;
+          flashFirmwareReady = false;
+          flashSetUploadError("upload disconnected");
+        }
+      });
       flashResetUploadState();
       flashUpload.inProgress = true;
       flashUpload.rawSize = 0;
       flashUpload.baseOffset = 0;
       flashUpload.lineLength = 0;
       flashUpload.error[0] = 0;
-      if (flashSession.active){
-        flashSetUploadError("can't upload during active flashing");
-      }
     }
+    if (request != flashUploadRequest) return;
 
     if (flashUpload.hasError){
       if (final){

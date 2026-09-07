@@ -1,4 +1,5 @@
 #include "Bridge.h"
+extern volatile unsigned char clunetSendingState;
 
 volatile unsigned char systime = 0;
 unsigned char prev_systime = 0;
@@ -6,6 +7,7 @@ unsigned char prev_systime = 0;
 unsigned int second_counter = 0;
 
 volatile display_t display;
+extern volatile unsigned int clunet_queue_drops;
 
 void display_update(){
 	switch (display.mode){
@@ -14,10 +16,10 @@ void display_update(){
 			break;
 		case NUMBERS:
 			if (display.sign){
-				unsigned char d = display.number / 10;
+				unsigned char d = (unsigned char)display.number / 10 % 10;
 				SIGN1(CODE((d ? SYMBOL_DIGIT[d] : 0), display.led_on));
 			}else{
-				SIGN0(CODE(SYMBOL_DIGIT[display.number % 10], display.led_on));
+				SIGN0(CODE(SYMBOL_DIGIT[(unsigned char)display.number % 10], display.led_on));
 			}
 			break;
 		case DASHES:
@@ -40,24 +42,26 @@ signed int discovery_show_time = 0;
 unsigned char discovery_responses_count = 0;
 
 void discovery_broadcast(){
-	while(clunet_ready_to_send());
-	clunet_send_fake(0x00, CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY, 0, 0);
+	if (clunetSendingState != CLUNET_SENDING_STATE_IDLE) return;
+	clunet_try_send_fake(0x00, CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY, 0, 0);
 }
 
-void discovery_listen(clunet_msg* msg){
-	if (msg->dst_address == CLUNET_BROADCAST_ADDRESS && msg->command == CLUNET_COMMAND_DISCOVERY){
+void discovery_listen_header(unsigned char dst, unsigned char command){
+	if (dst == CLUNET_BROADCAST_ADDRESS && command == CLUNET_COMMAND_DISCOVERY){
 		discovery_responses_count = 0;
 		discovery_observe_time = DISCOVERY_OBSERVE_PERIOD;
 		discovery_show_time = DISCOVERY_SHOW_PERIOD;
 	}
 
 	if (discovery_observe_time){
-		if (msg->command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+		if (command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
 			discovery_responses_count++;
 		}
 	}
 }
 
+
+void discovery_listen(clunet_msg* msg) { discovery_listen_header(msg->dst_address, msg->command); }
 
 ISR(TIMER_COMP_VECTOR){
 	++systime;
@@ -73,13 +77,36 @@ const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
 volatile char uart_rx_data[UART_RX_BUF_LENGTH];
 volatile unsigned char uart_rx_data_len = 0;
 volatile unsigned char uart_rx_overflow = 0;
+volatile unsigned char uart_rx_last_at = 0;
+volatile unsigned int uart_hardware_errors = 0;
+volatile unsigned int uart_overflows = 0, uart_crc_errors = 0;
+static unsigned int legacy_expired = 0;
+extern unsigned char __bss_end;
+static unsigned char* watermark_end;
+static unsigned int stack_min_free = 0xFFFF;
+static void init_stack_watermark(){
+    watermark_end = (unsigned char*)(SP - 16);
+    for (unsigned char* p = &__bss_end; p < watermark_end; ++p) *p = 0xA5;
+}
+static unsigned int stack_watermark(){
+    unsigned char* p = &__bss_end;
+    while (p < watermark_end && *p == 0xA5) ++p;
+    unsigned int free_bytes = p - &__bss_end;
+    if (free_bytes < stack_min_free) stack_min_free = free_bytes;
+    return stack_min_free;
+}
+volatile unsigned int clunet_queue_drops = 0;
 
 ISR(USART_RXC_vect){
+	unsigned char status = UCSRA;
 	char byte = UDR;
+	uart_rx_last_at = systime;
+	if (status & ((1<<FE)|(1<<DOR)|(1<<PE))) { uart_hardware_errors++; uart_rx_overflow = 1; return; }
 	if (uart_rx_data_len < UART_RX_BUF_LENGTH){
 		uart_rx_data[uart_rx_data_len++] = byte;
 	}else{
 		uart_rx_overflow = 1;
+        uart_overflows++;
 	}
 }
 	
@@ -139,7 +166,7 @@ char uart_send(){
 #define UART_MESSAGE_CODE_DEBUG 10
 
 char uart_send_message(char code, char* data, unsigned char length){
-	if (uart_ready_to_send()){
+	if (uart_ready_to_send() && length <= UART_TX_BUF_LENGTH - 6){
 		uart_tx_data_len = 0;
 		uart_add_bytes_to_send((char*)UART_MESSAGE_PREAMBULE, 2);	//preambule
 		uart_add_byte_to_send(length + 3);							//length
@@ -154,7 +181,7 @@ char uart_send_message(char code, char* data, unsigned char length){
 
 void clunet_data_received(unsigned char src_address, unsigned char dst_address, unsigned char command, char* data, unsigned char size){
 	if (!CLUNET_MULTICAST_DEVICE(src_address)){
-		clunet_buffered_push(src_address, dst_address, command, data, size);
+		if (!clunet_buffered_push(src_address, dst_address, command, data, size)) clunet_queue_drops++;
 	}
 }
 
@@ -180,7 +207,7 @@ void analyze_uart_rx_trim(unsigned char offset){
 	SREG = sreg;
 }
 
-void analyze_uart_rx(void(*f)(unsigned char code, char* data, unsigned char length)){
+void analyze_uart_rx(char(*f)(unsigned char code, char* data, unsigned char length)){
 	if (uart_rx_overflow){
 		uart_rx_reset();
 		return;
@@ -209,50 +236,113 @@ void analyze_uart_rx(void(*f)(unsigned char code, char* data, unsigned char leng
 			if (uart_rx_data_len >= length+2){		//в буфере данных уже столько, сколько описано в поле length
 				if (check_crc(uart_rx_message, length - 1) == uart_rx_message[length - 1]){ //проверка crc
 					if (f){
-						f(uart_rx_message[1], &uart_rx_message[2], length - 3);
+						if (!f(uart_rx_message[1], &uart_rx_message[2], length - 3)) break;
 					}					
 					analyze_uart_rx_trim(length+2); //отрезаем прочитанное сообщение
 				}else{
+                    uart_crc_errors++;
 					analyze_uart_rx_trim(2); 
 				}
 			}else{
+                if ((unsigned char)(systime - uart_rx_last_at) >= 100) {
+                    analyze_uart_rx_trim(2); continue;
+                }
 				break;
 			}
 		}else{
+            if ((unsigned char)(systime - uart_rx_last_at) >= 100) {
+                analyze_uart_rx_trim(2); continue;
+            }
 			break;
 		}
 	}
 }
 
-void on_uart_message(unsigned char code, char* data, unsigned char length){
-	switch(code){
-		case UART_MESSAGE_CODE_CLUNET:
-			if (data && length >= 4){
-				clunet_msg* msg = (clunet_msg*)data;
-				if (CLUNET_MULTICAST_DEVICE(msg->src_address)){
-					//TODO: move to buffer at first
-					
-					/*	
-						if (msg->command == CLUNET_COMMAND_REBOOT){ // Просто ребут. И да, ребутнуть себя мы можем
-						clunet_data_received(0x01,0xEE,0x2A,0,0);
-							//cli();
-							//set_bit(WDTCR, WDE);
-							//while(1);
-						}
-					*/
-					discovery_listen(msg);
-					while(clunet_ready_to_send());
-					clunet_send_fake(msg->src_address, msg->dst_address, 0, msg->command, msg->data, msg->size);
-				}
-			}
-			break;
-		case UART_MESSAGE_CODE_DEBUG:
-		break;
-	}
+// UART application protocol v2. Bootloader code 1 remains unchanged.
+static unsigned int bridge_now = 0, tx_id = 0, tx_started = 0, tx_budget = 0;
+static unsigned char bridge_last_tick = 0, tx_status = 0, legacy_waiting = 0;
+static unsigned int legacy_since = 0;
+
+void service_transport(){
+    unsigned char tick = systime;
+    bridge_now += (unsigned char)(tick - bridge_last_tick);
+    bridge_last_tick = tick;
+    if (tx_status == 1) {
+        if ((unsigned int)(bridge_now - tx_started) >= tx_budget) clunet_expire_tracked();
+        if (clunetTrackedResult) tx_status = clunetTrackedResult;
+    }
+}
+
+char on_uart_message(unsigned char code, char* data, unsigned char length){
+    if (code != UART_MESSAGE_CODE_CLUNET) legacy_waiting = 0;
+    if (code == 3 && length == 1){
+        if (!uart_ready_to_send()) return 0;
+        service_transport();
+        char reply[18] = {data[0], 2, clunetSendingState == CLUNET_SENDING_STATE_IDLE && tx_status != 1,
+                          (char)tx_id, (char)(tx_id >> 8), (char)tx_status};
+        unsigned char saved = SREG; cli();
+        reply[6] = uart_hardware_errors; reply[7] = uart_hardware_errors >> 8;
+        reply[8] = clunet_queue_drops; reply[9] = clunet_queue_drops >> 8;
+        reply[10] = uart_overflows; reply[11] = uart_overflows >> 8;
+        reply[12] = legacy_expired; reply[13] = legacy_expired >> 8;
+        reply[14] = uart_crc_errors; reply[15] = uart_crc_errors >> 8;
+        SREG = saved;
+        unsigned int stack_free = stack_watermark();
+        reply[16] = stack_free; reply[17] = stack_free >> 8;
+        return uart_send_message(4, reply, sizeof(reply)) != 0;
+    }
+    if (code == 7 && length == 2) {
+        unsigned int id = (unsigned char)data[0] | ((unsigned int)(unsigned char)data[1] << 8);
+        if (id == tx_id && tx_status == 1) clunet_expire_tracked();
+        return 1;
+    }
+    if (code == 5 && length >= 8) {
+        unsigned int id = (unsigned char)data[0] | ((unsigned int)(unsigned char)data[1] << 8);
+        unsigned int budget = (unsigned char)data[2] | ((unsigned int)(unsigned char)data[3] << 8);
+        unsigned char src = data[4], dst = data[5], command = data[6], size = data[7];
+        if (!id || id == tx_id || tx_status == 1) return 1; // Duplicate submissions never re-execute.
+        tx_id = id; tx_status = 4; // Explicit rejection until validation and admission succeed.
+        if (!budget || budget > 2000 || size > 68 || length != 8 + size || !CLUNET_MULTICAST_DEVICE(src)) return 1;
+        if (!clunet_try_send_tracked(src, dst, CLUNET_PRIORITY_MESSAGE, command, data + 8, size)) return 1;
+        tx_started = bridge_now; tx_budget = budget; tx_status = 1;
+        discovery_listen_header(dst, command);
+        return 1;
+    }
+    if (code == UART_MESSAGE_CODE_CLUNET && data && length >= 4){
+        unsigned char src = data[0], dst = data[1], command = data[2], size = data[3];
+        if (size > 68 || length != 4 + size) { legacy_waiting = 0; return 1; }
+        if (!legacy_waiting) { legacy_waiting = 1; legacy_since = bridge_now; }
+        if ((unsigned int)(bridge_now - legacy_since) >= 2000) { legacy_waiting = 0; legacy_expired++; return 1; }
+        if (CLUNET_MULTICAST_DEVICE(src)){
+            if (tx_status == 1 || !clunet_try_send_tracked(src, dst, CLUNET_PRIORITY_MESSAGE, command, data + 4, size)) return 0;
+            tx_id = 0; tx_started = bridge_now; tx_budget = 2000; tx_status = 1;
+            legacy_waiting = 0;
+            discovery_listen_header(dst, command);
+        }
+    }
+    return 1;
+}
+
+// Alternate credit replies and queued events when both directions stay busy.
+void service_uart(){
+    static unsigned char prefer_events = 0;
+    if (!uart_ready_to_send()) { analyze_uart_rx(on_uart_message); return; }
+    if (!prefer_events) {
+        analyze_uart_rx(on_uart_message);
+        if (!uart_ready_to_send()) { prefer_events = 1; return; }
+    }
+    clunet_msg* msg = clunet_buffered_peek();
+    if (msg && uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)msg, 4 + msg->size)) {
+        discovery_listen(msg);
+        clunet_buffered_pop();
+        prefer_events = 0;
+    }
+    analyze_uart_rx(on_uart_message);
 }
 
 int main(void){
 	cli();
+    init_stack_watermark();
 	
 	wdt_enable(WDTO_2S);
 	
@@ -276,17 +366,8 @@ int main(void){
 	
 	while(1){
 		display.led_on = CLUNET_SENDING | CLUNET_READING;
-		if (uart_ready_to_send()){
-			clunet_msg* msg = clunet_buffered_peek();
-			if (msg){
-				if (uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)msg, 4 + msg->size)){
-					discovery_listen(msg);
-					clunet_buffered_pop();
-				}
-			}
-		}
-
-		analyze_uart_rx(on_uart_message);
+        service_transport();
+		service_uart();
 			
 		if (prev_systime != systime){
 			
@@ -294,7 +375,7 @@ int main(void){
 			prev_systime = systime;
 			
 			if (discovery_observe_time){
-				discovery_observe_time -= delta_ms_time;
+				discovery_observe_time = delta_ms_time >= (unsigned int)discovery_observe_time ? 0 : discovery_observe_time - delta_ms_time;
 			}
 			
 			second_counter += delta_ms_time;

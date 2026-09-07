@@ -24,46 +24,74 @@
 
 #include "SmarthomeBridge.h"
 #include "FlashFirmware.h"
-#include "Credentials.h"
+#include "BridgeTransport.h"
+//#include "Credentials.h"
 
 #ifdef DEFAULT_MAX_SSE_CLIENTS
   #undef DEFAULT_MAX_SSE_CLIENTS 
   #define DEFAULT_MAX_SSE_CLIENTS 10
 #endif
 
-const char *ssid = AP_SSID;
-const char *pass = AP_PASSWORD;
+const char *ssid = "gNet-aux";
+const char *pass = "medvedAn86B";
 
-IPAddress ip(192, 168, 3, 53);     //Node static IP
-IPAddress gateway(192, 168, 3, 1);
+IPAddress ip(192, 168, 50, 243);     //Node static IP
+IPAddress gateway(192, 168, 50, 1);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress dnsAddr(192, 168, 3, 1);
+IPAddress dnsAddr(192, 168, 50, 1);
 
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
 ClunetMulticast clunet(CLUNET_ID, CLUNET_DEVICE);
 
-long event_id = 0;
-#define EVENTS_QUEUE_MAX_LENGTH 128
-LinkedList<clunet_packet*> uartQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
-LinkedList<clunet_packet*> multicastQueue = LinkedList<clunet_packet*>([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
+uint32_t event_id = 0;
+uint32_t bootId = 0;
+uint32_t uartDrops = 0, multicastDrops = 0, eventDrops = 0, invalidUart = 0, uartCrcErrors = 0, uartTimeouts = 0;
+uint32_t uartOverflows = 0, minHeap = UINT32_MAX, maxLoopMicros = 0, reconnects = 0;
+uint32_t uartLastRxAt = 0;
+uint16_t routingBudget = 2000;
+uint32_t suppressedEvents = 0, unobservedEvents = 0, hardwareOverruns = 0, hardwareRxErrors = 0;
+#define EVENTS_QUEUE_MAX_LENGTH 64
+#define UART_MESSAGES_PER_LOOP 8
+#define MULTICAST_MESSAGES_PER_LOOP 8
+#define EVENT_MESSAGES_PER_LOOP 4
+#define DISCOVERY_RESPONSE_TIMEOUT_MS 1500
 
-LinkedList<ts_clunet_packet*> eventsQueue = LinkedList<ts_clunet_packet*>([](ts_clunet_packet *m){ free(m); });
+api_request_state* retainApiRequestState(api_request_state* state);
+void releaseApiRequestState(api_request_state* state);
+AsyncWebServerRequest* getApiRequestWebRequest(api_request_state* state);
+void deleteApiRequest(api_request* request);
+void freeApiResponse();
 
-LinkedList<api_request*> apiRequestsQueue = LinkedList<api_request*>([](api_request *r){ free(r); });
+PacketQueue uartQueue = PacketQueue([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
+PacketQueue multicastQueue = PacketQueue([](clunet_packet *m){ delete[] reinterpret_cast<char*>(m); });
+
+BoundedQueue<ts_clunet_packet*, EVENTS_QUEUE_MAX_LENGTH> eventsQueue = BoundedQueue<ts_clunet_packet*, EVENTS_QUEUE_MAX_LENGTH>([](ts_clunet_packet *m){ free(m); });
+
+BoundedQueue<api_request*, 8> apiRequestsQueue = BoundedQueue<api_request*, 8>(deleteApiRequest);
 api_response* apiResponse = NULL;
+bool clunetConnected = false;
+uint32_t discoveryResponsesSniffed = 0;
+uint32_t discoveryResponsesMatchedActiveRequest = 0;
+uint32_t discoveryResponsesReturnedToHttp = 0;
+uint32_t discoveryResponseHttpCallbacks = 0;
+uint32_t discoveryResponseActiveRequestId = 0;
+unsigned long discoveryResponseLastSniffedAt = 0;
+unsigned long discoveryResponseLastMatchedAt = 0;
+unsigned long discoveryResponseLastReturnedAt = 0;
+unsigned long discoveryResponseLastHttpCallbackAt = 0;
 
 #define UART_MESSAGE_CODE_CLUNET 1
 #define UART_MESSAGE_CODE_FIRMWARE 2
 #define UART_MESSAGE_CODE_DEBUG 10
 
 const char UART_MESSAGE_PREAMBULE[] = {0xC9, 0xE7};
-extern volatile unsigned char uart_rx_data_len;
+extern volatile uint16_t uart_rx_data_len;
 extern bool uart_rx_overflow;
 
 uint8_t uart_can_send(uint8_t length){
-  return Serial.availableForWrite() >= length + 5;
+  return length <= 76 && Serial.availableForWrite() >= length + 5;
 }
 
 uint8_t uart_can_send(clunet_packet* packet){
@@ -96,16 +124,128 @@ uint8_t uart_send_message(clunet_packet* packet){
   return uart_send_message(UART_MESSAGE_CODE_CLUNET, (char*)packet, packet->len());
 }
 
+bool queuePacket(PacketQueue& queue, clunet_packet* packet, uint32_t& drops){
+  if (queue.full() || ESP.getFreeHeap() < 12000) { ++drops; return false; }
+  clunet_packet* copy = packet->copy();
+  if (!queue.add(copy, millis(), routingBudget)) { delete[] reinterpret_cast<char*>(copy); ++drops; return false; }
+  return true;
+}
+
+bool toWire(uint8_t destination) { return destination < 0x80 || destination == CLUNET_ADDRESS_BROADCAST; }
+
+bool queueUart(clunet_packet* packet, IPAddress remoteIP = IPAddress(), uint16_t remotePort = 0) {
+  const uint8_t maxSize = packet->command == CLUNET_COMMAND_BOOT_CONTROL ? 68 : 64;
+  if (packet->size > maxSize || !FlashFirmware::shouldForwardMulticastToUart(packet, remoteIP, remotePort)) { ++uartDrops; return false; }
+  if (FlashFirmware::forwardingStartsBootloaderSession(packet)) {
+    uartDrops += uartQueue.length(); uartQueue.clear();
+  }
+  if (!queuePacket(uartQueue, packet, uartDrops)) return false;
+  FlashFirmware::recordForwardedPacket(packet, remoteIP, remotePort);
+  return true;
+}
+
+void observePacket(clunet_packet* packet) {
+  ++event_id;
+  if (packet->command == CLUNET_COMMAND_DISCOVERY_RESPONSE) {
+    ++discoveryResponsesSniffed; discoveryResponseLastSniffedAt = millis();
+  }
+  // A reconnect starts with fresh events, never queued historical button presses.
+  if (FlashFirmware::isTrafficMuted()) { ++suppressedEvents; return; }
+  if (!events.count()) { ++unobservedEvents; return; }
+  if (eventsQueue.full() || ESP.getFreeHeap() < 12000) { ++eventDrops; return; }
+  ts_clunet_packet* tp = static_cast<ts_clunet_packet*>(malloc(sizeof(ts_clunet_packet) + packet->len()));
+  if (!tp) { ++eventDrops; return; }
+  timeval tv; gettimeofday(&tv, nullptr);
+  tp->sequence = event_id;
+  tp->timestamp_sec = tv.tv_sec; tp->timestamp_ms = tv.tv_usec / 1000;
+  packet->copy(tp->packet);
+  if (!eventsQueue.add(tp, millis())) { free(tp); ++eventDrops; }
+}
+
+size_t routeLocalPacket(clunet_packet* packet) {
+  if (FlashFirmware::isTrafficMuted()) return 0;
+  if (toWire(packet->dst)) {
+    if (!queueUart(packet)) return 0;
+    // Publication is best effort and must not gate local CLUNET delivery.
+    if (clunetConnected) queuePacket(multicastQueue, packet, multicastDrops);
+  } else {
+    if (!clunetConnected || !queuePacket(multicastQueue, packet, multicastDrops)) return 0;
+  }
+  observePacket(packet);
+  return packet->len();
+}
+
+api_request_state* createApiRequestState(AsyncWebServerRequest* webRequest){
+  api_request_state* state = (api_request_state*)malloc(sizeof(api_request_state));
+  if (state){
+    state->webRequest = webRequest;
+    state->refs = 1;
+  }
+  return state;
+}
+
+api_request_state* retainApiRequestState(api_request_state* state){
+  if (state != NULL){
+    state->refs++;
+  }
+  return state;
+}
+
+void releaseApiRequestState(api_request_state* state){
+  if (state != NULL){
+    if (state->refs > 0){
+      state->refs--;
+    }
+    if (!state->refs){
+      free(state);
+    }
+  }
+}
+
+AsyncWebServerRequest* getApiRequestWebRequest(api_request_state* state){
+  return state != NULL ? state->webRequest : NULL;
+}
+
+void deleteApiRequest(api_request* request){
+  if (request != NULL){
+    releaseApiRequestState(request->state);
+    free(request);
+  }
+}
+
+void freeApiResponse(){
+  discoveryResponseActiveRequestId = 0;
+  if (apiResponse != NULL){
+    releaseApiRequestState(apiResponse->state);
+    free(apiResponse);
+    apiResponse = NULL;
+  }
+}
+
 
 void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
                 int responseFilterCommand, long responseTimeout, bool _infoRequest, String _infoRequestId){
-    webRequest->client()->setRxTimeout(5);
-    api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
-    if (!ar){
+    if (FlashFirmware::isTrafficMuted() || apiRequestsQueue.full() || ESP.getFreeHeap() < 12000) {
+      webRequest->send(503, "text/plain", "bridge busy"); return;
+    }
+    if (size > (toWire(address) ? 64 : CLUNET_PACKET_DATA_SIZE) || responseTimeout < 1 || responseTimeout > 5000 ||
+        responseFilterCommand < -1 || responseFilterCommand > 255 || _infoRequestId.length() >= 64) {
+      webRequest->send(400, "text/plain", "invalid request"); return;
+    }
+    webRequest->client()->setRxTimeout(10);
+    api_request_state* requestState = createApiRequestState(webRequest);
+    if (!requestState){
       webRequest->send(503, "text/plain", "busy");
       return;
     }
-    ar->webRequest = webRequest;
+
+    api_request* ar = (api_request*)malloc(sizeof(api_request) + size);
+    if (!ar){
+      releaseApiRequestState(requestState);
+      webRequest->send(503, "text/plain", "busy");
+      return;
+    }
+    ar->state = requestState;
     ar->info = _infoRequest;
     if (_infoRequest){
       strcpy(ar->infoId, _infoRequestId.c_str());
@@ -115,12 +255,14 @@ void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t comman
     ar->responseFilterCommand = responseFilterCommand;
     ar->responseTimeout = responseTimeout;
     ar->size = size;
-    memcpy(ar->data, data, size);
-    apiRequestsQueue.add(ar);
+    if (size) memcpy(ar->data, data, size);
+    apiRequestsQueue.add(ar, millis());
 
-    ar->webRequest->onDisconnect([&ar](){
-      if (ar != NULL){
-        ar->webRequest = NULL;
+    api_request_state* disconnectState = retainApiRequestState(requestState);
+    webRequest->onDisconnect([disconnectState](){
+      if (disconnectState != NULL){
+        disconnectState->webRequest = NULL;
+        releaseApiRequestState(disconnectState);
       }
     });
 }
@@ -154,9 +296,9 @@ void api_dimmer_400(AsyncWebServerRequest* request){
     api_400(request, "a=device_address&id=channel_id&value=[0:100]");
 }
 
-void _api_dimmer(int address, int channel_id, int value){
+bool _api_dimmer(int address, int channel_id, int value){
     char data[] = {(char)channel_id, (char)map(value, 0, 100, 0, 255)};
-    clunet.send(address, CLUNET_COMMAND_DIMMER, data, 2);
+    return clunet.send(address, CLUNET_COMMAND_DIMMER, data, 2) != 0;
 }
 
 void api_dimmer(AsyncWebServerRequest* request){
@@ -166,22 +308,22 @@ void api_dimmer(AsyncWebServerRequest* request){
     }
 
     int value = int_param(request, "value");
-    if (value <0 || value>100){
+    if (value <0 || value>100 || address_param(request) < 0 || address_param(request) > 255 || id_param(request).toInt() < 0 || id_param(request).toInt() > 255){
         api_dimmer_400(request);
         return;
     }
 
-    _api_dimmer(address_param(request), id_param(request).toInt(), value);
-    api_200(request); 
+    if (_api_dimmer(address_param(request), id_param(request).toInt(), value)) api_200(request);
+    else request->send(503, "text/plain", "bridge busy");
 }
 
 void api_switch_400(AsyncWebServerRequest* request){
     api_400(request, "a=device_address&id=channel_id&value=[0:1]");
 }
 
-void _api_switch(int address, int channel_id, int value){
+bool _api_switch(int address, int channel_id, int value){
     char data[] = {(char)value, (char)channel_id};
-    clunet.send(address, CLUNET_COMMAND_SWITCH, data, 2);
+    return clunet.send(address, CLUNET_COMMAND_SWITCH, data, 2) != 0;
 }
 
 void api_switch(AsyncWebServerRequest* request){
@@ -191,22 +333,22 @@ void api_switch(AsyncWebServerRequest* request){
     }
 
     int value = int_param(request, "value");
-    if (value <0 || value>1){
+    if (value <0 || value>1 || address_param(request) < 0 || address_param(request) > 255){
         api_switch_400(request);
         return;
     }
 
-    _api_switch(address_param(request), id_param(request).toInt(), value);
-    api_200(request);
+    if (_api_switch(address_param(request), id_param(request).toInt(), value)) api_200(request);
+    else request->send(503, "text/plain", "bridge busy");
 }
 
 void api_fan_400(AsyncWebServerRequest* request){
     api_400(request, "a=device_address&value=[0:1]");
 }
 
-void _api_fan(int address, int value){
+bool _api_fan(int address, int value){
     char data = value ? 4 : 3;
-    clunet.send(address, CLUNET_COMMAND_FAN, &data, 1);
+    return clunet.send(address, CLUNET_COMMAND_FAN, &data, 1) != 0;
 }
 
 void api_fan(AsyncWebServerRequest* request){
@@ -216,21 +358,21 @@ void api_fan(AsyncWebServerRequest* request){
     }
 
     int value = int_param(request, "value");
-    if (value <0 || value>1){
+    if (value <0 || value>1 || address_param(request) < 0 || address_param(request) > 255){
         api_fan_400(request);
         return;
     }
 
-    _api_fan(address_param(request), value);
-    api_200(request);
+    if (_api_fan(address_param(request), value)) api_200(request);
+    else request->send(503, "text/plain", "bridge busy");
 }
 
 void api_door_400(AsyncWebServerRequest* request){
     api_400(request, "a=device_address&value=[0:1]");
 }
 
-void _api_door(int address, int value){
-    clunet.send(address, CLUNET_COMMAND_DOOR, (char*)&value, 1);
+bool _api_door(int address, int value){
+    return clunet.send(address, CLUNET_COMMAND_DOOR, (char*)&value, 1) != 0;
 }
 
 void api_door(AsyncWebServerRequest* request){
@@ -240,13 +382,13 @@ void api_door(AsyncWebServerRequest* request){
     }
 
     int value = int_param(request, "value");
-    if (value <0 || value>1){
+    if (value <0 || value>1 || address_param(request) < 0 || address_param(request) > 255){
         api_fan_400(request);
         return;
     }
 
-    _api_door(address_param(request), value);
-    api_200(request);
+    if (_api_door(address_param(request), value)) api_200(request);
+    else request->send(503, "text/plain", "bridge busy");
 }
 
 void info_switch_400(AsyncWebServerRequest* request){
@@ -282,34 +424,26 @@ void setup() {
   Serial1.println("\n\nHello");
   
   Serial.begin(38400, SERIAL_8N1);
-  Serial.println("Booting");
+  Serial.swap();
+  Serial.setRxBufferSize(512);
+  bootId = ESP.random();
   FlashFirmware::init();
 
   if (!LittleFS.begin()) {
     Serial1.println("LittleFS mount failed");
-    return;
   }
 
   WiFi.mode(WIFI_STA);
 
-  WiFi.begin(ssid, pass);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
   WiFi.config(ip, gateway, subnet, dnsAddr);
+  WiFi.begin(ssid, pass);
 
   pinMode(LED_BLUE_PORT, OUTPUT);  
   analogWrite(LED_BLUE_PORT, 12);
   
-  //Wifi connection
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial1.println("Connection Failed! Rebooting...");
-    delay(1000);
-    ESP.restart();
-  }
-  Serial1.println("Connected");
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
-
-  Serial.swap();
-  Serial.flush();
-  Serial.setRxBufferSize(256);  //as default
 
   ArduinoOTA.setHostname("smarthome-bridge");
   ArduinoOTA.onStart([]() {
@@ -322,36 +456,23 @@ void setup() {
 
   configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
 
-  if (clunet.connect()){
-    clunet.onPacketSniff([](clunet_packet* packet){
-      
-      timeval tv;
-      gettimeofday(&tv, nullptr);
-      
-      if (CLUNET_MULTICAST_DEVICE(packet->src) && FlashFirmware::shouldForwardMulticastToUart(packet)){
-        uartQueue.add(packet->copy());
-      }
-
-      if (!FlashFirmware::isTrafficMuted()){
-        ts_clunet_packet* tp = (ts_clunet_packet*)malloc(sizeof(ts_clunet_packet) + packet->len());
-        if (tp){
-          packet->copy(&tp->packet);
-          
-          tp->timestamp_sec = (uint32_t)tv.tv_sec;
-          tp->timestamp_ms = (uint16_t)(tv.tv_usec/1000UL);
-
-          while (eventsQueue.length() >= EVENTS_QUEUE_MAX_LENGTH){
-            eventsQueue.remove(eventsQueue.front());
-          }
-          eventsQueue.add(tp);
-        }
-      }
+  clunet.ignoreOwnDatagrams(true);
+  clunet.onRouteSend(routeLocalPacket);
+  {
+    clunet.onPacketSniffFrom([](clunet_packet* packet, IPAddress remoteIP, uint16_t remotePort){
+      if (CLUNET_MULTICAST_DEVICE(packet->src) && toWire(packet->dst)) queueUart(packet, remoteIP, remotePort);
+      observePacket(packet);
     });
-    
-    clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
 
-      if (apiResponse != NULL /**&& apiResponse->requestId == requestId**/){
-        if (apiResponse->webRequest != NULL){
+    clunet.onResponseReceived([](int requestId, LinkedList<clunet_response*>* responses){
+      if (requestId == (int)discoveryResponseActiveRequestId){
+        discoveryResponseHttpCallbacks++;
+        discoveryResponseLastHttpCallbackAt = millis();
+      }
+
+      if (apiResponse != NULL && apiResponse->requestId == requestId){
+        AsyncWebServerRequest* webRequest = getApiRequestWebRequest(apiResponse->state);
+        if (webRequest != NULL){
           DynamicJsonDocument doc(4196);
           JsonObject root = doc.to<JsonObject>();
           root["id"] = requestId;
@@ -363,6 +484,11 @@ void setup() {
           for(auto i = responses->begin(); i != responses->end(); ++i){
             clunet_response* response = *i;
             if (requestId == response->requestId){
+              if (requestId == (int)discoveryResponseActiveRequestId &&
+                  response->packet->command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+                discoveryResponsesReturnedToHttp++;
+                discoveryResponseLastReturnedAt = millis();
+              }
               if (apiResponse->info){
                 fillValueData(root, response->packet, apiResponse->infoId);
                 break;
@@ -374,11 +500,10 @@ void setup() {
 
           String json;
           serializeJson(doc, json);
-          apiResponse->webRequest->send(200, "application/json", json);
+          bool hasResponse = !responses->isEmpty();
+          webRequest->send(doc.overflowed() ? 503 : (hasResponse ? 200 : 504), "application/json", json);
         }
-          free(apiResponse);
-          apiResponse = NULL;
-        
+        freeApiResponse();
       }
     });
   }
@@ -392,17 +517,20 @@ void setup() {
       int address = request->hasParam("a") ? request->getParam("a")->value().toInt() : CLUNET_ADDRESS_BROADCAST;
 
       int dataLen = 0;
-      char data[2 * CLUNET_PACKET_DATA_SIZE];
+      char data[CLUNET_PACKET_DATA_SIZE];
       if (request->hasParam("d")){
         String hexData = request->getParam("d")->value();
-        dataLen = hexStringToCharArray(data, (char*)hexData.c_str(), hexData.length());
+        dataLen = hexStringToCharArray(data, hexData.c_str(), hexData.length(), sizeof(data));
       }
-      clunet.send(address, command, data, dataLen);
-      request->send(200, "text/plain", "OK");
+      if (dataLen < 0 || address < 0 || address > 255 || command < 0 || command > 255 || dataLen > (toWire(address) ? 64 : 128)) {
+        request->send(400, "text/plain", "invalid packet"); return;
+      }
+      bool accepted = clunet.send(address, command, data, dataLen) != 0;
+      request->send(accepted ? 200 : 503, "text/plain", accepted ? "accepted" : "bridge busy");
   });
 
   server.on("/discovery", HTTP_GET, [](AsyncWebServerRequest* request) {
-    _request(request, CLUNET_ADDRESS_BROADCAST, CLUNET_COMMAND_DISCOVERY, NULL, 0, CLUNET_COMMAND_DISCOVERY_RESPONSE, 500);
+    _request(request, CLUNET_ADDRESS_BROADCAST, CLUNET_COMMAND_DISCOVERY, NULL, 0, CLUNET_COMMAND_DISCOVERY_RESPONSE, DISCOVERY_RESPONSE_TIMEOUT_MS);
   });
 
   server.on("/request", HTTP_GET, [](AsyncWebServerRequest* request) {
@@ -416,12 +544,74 @@ void setup() {
     int responseCommand = request->hasParam("r") ? request->getParam("r")->value().toInt() : -1;
 
     int dataLen = 0;
-    char data[2 * CLUNET_PACKET_DATA_SIZE];
+    char data[CLUNET_PACKET_DATA_SIZE];
     if (request->hasParam("d")){
       String hexData = request->getParam("d")->value();
-      dataLen = hexStringToCharArray(data, (char*)hexData.c_str(), hexData.length());
+      dataLen = hexStringToCharArray(data, hexData.c_str(), hexData.length(), sizeof(data));
+    }
+    if (dataLen < 0 || address < 0 || address > 255 || command < 0 || command > 255) {
+      request->send(400, "text/plain", "invalid packet"); return;
     }
     _request(request, address, command, data, dataLen, responseCommand, responseTimeout);
+  });
+
+  server.on("/bridge/status", HTTP_GET, [](AsyncWebServerRequest* request) {
+    DynamicJsonDocument doc(2048);
+    doc["wifiStaConnected"] = WiFi.status() == WL_CONNECTED;
+    doc["clunetReady"] = clunetConnected;
+    doc["trafficMuted"] = FlashFirmware::isTrafficMuted();
+    doc["udpPacketsSeen"] = clunet.udpPacketsSeen();
+    doc["udpPacketsInvalidLength"] = clunet.udpPacketsInvalidLength();
+    doc["udpPacketsInvalidSize"] = clunet.udpPacketsInvalidSize();
+    doc["lastInvalidPacketLen"] = clunet.lastInvalidPacketLen();
+    doc["lastInvalidPacketDeclaredSize"] = clunet.lastInvalidPacketDeclaredSize();
+    doc["uartQueueLength"] = uartQueue.length();
+    doc["multicastQueueLength"] = multicastQueue.length();
+    doc["eventsQueued"] = eventsQueue.length();
+    doc["apiRequestsQueued"] = apiRequestsQueue.length();
+    doc["apiResponseActive"] = apiResponse != NULL;
+    doc["activeDiscoveryRequestId"] = discoveryResponseActiveRequestId;
+    doc["discoveryResponsesSniffed"] = discoveryResponsesSniffed;
+    doc["discoveryResponsesMatchedActiveRequest"] = discoveryResponsesMatchedActiveRequest;
+    doc["discoveryResponsesReturnedToHttp"] = discoveryResponsesReturnedToHttp;
+    doc["discoveryResponseHttpCallbacks"] = discoveryResponseHttpCallbacks;
+    doc["discoveryResponseLastSniffedAt"] = discoveryResponseLastSniffedAt;
+    doc["discoveryResponseLastMatchedAt"] = discoveryResponseLastMatchedAt;
+    doc["discoveryResponseLastReturnedAt"] = discoveryResponseLastReturnedAt;
+    doc["discoveryResponseLastHttpCallbackAt"] = discoveryResponseLastHttpCallbackAt;
+    doc["uartRxBuffered"] = uart_rx_data_len;
+    doc["uartRxOverflow"] = uart_rx_overflow;
+    doc["uartOverflows"] = uartOverflows;
+    doc["uartInvalidFrames"] = invalidUart;
+    doc["uartCrcErrors"] = uartCrcErrors;
+    doc["uartFrameTimeouts"] = uartTimeouts;
+    doc["uartDrops"] = uartDrops;
+    doc["multicastDrops"] = multicastDrops;
+    doc["eventDrops"] = eventDrops;
+    const auto& link = BridgeTransport::diagnostics();
+    doc["avrProtocolReady"] = link.protocol == 2 && millis() - link.lastReplyAt < 3000;
+    doc["avrProtocol"] = link.protocol;
+    doc["txBusy"] = BridgeTransport::busy();
+    doc["txLastId"] = link.lastId; doc["txLastResult"] = link.lastResult;
+    doc["txAccepted"] = link.accepted; doc["txTransmitted"] = link.transmitted;
+    doc["txExpired"] = link.expired; doc["txRejected"] = link.rejected; doc["txUnknown"] = link.unknown;
+    doc["avrUartHardwareErrors"] = link.avrHardwareErrors; doc["avrQueueDrops"] = link.avrQueueDrops; doc["avrUartOverflows"] = link.avrOverflows;
+    doc["avrLegacyExpired"] = link.avrLegacyExpired; doc["avrCrcErrors"] = link.avrCrcErrors; doc["avrStackMinFree"] = link.avrStackMinFree;
+    doc["eventsSuppressed"] = suppressedEvents; doc["eventsWithoutSubscribers"] = unobservedEvents;
+    doc["uartHardwareOverruns"] = hardwareOverruns; doc["uartHardwareErrors"] = hardwareRxErrors;
+    doc["eventSequence"] = event_id;
+    doc["bootId"] = bootId;
+    doc["uptimeMs"] = millis();
+    doc["freeHeap"] = ESP.getFreeHeap();
+    doc["minHeap"] = minHeap;
+    doc["maxFreeBlock"] = ESP.getMaxFreeBlockSize();
+    doc["maxLoopMicros"] = maxLoopMicros;
+    doc["resetReason"] = ESP.getResetReason();
+    doc["reconnects"] = reconnects;
+
+    AsyncResponseStream* response = request->beginResponseStream("application/json");
+    serializeJson(doc, *response);
+    request->send(response);
   });
 
 
@@ -464,13 +654,15 @@ void setup() {
     request->send(response);
   });
 
-  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest * request) {
+  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest*) {
     ESP.restart();
   });
   FlashFirmware::setupRoutes(server);
 
+  events.authorizeConnect([](AsyncWebServerRequest*){ return events.count() < 4 && ESP.getFreeHeap() > 14000; });
   events.onConnect([](AsyncEventSourceClient *client){
-     client->send("Welcome", "SERVICE", 0, 3000);
+     String state = String("{\"bootId\":") + bootId + ",\"sequence\":" + event_id + ",\"uptimeMs\":" + millis() + ",\"muted\":" + (FlashFirmware::isTrafficMuted() ? "true" : "false") + ",\"resync\":true}";
+     client->send(state.c_str(), "RESET", event_id, 3000);
   });
   
   server.addHandler(&events);
@@ -505,38 +697,40 @@ char check_crc(char* data, uint8_t size){
 
 void on_uart_message(uint8_t code, char* data, uint8_t length){
   switch(code){
+    case 4:
+      BridgeTransport::receive(data, length);
+      break;
     case UART_MESSAGE_CODE_CLUNET:
-      if (data && length >= 4){
+      if (clunet_packet::valid(data, length)){
         clunet_packet* packet = (clunet_packet*)data;
+        FlashFirmware::observeApplicationPacket(packet);
         bool consumedByFlash = false;
         if (packet->command == CLUNET_COMMAND_BOOT_CONTROL){
-          FlashFirmware::touchBootloaderActivity(packet->src);
+          FlashFirmware::observeBootloaderResponse(packet);
           consumedByFlash = FlashFirmware::handleBootControlResponse(packet);
         }
         if (!CLUNET_MULTICAST_DEVICE(packet->src)){
            if (!consumedByFlash){
-             multicastQueue.add(packet->copy());
+             clunet.ingest(packet, length);
+             if (clunetConnected) queuePacket(multicastQueue, packet, multicastDrops);
            }
         }
-      }
+      } else { ++invalidUart; }
       break;
     case UART_MESSAGE_CODE_FIRMWARE:
-      if (data && length >= 4){
-        clunet_packet* packet = (clunet_packet*)data;
-      }
       break;
     case UART_MESSAGE_CODE_DEBUG:
-      Serial1.println("debug message received: " + String((int8_t)data[0]));
+      if (length) Serial1.println("debug message received: " + String((int8_t)data[0]));
       break;
   }
 }
 
 #define UART_RX_BUF_LENGTH 256
 volatile char uart_rx_data[UART_RX_BUF_LENGTH];
-volatile unsigned char uart_rx_data_len = 0;
+volatile uint16_t uart_rx_data_len = 0;
 bool uart_rx_overflow = false;
 
-void analyze_uart_rx_trim(uint8_t offset){
+void analyze_uart_rx_trim(uint16_t offset){
   if (offset <= uart_rx_data_len){
     uart_rx_data_len -= offset;
     if (uart_rx_data_len){
@@ -548,8 +742,8 @@ void analyze_uart_rx_trim(uint8_t offset){
 void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
   while (uart_rx_data_len > 1){
     //Serial1.println("len: " + uart_rx_data_len);
-    uint8_t uart_rx_preambula_offset = uart_rx_data_len - 1;  //первый байт преамбулы может быть прочитан, а второй еще не пришел
-    for (uint8_t i=0; i < uart_rx_data_len - 1; i++){
+    uint16_t uart_rx_preambula_offset = uart_rx_data_len - 1;  //первый байт преамбулы может быть прочитан, а второй еще не пришел
+    for (uint16_t i=0; i < uart_rx_data_len - 1; i++){
       if (uart_rx_data[i+0] == UART_MESSAGE_PREAMBULE[0] && uart_rx_data[i+1] == UART_MESSAGE_PREAMBULE[1]){
         uart_rx_preambula_offset = i;
         break;
@@ -562,7 +756,7 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
     if (uart_rx_data_len >= 5){ //минимальная длина сообщения с преамбулой
       char* uart_rx_message = (char*)(uart_rx_data + 2);
       uint8_t length = uart_rx_message[0];
-      if (length < 3 || length > (UART_RX_BUF_LENGTH - 2)){
+      if (length < 3 || length > 79){
         //Serial1.println("invalid length");
         analyze_uart_rx_trim(2);  //пришел мусор, отрезаем преамбулу и надо пробовать искать преамбулу снова
         continue;
@@ -579,15 +773,15 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
           analyze_uart_rx_trim(length+2); //отрезаем прочитанное сообщение
           //Serial1.println("uart_rx_data_len: " + String(uart_rx_data_len));
         }else{
-          //Serial1.println("crc error");
+          ++uartCrcErrors;
           analyze_uart_rx_trim(2); 
         }
       }else{
-        //Serial1.println("not enough data: " + String(uart_rx_data_len));
+        if (millis() - uartLastRxAt >= 100) { ++uartTimeouts; analyze_uart_rx_trim(2); continue; }
         break;
       }
     }else{
-      //Serial1.println("too short message yet (length<5)");
+      if (millis() - uartLastRxAt >= 100) { ++uartTimeouts; analyze_uart_rx_trim(2); continue; }
       break;
     }
   }
@@ -595,9 +789,8 @@ void analyze_uart_rx(void(*f)(uint8_t code, char* data, uint8_t length)){
 
 void fillMessageData(JsonObject doc, clunet_packet* packet){
     if (packet->size){
-      int hexLen = 0;
-      char hex[256];
-      hexLen = charArrayToHexString(hex, packet->data, packet->size);
+      char hex[CLUNET_PACKET_DATA_SIZE * 2 + 1];
+      if (charArrayToHexString(hex, packet->data, packet->size, sizeof(hex)) < 0) return;
       doc["hex"] = String(hex);
 
       fillObjData(doc.createNestedObject("obj"), packet);
@@ -605,28 +798,29 @@ void fillMessageData(JsonObject doc, clunet_packet* packet){
 }
 
 void fillObjData(JsonObject obj, clunet_packet* packet){
-    char buf[512];
+    alignas(float) char buf[512];
         
     switch(packet->command){
       case CLUNET_COMMAND_TEMPERATURE_INFO:{
-        getTemperatureInfo(packet->data, buf);
+        if (!getTemperatureInfo(packet->data, packet->size, buf, sizeof(buf))) { obj["decodeError"] = "invalid temperature payload"; break; }
         temperature_info* ti =(temperature_info*)buf;
         JsonArray sensors = obj.createNestedArray("sensors");
         for (int i=0; i<ti->num_sensors; i++){
           JsonObject sensor = sensors.createNestedObject();
           sensor["type"] = static_cast<unsigned char>(ti->sensors[i].type);
           sensor["id"] = ti->sensors[i].id;
-          sensor["val"] = serialized(String(ti->sensors[i].value, 2));
+          sensor["val"] = ti->sensors[i].value;
         }
       }
       break;
       case CLUNET_COMMAND_HUMIDITY_INFO:{
-        getHumidityInfo(packet->data, buf);
+        if (!getHumidityInfo(packet->data, packet->size, buf, sizeof(buf))) { obj["decodeError"] = "invalid humidity payload"; break; }
         humidity_info* hi =(humidity_info*)buf;
-        obj["val"] = serialized(String(hi->value, 2)); 
+        obj["val"] = hi->value;
       }
       break;
       case CLUNET_COMMAND_SWITCH_INFO:{
+        if (packet->size != 1) { obj["decodeError"] = "invalid switch payload"; break; }
         JsonArray switches = obj.createNestedArray("switches");
         for (int i=0; i<8; i++){
           if (packet->data[0] & (1<<i)){
@@ -641,34 +835,37 @@ void fillObjData(JsonObject obj, clunet_packet* packet){
 }
 
 void fillValueData(JsonObject obj, clunet_packet* packet, char* cid){
-    char buf[512];
+    alignas(float) char buf[512];
     switch(packet->command){
       case CLUNET_COMMAND_TEMPERATURE_INFO:{
-        getTemperatureInfo(packet->data, buf);
+        if (!getTemperatureInfo(packet->data, packet->size, buf, sizeof(buf))) { obj["decodeError"] = "invalid temperature payload"; break; }
         temperature_info* ti =(temperature_info*)buf;
         for (int i=0; i<ti->num_sensors; i++){
-          if (strcmp(ti->sensors[i].id, cid)){
+          if (strcmp(ti->sensors[i].id, cid) == 0){
             obj["type"] = static_cast<unsigned char>(ti->sensors[i].type);
             obj["cid"] = ti->sensors[i].id;
-            obj["val"] = serialized(String(ti->sensors[i].value, 2));  
+            obj["val"] = ti->sensors[i].value;
             break;
           }
         }
       }
       break;
       case CLUNET_COMMAND_HUMIDITY_INFO:{
-        getHumidityInfo(packet->data, buf);
+        if (!getHumidityInfo(packet->data, packet->size, buf, sizeof(buf))) { obj["decodeError"] = "invalid humidity payload"; break; }
         humidity_info* hi =(humidity_info*)buf;
-        obj["val"] = serialized(String(hi->value, 2)); 
+        obj["val"] = hi->value;
       }
       break;
       case CLUNET_COMMAND_SWITCH_INFO: {
+        if (packet->size != 1) { obj["decodeError"] = "invalid switch payload"; break; }
         int intId = String(cid).toInt();
+        if (intId < 1 || intId > 8) break;
         obj["cid"] = cid;
         obj["value"] = (bool)(packet->data[0] & (1<<(intId-1)));
       }
       break;
       case CLUNET_COMMAND_FAN_INFO: {
+        if (packet->size < 2) { obj["decodeError"] = "invalid fan payload"; break; }
         obj["mode"] = static_cast<unsigned char>(packet->data[0]);
         obj["value"] = (bool)(packet->data[1] == 3 || packet->data[1] == 4);
       }
@@ -683,7 +880,7 @@ void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t time
 
     if (timestamp_sec){
       char buf[4];
-      sprintf(buf, "%03d", timestamp_ms);
+      snprintf(buf, sizeof(buf), "%03u", static_cast<unsigned>(timestamp_ms % 1000));
       doc["t"] = String(timestamp_sec) + String(buf);
     }
 
@@ -692,92 +889,150 @@ void fillMessageJsonObject(JsonObject doc, uint32_t timestamp_sec, uint16_t time
     }
 }
 
-#define DELAY_BETWEEN_UART_MESSAGES 5
-long uart_time = 0;
-
 void loop() {
-  while (Serial.available() > 0) {
-    char byte = Serial.read();
-    if (uart_rx_data_len < UART_RX_BUF_LENGTH) {
-      uart_rx_data[uart_rx_data_len++] = byte;
-    } else {
-      uart_rx_overflow = true;
-    }
+  uint32_t loopStarted = micros();
+  if (Serial.hasOverrun()) ++hardwareOverruns;
+  if (Serial.hasRxError()) ++hardwareRxErrors;
+  uint16_t readBudget = 256;
+  while (readBudget-- && Serial.available() > 0) {
+    if (uart_rx_data_len >= UART_RX_BUF_LENGTH) { ++uartOverflows; uart_rx_data_len = 0; }
+    uart_rx_data[uart_rx_data_len++] = Serial.read();
+    uartLastRxAt = millis();
+    analyze_uart_rx(on_uart_message);
   }
-
-  if (uart_rx_overflow) {
-    uart_rx_data_len = 0;
-    uart_rx_overflow = false;
-  }
-
   analyze_uart_rx(on_uart_message);
+  BridgeTransport::process(FlashFirmware::legacyUartActive(), !uartQueue.isEmpty() || FlashFirmware::isTrafficMuted());
+  BridgeTransport::Result tx = BridgeTransport::take(BridgeTransport::NORMAL);
+  if (tx != BridgeTransport::NO_RESULT) {
+    if (tx != BridgeTransport::TRANSMITTED) ++uartDrops;
+    FlashFirmware::forwardTransportResult(tx);
+  }
   FlashFirmware::process();
+  if (apiResponse && (!getApiRequestWebRequest(apiResponse->state) || FlashFirmware::isTrafficMuted())) {
+    AsyncWebServerRequest* request = getApiRequestWebRequest(apiResponse->state);
+    if (request) request->send(503, "text/plain", "bridge maintenance");
+    clunet.cancelRequest(); freeApiResponse();
+  }
 
-  while (!uartQueue.isEmpty() && uart_can_send(uartQueue.front())){
-    long nt = millis();
-    if (nt - uart_time > DELAY_BETWEEN_UART_MESSAGES){
-     uart_time = nt;
-     clunet_packet* packet = uartQueue.front();
-     if (uart_send_message(packet)){
-       uartQueue.remove(packet);
-     }else{
-       break;
-     }
+  static uint32_t nextNetworkAttempt = 0;
+  static IPAddress multicastInterface;
+  const uint32_t now = millis();
+  if (clunetConnected && multicastInterface != WiFi.localIP()) {
+    clunet.close(); clunetConnected = false; multicastQueue.clear();
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    if (clunetConnected) { clunet.close(); clunetConnected = false; multicastQueue.clear(); }
+  } else if (!clunetConnected && static_cast<int32_t>(now - nextNetworkAttempt) >= 0) {
+    nextNetworkAttempt = now + 2000;
+    clunetConnected = clunet.connect();
+    if (clunetConnected) { multicastInterface = WiFi.localIP(); ++reconnects; }
+  }
+
+  if (!uartQueue.isEmpty()) {
+    clunet_packet* packet = uartQueue.front();
+    uint32_t age = uartQueue.age(now);
+    if (age >= uartQueue.budget() || (FlashFirmware::isTrafficMuted() && packet->command != CLUNET_COMMAND_BOOT_CONTROL)) {
+      ++uartDrops; FlashFirmware::forwardTransportResult(BridgeTransport::EXPIRED); uartQueue.remove(packet);
+    } else if (FlashFirmware::legacyUartActive() && packet->command == CLUNET_COMMAND_BOOT_CONTROL) {
+      if (uart_send_message(packet)) uartQueue.remove(packet); // Only the unchanged UART bootloader of AVR itself.
+    } else if (BridgeTransport::start(BridgeTransport::NORMAL, reinterpret_cast<char*>(packet), packet->len(), uartQueue.budget() - age)) {
+      uartQueue.remove(packet);
     }
   }
 
-  while (!multicastQueue.isEmpty()){
+  for (uint8_t i = 0; i < MULTICAST_MESSAGES_PER_LOOP && !multicastQueue.isEmpty(); ++i) {
     clunet_packet* packet = multicastQueue.front();
-    if (clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size)){
-      multicastQueue.remove(packet);
-    }else{
-      break;
-    }
+    if (multicastQueue.age(now) > 2000 || !clunetConnected) { ++multicastDrops; multicastQueue.remove(packet); continue; }
+    if (!clunet.send_fake(packet->src, packet->dst, packet->command, packet->data, packet->size)) break;
+    multicastQueue.remove(packet);
   }
-  
-  if (!FlashFirmware::isTrafficMuted() && !eventsQueue.isEmpty() && events.avgPacketsWaiting()==0){
-    DynamicJsonDocument doc(4196);
-    while (!eventsQueue.isEmpty()){
-      ts_clunet_packet* tp = eventsQueue.front();
-      fillMessageJsonObject(doc.createNestedObject(), tp->timestamp_sec, tp->timestamp_ms, tp->packet);
-      eventsQueue.remove(tp);
-    }
-    
-    String json;
-    serializeJson(doc, json);
-    events.send(json.c_str(), "DATA", ++event_id);
+
+  static uint32_t processedEventSequence = 0;
+  if (FlashFirmware::isTrafficMuted() || !events.count()) {
+    if (FlashFirmware::isTrafficMuted()) suppressedEvents += eventsQueue.length(); else unobservedEvents += eventsQueue.length();
+    eventsQueue.clear(); processedEventSequence = event_id;
+  }
+  for (uint8_t i = 0; i < EVENT_MESSAGES_PER_LOOP && !eventsQueue.isEmpty(); ++i) {
+    ts_clunet_packet* tp = eventsQueue.front();
+    processedEventSequence = tp->sequence;
+    if (eventsQueue.age(now) > 2000) { ++eventDrops; eventsQueue.remove(tp); continue; }
+    JsonDocument doc;
+    JsonObject row = doc.to<JsonArray>().add<JsonObject>();
+    fillMessageJsonObject(row, tp->timestamp_sec, tp->timestamp_ms, tp->packet);
+    row["seq"] = tp->sequence; row["bootId"] = bootId;
+    row["uptimeMs"] = millis(); row["queuedMs"] = eventsQueue.age(now);
+    if (!doc.overflowed()) {
+      String json; serializeJson(doc, json);
+      events.send(json.c_str(), "DATA", tp->sequence);
+    } else ++eventDrops;
+    eventsQueue.remove(tp);
+  }
+  if (eventsQueue.isEmpty()) processedEventSequence = event_id;
+  static uint32_t lastHeartbeat = 0;
+  if (now - lastHeartbeat >= 10000) {
+    lastHeartbeat = now;
+    String status = String("{\"bootId\":") + bootId + ",\"sequence\":" + processedEventSequence + ",\"muted\":" + (FlashFirmware::isTrafficMuted() ? "true}" : "false}");
+    status.remove(status.length() - 1);
+    const auto& link = BridgeTransport::diagnostics();
+    status += String(",\"uptimeMs\":") + now + ",\"eventDrops\":" + eventDrops + ",\"suppressedEvents\":" + suppressedEvents + ",\"avrQueueDrops\":" + link.avrQueueDrops + ",\"avrUartErrors\":" + link.avrHardwareErrors + ",\"avrUartOverflows\":" + link.avrOverflows + ",\"avrCrcErrors\":" + link.avrCrcErrors + "}";
+    events.send(status.c_str(), "SERVICE");
   }
 
   if (!FlashFirmware::isTrafficMuted() && apiResponse == NULL){
     while (!apiRequestsQueue.isEmpty()){
       api_request* ar = apiRequestsQueue.front();
-      if (ar->webRequest != NULL){
-        
+      AsyncWebServerRequest* webRequest = getApiRequestWebRequest(ar->state);
+      if (apiRequestsQueue.age(now) > 5000) {
+        if (webRequest) webRequest->send(503, "text/plain", "request queue expired");
+        apiRequestsQueue.remove(ar); continue;
+      }
+      if (webRequest != NULL){
+        if (toWire(ar->address) && (!uartQueue.isEmpty() || BridgeTransport::busy())) break;
         apiResponse = (api_response*)malloc(sizeof(api_response));
         if (apiResponse == NULL){
           break;
         }
-        apiResponse->webRequest = ar->webRequest;
+        apiResponse->state = retainApiRequestState(ar->state);
         apiResponse->info = ar->info;
         if (apiResponse->info){
           strcpy(apiResponse->infoId, ar->infoId);
         }
         apiResponse->responseFilterCommand = ar->responseFilterCommand;
+        apiResponse->expectedPayload = -1;
+        if (ar->command == CLUNET_COMMAND_HEATFLOOR && ar->size == 1) {
+          uint8_t subtype = static_cast<uint8_t>(ar->data[0]);
+          if (subtype == 0xFF) apiResponse->expectedPayload = -2;
+          else if (subtype == 0xFE || (subtype >= 0xF0 && subtype <= 0xF9)) apiResponse->expectedPayload = subtype;
+        }
+        routingBudget = min(uint16_t(2000), uint16_t(ar->responseTimeout));
         apiResponse->requestId = clunet.request(ar->address, ar->command, ar->data, ar->size, [](clunet_packet* packet){
-            return apiResponse->responseFilterCommand < 0 || packet->command==apiResponse->responseFilterCommand;
+            bool matched = apiResponse != NULL && (apiResponse->responseFilterCommand < 0 || packet->command==apiResponse->responseFilterCommand);
+            if (matched && apiResponse->expectedPayload != -1) {
+              matched = packet->size > 0 && (apiResponse->expectedPayload == -2 ?
+                static_cast<uint8_t>(packet->data[0]) <= 2 : static_cast<uint8_t>(packet->data[0]) == apiResponse->expectedPayload);
+            }
+            if (matched &&
+                apiResponse != NULL &&
+                apiResponse->requestId == (int)discoveryResponseActiveRequestId &&
+                packet->command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+              discoveryResponsesMatchedActiveRequest++;
+              discoveryResponseLastMatchedAt = millis();
+            }
+            return matched;
         }, ar->responseTimeout);
+        routingBudget = 2000;
         
         if (apiResponse->requestId){
-          apiResponse->webRequest->onDisconnect([](){
-            if (apiResponse != NULL){
-              apiResponse->webRequest = NULL;
-            }
-          });
-       
+          if (ar->address == CLUNET_ADDRESS_BROADCAST &&
+              ar->command == CLUNET_COMMAND_DISCOVERY &&
+              ar->responseFilterCommand == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+            discoveryResponseActiveRequestId = apiResponse->requestId;
+          }else{
+            discoveryResponseActiveRequestId = 0;
+          }
           apiRequestsQueue.remove(ar);
         }else{
-          free(apiResponse);
-          apiResponse = NULL;   
+          freeApiResponse();
         }
 
         break;
@@ -787,6 +1042,8 @@ void loop() {
     }
   }
   
+  minHeap = min(minHeap, ESP.getFreeHeap());
+  maxLoopMicros = max(maxLoopMicros, static_cast<uint32_t>(micros() - loopStarted));
   ArduinoOTA.handle();
   yield();
 }

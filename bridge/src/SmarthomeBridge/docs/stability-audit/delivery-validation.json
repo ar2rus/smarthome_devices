@@ -1,0 +1,150 @@
+{
+  "verified_at": "2026-09-07T08:58:00.024118+00:00",
+  "checks": {
+    "stability_regression": "PASS ASan+UBSan",
+    "multicast_regression": "PASS ASan+UBSan",
+    "concurrency_regression": "PASS ASan+UBSan",
+    "delivery_regression": "PASS ASan+UBSan: actual transport, AVR ISR/deadline/cancel/legacy expiry, HEX and flash transitions",
+    "android_client_regression": "PASS Java source/target 7; mocked Android/HTTP/SSE, local Jackson 2.14.1",
+    "firmware_build": "PASS ESP8266 Core 3.1.2 and AVR GCC 7.3.0 from applied working copies",
+    "diff_check": "PASS scoped devices, monitor and ClunetMulticast",
+    "bootloader_unchanged": "PASS all 6 original SHA-256 values match"
+  },
+  "memory": {
+    "avr_program": 5180,
+    "avr_static_ram": 820,
+    "avr_static_remaining_for_stack": 204,
+    "esp_flash": 407280,
+    "esp_static_ram": 46392,
+    "esp_iram_including_cache": 62367
+  },
+  "artifacts": "/tmp/bridge-delivery/final-build",
+  "not_performed": [
+    "hardware upload",
+    "physical CLUNET/UART/flash and power loss testing",
+    "long-duration load test",
+    "full Android APK and Activity UI testing"
+  ],
+  "bootloader_files": {
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/boot/boot.h": "45f774e83c0aef2eec6fe91302487879b6fccfbbed85fb795b59ad635471daca",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/boot/defines.h": "f41ccc9e784ee970d0b1977c755d8e88a6f060817aac9356545af6a15cf7d833",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/boot/boot.c": "78efc18cd6607e52be54ce764cf7fc870c4d904f3087a236b5b6acbca78cc344",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/uart_boot/boot.h": "edc051431749285973276bb4e523c0f95d9e0faf18d7ba529071afb6307b1aa9",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/uart_boot/defines.h": "f41ccc9e784ee970d0b1977c755d8e88a6f060817aac9356545af6a15cf7d833",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/uart_boot/boot.c": "46f532452c51858fa2da8785169001364d079a780efd73b86143328180a0ddd3"
+  },
+  "files": [
+    {
+      "path": "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/ClunetMulticast.cpp",
+      "sha256": "4d156d6f6719f7da3bb8010f1bc9c93f1e16e9c6d448b7c69a6ad5a47c4149af"
+    },
+    {
+      "path": "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/ClunetMulticast.h",
+      "sha256": "97c20cede5722f3cde1c74b659cc43466dee5c2708621c37bd1ed5d6d1392cd9"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet.c",
+      "sha256": "f2574f49940f3eac1468ad9e33613fdab1d91142bd140aa7c095ff1a7015a720"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet.h",
+      "sha256": "d77059e2e2e3f886af8fb414b57f5f20ffdd2b2d5b8d76ac7fa4bb40e8a63cd9"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/Bridge/Bridge.c",
+      "sha256": "4867802319bff04b4eb0f33e7aa187f214868df84f2a855e0dc9ca69d65dff97"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/Bridge/clunet/clunet_config.h",
+      "sha256": "4f7e3ba10f5942e5d1839693512cdb5dca72e615a92b993bb47aee29b1217c82"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/BootloaderLease.h",
+      "sha256": "83b00ac189a761d8e867e34783f138b602af5b73b60f610bea7d714313cf1110"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/BoundedQueue.h",
+      "sha256": "f469f392712dbeaa32b3edd7f592dd3458d1813b4ee396dc96cba0178f579862"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/BridgeTransport.cpp",
+      "sha256": "d3ad77ba53c88471092de80a880b7c71189fe68e58c483f45036dd5d86e4c54e"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/BridgeTransport.h",
+      "sha256": "99961e37094ee142e164ca6c31a7fda038fc196ace74f76cea102874f2565c00"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/FlashFirmware.cpp",
+      "sha256": "39578c33ee06a63f98549ee326cb24b3d19805e05a1f14b7da27d3f590b47665"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/FlashFirmware.h",
+      "sha256": "969c5040b642c4407826e32f0a9c9046fd34bccf6997076f835152ec207b516c"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/LegacyFlashFlow.h",
+      "sha256": "be1ac56c9fd217e10205559d02194f1368945edfe6422f330681bef08e77307f"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/SmarthomeBridge.ino",
+      "sha256": "2e687906a671825e82524cd5a004e13466e7ba5f4c95bc7a1c0852025d1b4b4c"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/data/www/flash.html",
+      "sha256": "4d6ab58037d3d1e2cc10093ac44b829ad839a03f3de730665582dd7d577fbba9"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/docs/CONCURRENCY_FIXES.md",
+      "sha256": "10f44c4f5493b9cad30be56a215a1d4e52844f74eac73e0a0298817b8fdc45f9"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/docs/DELIVERY_FIXES.md",
+      "sha256": "52ad39ca42d9e41572362fd997ad9b5b0da0a922de79363f261eba6ead1744bc"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/docs/STABILITY_AUDIT.md",
+      "sha256": "2dabc906cce72549d4a589fec413593b7f7519590cad08e7e7208796fe5d901a"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/docs/STABILITY_FIXES.md",
+      "sha256": "b7000a29d39b959538334719858dcb0e6447f048951638f6facfe15afd8a760e"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/android_client_regression.py",
+      "sha256": "401803e776042a17f0f4c25967053ce9cd8efc3e3806ec6a9d9a3cbd9d6eb08c"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/build_firmware.py",
+      "sha256": "928fbaf6c282555f532187488c2a4bd77ed2601933b8029cea1e889b570c25d8"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/concurrency_regression.py",
+      "sha256": "b6c55f696d0b073b0136f51eec4c2353236517d461142687bc9a9136ea0fcde3"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/delivery_regression.py",
+      "sha256": "b924bc51ff47e6a1c658d9fa4042da299bd733412f5d25a968f78ff8b9435a01"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/multicast_regression.py",
+      "sha256": "aa869a8bf7457fc2844349892dc834ea897a4216303dd47f4dd2d8223e4e1f2f"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/stability_regression.py",
+      "sha256": "834bae191da477c21e607afff2659d4280e715a812adc10eba50c12dd8d1e722"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_monitor/app/src/main/java/com/gargon/smarthome/admin/ChannelSettingsActivity.java",
+      "sha256": "c23273282c5f7c32330ff25b986b8cfd58540bfad423d31da0d8a8f551683c5c"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_monitor/app/src/main/java/com/gargon/smarthome/admin/DeviceAdminRequestActivity.java",
+      "sha256": "3e760ff64237decf746819c433e1866b01788fc650ce3f046e67c9eda09c004d"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_monitor/app/src/main/java/com/gargon/smarthome/sse/SSESmarthomeClient.java",
+      "sha256": "36ca37f44a3c1f35347e3cf2726fb0faf0fa5513c3491bb1cdad58a7ff0469da"
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "date": "2026-09-06",
+  "scope": "Current working copies; host reproductions, compile/link only; no device I/O",
+  "reproductions": [
+    {
+      "test": "uart_counter",
+      "confirmed": true,
+      "detail": "after 256 bytes: buffered=0 overflow=0"
+    },
+    {
+      "test": "fifo_wrap",
+      "confirmed": true,
+      "detail": "full queue after wrap: head=0 tail=252 count=-252 full=0"
+    },
+    {
+      "test": "priority_zero",
+      "confirmed": true,
+      "detail": "busy state=1 priority=0 ready_to_send=0 (0 means ready)"
+    },
+    {
+      "test": "filter_sentinel",
+      "confirmed": true,
+      "detail": "filter -1 stored=255 matches 0x61=0"
+    },
+    {
+      "test": "uart_tx_head_block",
+      "confirmed": true,
+      "detail": "empty TX FIFO: payload119=1 payload120=0 payload128=0"
+    },
+    {
+      "test": "uart_stalled_partial",
+      "confirmed": true,
+      "detail": "valid trailing frame blocked: callbacks=0 buffered=10"
+    },
+    {
+      "test": "hex_decode_128",
+      "confirmed": true,
+      "detail": "AddressSanitizer: stack-buffer-overflow"
+    },
+    {
+      "test": "hex_encode_128",
+      "confirmed": true,
+      "detail": "AddressSanitizer: stack-buffer-overflow"
+    },
+    {
+      "test": "temperature_22",
+      "confirmed": true,
+      "detail": "AddressSanitizer: stack-buffer-overflow"
+    },
+    {
+      "test": "packet_inner_size",
+      "confirmed": true,
+      "detail": "AddressSanitizer: stack-buffer-overflow"
+    }
+  ],
+  "builds": {
+    "esp8266": {
+      "success": true,
+      "core": "3.1.2",
+      "fqbn": "esp8266:esp8266:generic:xtal=80,eesz=4M1M,ip=hb2f",
+      "static_ram_bytes": 42532,
+      "iram_code_bytes": 29627,
+      "icache_bytes": 32768,
+      "flash_code_bytes": 394608
+    },
+    "avr": {
+      "success": true,
+      "mcu": "atmega8",
+      "compiler": "AVR GCC 7.3.0",
+      "program_bytes": 3802,
+      "static_ram_bytes": 788,
+      "ram_total_bytes": 1024
+    }
+  },
+  "source_sha256": {
+    "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/SmarthomeBridge.ino": "2d858e4c8764d9e0d51593d934b726dd55bf1637adeb529f2f81acabbe330772",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/SmarthomeBridge.h": "5abd4980ca57560cef420950f81d2473a7714fde878ec917574e95610a41fbe2",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/FlashFirmware.cpp": "218c32e9af2b32b9d4a83e8726aa1fd34952258adad37b8b0360f80edb849cb1",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/data/www/log.html": "5011a74ed8ce71237a144c84e6c3847d22605dcdfaf9380856273ae890f3b453",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/Bridge/Bridge.c": "b757769d6bce3a78730d08355d337b563789fd94fd617aed511356ad3fbba63d",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/Bridge/clunet/clunet_config.h": "b247cee6a0357e8055ff45d48126cc5b3eace202523629d4f1430964deab66a3",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet.c": "76ab4a1688dd3ecec4dbdb07e67ea82b9ce61011f6ec6a388ee27d189187ab43",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet_buffered.h": "eb451adaf726e9ae59de17ee39e8c8194cf0f65c0e10ab565559fa3614a21cb7",
+    "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet_buffered.c": "a00558c9dd9bd4ac1d086e0aef6b962fa4850fdd72cc5e239bb1e09a0661b14e",
+    "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/ClunetMulticast.cpp": "6f79657b37a0bdc36f5a97d4327459d675b4c0da126ceda1fc74f9b7259e6493",
+    "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/ClunetMulticast.h": "244d27ec2b84a1395301b026c03398d5eacf87a2fb0e79cad6432c15f619b5e9",
+    "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/HexUtils.cpp": "82a89acb23c604c156c9e20a8a26bc6935188bc75596fc3749ca20537f9f224d",
+    "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/MessageDecoder.h": "eba611c47dfb9fbb28b61047e15641e2f24772ecc07c6dd8d3be1e6b0f57034f"
+  }
+}

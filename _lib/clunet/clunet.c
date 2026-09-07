@@ -16,6 +16,13 @@ void (*on_data_received_sniff)(unsigned char src_address, unsigned char dst_addr
 
 
 volatile unsigned char clunetSendingState = CLUNET_SENDING_STATE_IDLE;
+volatile unsigned char clunetTrackedResult = 0; // 0 pending, 2 transmitted, 3 expired
+static volatile unsigned char clunetTrackedActive = 0, clunetExpirePending = 0;
+
+static void clunet_finish_tracked(unsigned char result){
+    if (clunetTrackedActive) { clunetTrackedResult = result; clunetTrackedActive = 0; }
+}
+
 volatile unsigned short int clunetSendingDataLength;
 volatile unsigned char clunetSendingCurrentByte;
 volatile unsigned char clunetSendingCurrentBit;
@@ -75,6 +82,7 @@ ISR(CLUNET_TIMER_COMP_VECTOR){
 		case CLUNET_SENDING_STATE_DONE:	// Завершение передачи
 			CLUNET_DISABLE_TIMER_COMP; // Выключаем таймер-сравнение
 			clunetSendingState = CLUNET_SENDING_STATE_IDLE; // Ставим флаг, что передатчик свободен
+            clunet_finish_tracked(2);
 			return;		
 	}
 
@@ -128,6 +136,12 @@ ISR(CLUNET_TIMER_COMP_VECTOR){
 
 
 void clunet_start_send(){
+    if (clunetTrackedActive && clunetExpirePending) {
+        CLUNET_DISABLE_TIMER_COMP; CLUNET_SEND_0;
+        clunetSendingState = CLUNET_SENDING_STATE_IDLE;
+        clunet_finish_tracked(3);
+        return;
+    }
 	CLUNET_SEND_0;
 	if (clunetSendingState != CLUNET_SENDING_STATE_PREINIT) // Если не нужна пауза...
 		clunetSendingState = CLUNET_SENDING_STATE_INIT; // Инициализация передачи
@@ -136,13 +150,7 @@ void clunet_start_send(){
 	CLUNET_ENABLE_TIMER_COMP;			// Включаем прерывание таймера-сравнения
 }
 
-//отправляет соообщение в сеть от любого имени
-void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size){
-		if (CLUNET_OFFSET_DATA+size+1 > CLUNET_SEND_BUFFER_SIZE) return; // Не хватает буфера
-		CLUNET_DISABLE_TIMER_COMP;CLUNET_SEND_0; // Прерываем текущую передачу, если есть такая
-		// Заполняем переменные
-		if (clunetSendingState != CLUNET_SENDING_STATE_PREINIT)
-		clunetSendingState = CLUNET_SENDING_STATE_IDLE;
+static void clunet_prepare_packet(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size){
 		clunetCurrentPrio = prio;
 		dataToSend[CLUNET_OFFSET_SRC_ADDRESS] = src_address;
 		dataToSend[CLUNET_OFFSET_DST_ADDRESS] = dst_address;
@@ -153,11 +161,62 @@ void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsi
 		dataToSend[CLUNET_OFFSET_DATA+i] = data[i];
 		dataToSend[CLUNET_OFFSET_DATA+size] = check_crc((char*)dataToSend, CLUNET_OFFSET_DATA+size);
 		clunetSendingDataLength = CLUNET_OFFSET_DATA + size + 1;
+}
+
+//отправляет соообщение в сеть от любого имени
+void clunet_send_fake(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size){
+		if (CLUNET_OFFSET_DATA+size+1 > CLUNET_SEND_BUFFER_SIZE) return; // Не хватает буфера
+		CLUNET_DISABLE_TIMER_COMP;CLUNET_SEND_0; // Прерываем текущую передачу, если есть такая
+		// Заполняем переменные
+		if (clunetSendingState != CLUNET_SENDING_STATE_PREINIT)
+		clunetSendingState = CLUNET_SENDING_STATE_IDLE;
+        clunet_prepare_packet(src_address, dst_address, prio, command, data, size);
 		if ((clunetReadingState == CLUNET_READING_STATE_IDLE) // Если мы ничего не получаем в данный момент, то посылаем сразу
 		//		|| ((clunetReadingState == CLUNET_READING_STATE_DATA) && (prio > clunetReceivingPrio)) // Либо если получаем, но с более низким приоритетом
 		)
 		clunet_start_send(); // Запускаем передачу сразу
 		else clunetSendingState = CLUNET_SENDING_STATE_WAITING_LINE; // Иначе ждём линию
+}
+
+// Reserve the buffer atomically, but keep RX interrupts running during copy/CRC.
+static unsigned char clunet_try_send_mode(unsigned char src_address, unsigned char dst_address, unsigned char prio, unsigned char command, char* data, unsigned char size, unsigned char tracked){
+    if (CLUNET_OFFSET_DATA + (unsigned int)size + 1 > CLUNET_SEND_BUFFER_SIZE || (size && !data)) return 0;
+    unsigned char saved_sreg = SREG;
+    cli();
+    if (clunetSendingState != CLUNET_SENDING_STATE_IDLE) {
+        SREG = saved_sreg;
+        return 0;
+    }
+    clunetSendingState = CLUNET_SENDING_STATE_PREPARING;
+    clunetTrackedActive = tracked; clunetExpirePending = 0;
+    if (tracked) clunetTrackedResult = 0;
+    SREG = saved_sreg;
+    clunet_prepare_packet(src_address, dst_address, prio, command, data, size);
+    cli();
+    if (clunetReadingState == CLUNET_READING_STATE_IDLE) clunet_start_send();
+    else clunetSendingState = CLUNET_SENDING_STATE_WAITING_LINE;
+    SREG = saved_sreg;
+    return 1;
+}
+
+unsigned char clunet_try_send_fake(unsigned char src, unsigned char dst, unsigned char prio, unsigned char command, char* data, unsigned char size){
+    return clunet_try_send_mode(src, dst, prio, command, data, size, 0);
+}
+unsigned char clunet_try_send_tracked(unsigned char src, unsigned char dst, unsigned char prio, unsigned char command, char* data, unsigned char size){
+    return clunet_try_send_mode(src, dst, prio, command, data, size, 1);
+}
+void clunet_expire_tracked(){
+    unsigned char saved_sreg = SREG; cli();
+    if (clunetTrackedActive) {
+        clunetExpirePending = 1; // A frame already on the wire may finish, but never retry after expiry.
+        if (clunetSendingState == CLUNET_SENDING_STATE_WAITING_LINE ||
+            clunetSendingState == CLUNET_SENDING_STATE_PREINIT || clunetSendingState == CLUNET_SENDING_STATE_INIT) {
+            CLUNET_DISABLE_TIMER_COMP; CLUNET_SEND_0;
+            clunetSendingState = CLUNET_SENDING_STATE_IDLE;
+            clunet_finish_tracked(3);
+        }
+    }
+    SREG = saved_sreg;
 }
 
 void clunet_send(unsigned char address, unsigned char prio, unsigned char command, char* data, unsigned char size){
@@ -182,7 +241,12 @@ inline void clunet_data_received(unsigned char src_address, unsigned char dst_ad
 
 #if CLUNET_AUTOREPLY_PING_DISCOVERY == 1
 
-	if ((clunetSendingState == CLUNET_SENDING_STATE_IDLE) || (clunetCurrentPrio <= CLUNET_PRIORITY_MESSAGE)){
+#if CLUNET_AUTOREPLY_IDLE_ONLY
+    // A bridge must never replace a forwarded command with a service reply.
+    if (clunetSendingState == CLUNET_SENDING_STATE_IDLE){
+#else
+	if (clunetSendingState != CLUNET_SENDING_STATE_PREPARING && ((clunetSendingState == CLUNET_SENDING_STATE_IDLE) || (clunetCurrentPrio <= CLUNET_PRIORITY_MESSAGE))){
+#endif
 		if (command == CLUNET_COMMAND_DISCOVERY){ // Ответ на поиск устройств
 			
 			#ifdef CLUNET_DEVICE_NAME

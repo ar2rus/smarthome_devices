@@ -1,0 +1,77 @@
+{
+  "verified_at": "2026-09-07T03:57:35.201770+00:00",
+  "checks": {
+    "concurrency_regression": "PASS ASan+UBSan; extracted actual driver/dispatch/lease/HTTP upload callbacks, hardware/transport mocked",
+    "stability_regression": "PASS ASan+UBSan",
+    "multicast_regression": "PASS ASan+UBSan, including sender IP/port propagation",
+    "firmware_build": "PASS ESP8266 Core 3.1.2 + AVR GCC 7.3.0",
+    "diff_check": "PASS"
+  },
+  "memory": {
+    "avr_program": 4214,
+    "avr_static_ram": 794,
+    "esp_flash": 401812,
+    "esp_static_ram": 43996,
+    "esp_iram_including_cache": 62367
+  },
+  "artifacts": "/tmp/bridge-concurrency/build",
+  "not_performed": [
+    "hardware upload",
+    "physical UART/CLUNET collision and flash testing",
+    "long-duration load test"
+  ],
+  "files": [
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet.c",
+      "sha256": "6526d5c6cc4cc5337ffefd8ec224d6c0363829ea92fe5217eff9568066db52c1"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/_lib/clunet/clunet.h",
+      "sha256": "1f335ca58903c3761479d2061d44369715f1a8b60db71e9894f49f20ff7c889a"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/Bridge/Bridge.c",
+      "sha256": "a56ba258825178034227d2110ff5f49eb85cd85f4bd40c3ccb563fc2e9edf7c3"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/Bridge/clunet/clunet_config.h",
+      "sha256": "4f7e3ba10f5942e5d1839693512cdb5dca72e615a92b993bb47aee29b1217c82"
+    },
+    {
+      "path": "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/ClunetMulticast.cpp",
+      "sha256": "4d156d6f6719f7da3bb8010f1bc9c93f1e16e9c6d448b7c69a6ad5a47c4149af"
+    },
+    {
+      "path": "/Users/arthur/Documents/Arduino/libraries/ClunetMulticast/src/ClunetMulticast.h",
+      "sha256": "97c20cede5722f3cde1c74b659cc43466dee5c2708621c37bd1ed5d6d1392cd9"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/BootloaderLease.h",
+      "sha256": "e4595ff2e65171c6239a8ffb136cb63fd1d50fe408b0eca2fc0788faec3a8cb2"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/FlashFirmware.cpp",
+      "sha256": "baaea64c2b3ac95e6ea06ee9c55900ff82bece4bbd91a589a16d3e4ddcd2d9bc"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/FlashFirmware.h",
+      "sha256": "7320fa11339ffed9c2ffd463e98f675f103798f92ce6677a0e1cfaf29c3e52c9"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/SmarthomeBridge.ino",
+      "sha256": "e6fd488e4dee015df65352fabc54ad6c5c55fe502e8c50a08e9791eba48780a1"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/concurrency_regression.py",
+      "sha256": "8ce041180515641ad4048f7f75289d5ec4daed6734c9b82038bc4aae85182a7f"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/stability_regression.py",
+      "sha256": "897a0b4bf0339a161fb606c99cf9b0af9245b794f37c23103ebc0674188e3e04"
+    },
+    {
+      "path": "/Users/arthur/Documents/GitHub/smarthome_devices/bridge/src/SmarthomeBridge/tests/multicast_regression.py",
+      "sha256": "aa869a8bf7457fc2844349892dc834ea897a4216303dd47f4dd2d8223e4e1f2f"
+    }
+  ]
+}

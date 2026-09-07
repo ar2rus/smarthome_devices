@@ -17,13 +17,15 @@ char clunet_buffered_push(unsigned char src_address, unsigned char dst_address,
 			unsigned char command, char* data, unsigned char size){
 	if (!FIFO_IS_FULL(fifo)){
 		if (size <= CLUNET_BUFFERED_DATA_MAX_LENGTH){
-			clunet_msg* msg = FIFO_PUSH(fifo);
+			clunet_msg* msg = &fifo.buf[fifo.head & (FIFO_SIZE(fifo)-1)];
 			
 			msg->src_address = src_address;
 			msg->dst_address = dst_address;
 			msg->command = command;
 			msg->size = size;
-			memcpy(&(msg->data), data, size);
+			if (size) memcpy(&(msg->data), data, size);
+            __asm__ __volatile__("" ::: "memory");
+            fifo.head++;
 			
 			return 1;
 		}

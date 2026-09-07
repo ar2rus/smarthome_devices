@@ -10,6 +10,8 @@
 
 /* Device address (0-254) */
 #define CLUNET_DEVICE_ID 0x00
+// Preserve pending bridge transmissions when discovery/ping arrive.
+#define CLUNET_AUTOREPLY_IDLE_ONLY 1
 /*0 dec*/
 
 /* Device name */
