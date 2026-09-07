@@ -69,6 +69,7 @@ char uart_send_message(char code,char* data,unsigned char length){
   assert(code==4 && length==18 && data[1]==2); grants += data[2]; return 1;
 }
 void discovery_listen_header(unsigned char,unsigned char){}
+void discovery_start_if_request(unsigned char,unsigned char){}
 unsigned char clunet_try_send_tracked(unsigned char,unsigned char,unsigned char priority,unsigned char,char*,unsigned char){
   assert(priority==CLUNET_PRIORITY_MESSAGE); if(clunetSendingState) return 0;
   ++sends; clunetSendingState=1; return 1;

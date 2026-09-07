@@ -378,7 +378,6 @@
       var connectStateAt = 0;
       var requestBusy = false;
       var BRIDGE_ID = 128;
-      var DISCOVERY_COMMAND = 0;
       var recentRows = [];
 
       var sourceSelect = document.getElementById("source-filter");
@@ -778,6 +777,10 @@
           .then(function(text) {
             try {
               var payload = JSON.parse(text);
+              if (payload.error) {
+                setActivity("Request error: " + payload.error, true);
+                return;
+              }
               var responseRows = extractResponseRows(payload);
               if (responseRows.length) {
                 prependRows(responseRows);
@@ -802,7 +805,6 @@
           return;
         }
 
-        prependRows([makeUiRow(255, DISCOVERY_COMMAND, "", "UI discovery")]);
         setActivity("Sending discovery...");
         setRequestBusy(true);
         fetch("/discovery")
@@ -817,9 +819,12 @@
           .then(function(text) {
             try {
               var payload = JSON.parse(text);
+              if (payload.error) {
+                setActivity("Discovery error: " + payload.error, true);
+                return;
+              }
               var responseRows = extractResponseRows(payload);
               if (responseRows.length) {
-                prependRows(responseRows);
                 setActivity("Discovery completed: " + responseRows.length + " response(s).");
               } else {
                 setActivity("Discovery completed with no response rows.");

@@ -89,6 +89,7 @@ char uart_ready_to_send(){return 1;}
 std::vector<char> response;
 char uart_send_message(char code,char* p,unsigned char n){assert(code==4);response.assign(p,p+n);return 1;}
 void discovery_listen_header(unsigned char,unsigned char){}
+void discovery_start_if_request(unsigned char,unsigned char){}
 '''
 chunk=avr[avr.index('static unsigned int bridge_now'):avr.index('// Alternate credit replies')]
 code+=chunk.replace('unsigned int','uint16_t')+r'''
@@ -113,6 +114,52 @@ int main(){
 }
 '''
 run('avr',code)
+# Physical Discovery: one bounded pending send, exact unique response count, and multicast mirror.
+code=r'''
+#define CLUNET_SENDING_STATE_IDLE 0
+#define CLUNET_PRIORITY_MESSAGE 3
+#define CLUNET_BROADCAST_ADDRESS 255
+#define CLUNET_COMMAND_DISCOVERY 0
+#define CLUNET_COMMAND_DISCOVERY_RESPONSE 1
+#define DISCOVERY_OBSERVE_PERIOD 2000
+#define DISCOVERY_SHOW_PERIOD 10
+#define BUTTON_DISCOVERY_PENDING_PERIOD 500
+#define BUTTON_DISCOVERY_TX_PERIOD 1000
+int discovery_observe_time=0,discovery_show_time=0;
+unsigned char discovery_responses_count=0,discovery_seen[16]={};
+static unsigned char button_discovery_pending=0,button_discovery_active=0;
+static unsigned int button_discovery_requested_at=0,button_discovery_started_at=0;
+unsigned char clunetSendingState=0,clunetTrackedResult=0;
+unsigned char SREG=128;
+unsigned int clunet_queue_drops=0;
+int sends=0,mirrors=0,expires=0;
+void cli(){SREG=0;}
+#define CLUNET_MULTICAST_DEVICE(a) ((a)&128)
+unsigned char clunet_try_send_tracked(unsigned char,unsigned char,unsigned char,unsigned char,char*,unsigned char){
+ if(clunetSendingState)return 0;++sends;clunetSendingState=1;clunetTrackedResult=0;return 1;
+}
+void clunet_expire_tracked(){++expires;clunetTrackedResult=3;clunetSendingState=0;}
+unsigned char clunet_buffered_push(unsigned char src,unsigned char dst,unsigned char command,char*,unsigned char size){
+ assert(src==0 && dst==255 && command==0 && size==0);++mirrors;return 1;
+}
+'''
+for signature in ['void discovery_begin(', 'void discovery_start_if_request(', 'void discovery_listen_header(', 'void discovery_broadcast(', 'void service_button_discovery(']:code+=fun(avr,signature)+'\n'
+code+=r'''
+int main(){
+ discovery_broadcast(100);clunetSendingState=1;service_button_discovery(200);assert(!sends);
+ clunetSendingState=0;service_button_discovery(300);assert(sends==1 && mirrors==1 && discovery_observe_time==2000);
+ discovery_listen_header(7,1);discovery_listen_header(7,1);discovery_listen_header(8,1);discovery_listen_header(135,1);discovery_listen_header(9,2);
+ assert(discovery_responses_count==2 && SREG==128);
+ clunetTrackedResult=2;clunetSendingState=0;service_button_discovery(301);
+ discovery_broadcast(1000);clunetSendingState=1;service_button_discovery(1500);clunetSendingState=0;service_button_discovery(1501);
+ assert(sends==1); // A busy request expires instead of firing late.
+ discovery_broadcast(2000);service_button_discovery(2000);assert(sends==2 && mirrors==2);
+ service_button_discovery(3000);assert(expires==1);
+ discovery_start_if_request(255,0);assert(discovery_responses_count==0 && discovery_observe_time==2000);
+ puts("PASS: physical Discovery bounded pending/TX, exact unique count, explicit observation, multicast mirror");
+}
+'''
+run('discovery',code)
 # Host-side flash implementation, unchanged legacy frame bytes, strict HEX checks and terminal states.
 constants=flash[flash.index('static constexpr uint8_t UART_MESSAGE_CODE_CLUNET'):flash.index('static const __FlashStringHelper*')]
 code=r'''

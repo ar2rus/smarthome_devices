@@ -56,6 +56,8 @@ uint32_t suppressedEvents = 0, unobservedEvents = 0, hardwareOverruns = 0, hardw
 api_request_state* retainApiRequestState(api_request_state* state);
 void releaseApiRequestState(api_request_state* state);
 AsyncWebServerRequest* getApiRequestWebRequest(api_request_state* state);
+bool completeApiRequestState(api_request_state* state, const char* body, size_t length);
+bool completeApiRequestError(api_request_state* state, const char* error);
 void deleteApiRequest(api_request* request);
 void freeApiResponse();
 
@@ -175,6 +177,9 @@ api_request_state* createApiRequestState(AsyncWebServerRequest* webRequest){
   api_request_state* state = (api_request_state*)malloc(sizeof(api_request_state));
   if (state){
     state->webRequest = webRequest;
+    state->responseBody = NULL;
+    state->responseLength = 0;
+    state->responseReady = false;
     state->refs = 1;
   }
   return state;
@@ -193,6 +198,7 @@ void releaseApiRequestState(api_request_state* state){
       state->refs--;
     }
     if (!state->refs){
+      free(state->responseBody);
       free(state);
     }
   }
@@ -200,6 +206,25 @@ void releaseApiRequestState(api_request_state* state){
 
 AsyncWebServerRequest* getApiRequestWebRequest(api_request_state* state){
   return state != NULL ? state->webRequest : NULL;
+}
+
+bool completeApiRequestState(api_request_state* state, const char* body, size_t length){
+  if (state == NULL || state->responseReady) return false;
+  char* copy = (char*)malloc(length + 1);
+  if (copy == NULL) return false;
+  if (length) memcpy(copy, body, length);
+  copy[length] = 0;
+  state->responseBody = copy;
+  state->responseLength = length;
+  state->responseReady = true;
+  return true;
+}
+
+bool completeApiRequestError(api_request_state* state, const char* error){
+  char json[96];
+  int length = snprintf(json, sizeof(json), "{\"error\":\"%s\",\"responses\":[]}", error);
+  if (length < 0 || (size_t)length >= sizeof(json)) return false;
+  return completeApiRequestState(state, json, length);
 }
 
 void deleteApiRequest(api_request* request){
@@ -252,7 +277,24 @@ void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t comman
     ar->responseTimeout = responseTimeout;
     ar->size = size;
     if (size) memcpy(ar->data, data, size);
-    apiRequestsQueue.add(ar, millis());
+    AsyncWebServerResponse* response = webRequest->beginChunkedResponse("application/json", [requestState](uint8_t* buffer, size_t maxLen, size_t index) -> size_t {
+      if (!requestState->responseReady) return RESPONSE_TRY_AGAIN;
+      if (index >= requestState->responseLength) return 0;
+      size_t count = min(maxLen, requestState->responseLength - index);
+      memcpy(buffer, requestState->responseBody + index, count);
+      return count;
+    });
+    if (response == NULL) {
+      deleteApiRequest(ar);
+      webRequest->send(503, "text/plain", "busy");
+      return;
+    }
+    if (!apiRequestsQueue.add(ar, millis())) {
+      delete response;
+      deleteApiRequest(ar);
+      webRequest->send(503, "text/plain", "bridge busy");
+      return;
+    }
 
     api_request_state* disconnectState = retainApiRequestState(requestState);
     webRequest->onDisconnect([disconnectState](){
@@ -261,6 +303,8 @@ void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t comman
         releaseApiRequestState(disconnectState);
       }
     });
+    response->addHeader("Cache-Control", "no-store");
+    webRequest->send(response);
 }
 
 void _request(AsyncWebServerRequest* webRequest, uint8_t address, uint8_t command, char* data, uint8_t size,
@@ -464,8 +508,7 @@ void setup() {
       }
 
       if (apiResponse != NULL && apiResponse->requestId == requestId){
-        AsyncWebServerRequest* webRequest = getApiRequestWebRequest(apiResponse->state);
-        if (webRequest != NULL){
+        if (getApiRequestWebRequest(apiResponse->state) != NULL){
           DynamicJsonDocument doc(4196);
           JsonObject root = doc.to<JsonObject>();
           root["id"] = requestId;
@@ -491,10 +534,24 @@ void setup() {
             }
           }
 
-          String json;
-          serializeJson(doc, json);
-          bool hasResponse = !responses->isEmpty();
-          webRequest->send(doc.overflowed() ? 503 : (hasResponse ? 200 : 504), "application/json", json);
+          if (doc.overflowed()) {
+            completeApiRequestError(apiResponse->state, "response too large");
+          } else {
+            size_t jsonLength = measureJson(doc);
+            char* json = (char*)malloc(jsonLength + 1);
+            if (json != NULL) {
+              serializeJson(doc, json, jsonLength + 1);
+              if (!apiResponse->state->responseReady) {
+                apiResponse->state->responseBody = json;
+                apiResponse->state->responseLength = jsonLength;
+                apiResponse->state->responseReady = true;
+              } else {
+                free(json);
+              }
+            } else {
+              completeApiRequestError(apiResponse->state, "out of memory");
+            }
+          }
         }
         freeApiResponse();
       }
@@ -916,8 +973,7 @@ void loop() {
   }
   FlashFirmware::process();
   if (apiResponse && (!getApiRequestWebRequest(apiResponse->state) || !NetworkConfig::stationConnected() || FlashFirmware::isTrafficMuted())) {
-    AsyncWebServerRequest* request = getApiRequestWebRequest(apiResponse->state);
-    if (request) request->send(503, "text/plain", "bridge maintenance");
+    if (getApiRequestWebRequest(apiResponse->state)) completeApiRequestError(apiResponse->state, "bridge maintenance");
     clunet.cancelRequest(); freeApiResponse();
   }
 
@@ -992,7 +1048,7 @@ void loop() {
       api_request* ar = apiRequestsQueue.front();
       AsyncWebServerRequest* webRequest = getApiRequestWebRequest(ar->state);
       if (apiRequestsQueue.age(now) > 5000) {
-        if (webRequest) webRequest->send(503, "text/plain", "request queue expired");
+        if (webRequest) completeApiRequestError(ar->state, "request queue expired");
         apiRequestsQueue.remove(ar); continue;
       }
       if (webRequest != NULL){

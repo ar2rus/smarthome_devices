@@ -36,32 +36,75 @@ void display_update(){
 
 #define DISCOVERY_OBSERVE_PERIOD 2000	//ms
 #define DISCOVERY_SHOW_PERIOD 10	    //s
+#define BUTTON_DISCOVERY_PENDING_PERIOD 500 //ms
+#define BUTTON_DISCOVERY_TX_PERIOD 1000     //ms
 
 signed int discovery_observe_time = 0;
 signed int discovery_show_time = 0;
 unsigned char discovery_responses_count = 0;
+unsigned char discovery_seen[16];
+static unsigned char button_discovery_pending = 0;
+static unsigned char button_discovery_active = 0;
+static unsigned int button_discovery_requested_at = 0;
+static unsigned int button_discovery_started_at = 0;
 
-void discovery_broadcast(){
-	if (clunetSendingState != CLUNET_SENDING_STATE_IDLE) return;
-	clunet_try_send_fake(0x00, CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY, 0, 0);
+void discovery_begin(){
+	memset(discovery_seen, 0, sizeof(discovery_seen));
+	discovery_responses_count = 0;
+	discovery_observe_time = DISCOVERY_OBSERVE_PERIOD;
+	discovery_show_time = DISCOVERY_SHOW_PERIOD;
 }
 
-void discovery_listen_header(unsigned char dst, unsigned char command){
+void discovery_start_if_request(unsigned char dst, unsigned char command){
 	if (dst == CLUNET_BROADCAST_ADDRESS && command == CLUNET_COMMAND_DISCOVERY){
-		discovery_responses_count = 0;
-		discovery_observe_time = DISCOVERY_OBSERVE_PERIOD;
-		discovery_show_time = DISCOVERY_SHOW_PERIOD;
+		discovery_begin();
 	}
+}
 
-	if (discovery_observe_time){
-		if (command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+void discovery_listen_header(unsigned char src, unsigned char command){
+	if (discovery_observe_time && command == CLUNET_COMMAND_DISCOVERY_RESPONSE){
+		unsigned char address = src & 0x7F;
+		unsigned char mask = 1 << (address & 7);
+		unsigned char* seen = &discovery_seen[address >> 3];
+		if (!(*seen & mask)){
+			*seen |= mask;
 			discovery_responses_count++;
 		}
 	}
 }
 
+void discovery_listen(clunet_msg* msg) { discovery_listen_header(msg->src_address, msg->command); }
 
-void discovery_listen(clunet_msg* msg) { discovery_listen_header(msg->dst_address, msg->command); }
+void discovery_broadcast(unsigned int now){
+	if (!button_discovery_pending && !button_discovery_active){
+		button_discovery_pending = 1;
+		button_discovery_requested_at = now;
+	}
+}
+
+void service_button_discovery(unsigned int now){
+	if (button_discovery_active){
+		if ((unsigned int)(now - button_discovery_started_at) >= BUTTON_DISCOVERY_TX_PERIOD) clunet_expire_tracked();
+		if (clunetTrackedResult) button_discovery_active = 0;
+	}
+	if (!button_discovery_pending) return;
+	if ((unsigned int)(now - button_discovery_requested_at) >= BUTTON_DISCOVERY_PENDING_PERIOD){
+		button_discovery_pending = 0;
+		return;
+	}
+	if (clunetSendingState != CLUNET_SENDING_STATE_IDLE) return;
+	if (clunet_try_send_tracked(0x00, CLUNET_BROADCAST_ADDRESS, CLUNET_PRIORITY_MESSAGE, CLUNET_COMMAND_DISCOVERY, 0, 0)){
+		button_discovery_pending = 0;
+		button_discovery_active = 1;
+		button_discovery_started_at = now;
+		discovery_begin();
+		unsigned char saved = SREG;
+		cli();
+		unsigned char mirrored = clunet_buffered_push(0x00, CLUNET_BROADCAST_ADDRESS, CLUNET_COMMAND_DISCOVERY, 0, 0);
+		SREG = saved;
+		if (!mirrored) clunet_queue_drops++;
+	}
+}
 
 ISR(TIMER_COMP_VECTOR){
 	++systime;
@@ -305,7 +348,8 @@ char on_uart_message(unsigned char code, char* data, unsigned char length){
         if (!budget || budget > 2000 || size > 68 || length != 8 + size || !CLUNET_MULTICAST_DEVICE(src)) return 1;
         if (!clunet_try_send_tracked(src, dst, CLUNET_PRIORITY_MESSAGE, command, data + 8, size)) return 1;
         tx_started = bridge_now; tx_budget = budget; tx_status = 1;
-        discovery_listen_header(dst, command);
+		discovery_listen_header(src, command);
+        discovery_start_if_request(dst, command);
         return 1;
     }
     if (code == UART_MESSAGE_CODE_CLUNET && data && length >= 4){
@@ -317,7 +361,8 @@ char on_uart_message(unsigned char code, char* data, unsigned char length){
             if (tx_status == 1 || !clunet_try_send_tracked(src, dst, CLUNET_PRIORITY_MESSAGE, command, data + 4, size)) return 0;
             tx_id = 0; tx_started = bridge_now; tx_budget = 2000; tx_status = 1;
             legacy_waiting = 0;
-            discovery_listen_header(dst, command);
+			discovery_listen_header(src, command);
+            discovery_start_if_request(dst, command);
         }
     }
     return 1;
@@ -368,6 +413,7 @@ int main(void){
 		display.led_on = CLUNET_SENDING | CLUNET_READING;
         service_transport();
 		service_uart();
+		service_button_discovery(bridge_now);
 			
 		if (prev_systime != systime){
 			
@@ -398,7 +444,7 @@ int main(void){
 			if (new_button_value != button_value){
 				button_value = new_button_value;
 				if (!new_button_value){
-					discovery_broadcast();
+					discovery_broadcast(bridge_now);
 				}
 			}
 		}

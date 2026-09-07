@@ -28,6 +28,9 @@ typedef struct api_request_state api_request_state;
 
 struct api_request_state{
   AsyncWebServerRequest* webRequest;
+  char* responseBody;
+  size_t responseLength;
+  volatile bool responseReady;
   uint8_t refs;
 };
 
