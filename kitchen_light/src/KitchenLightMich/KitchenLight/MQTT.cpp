@@ -93,7 +93,7 @@ static String mqttHomeAssistantDiscoveryPayload() {
   payload += "\"device\":{\"identifiers\":[\"" MQTT_CLIENT_ID "\"],";
   payload += "\"name\":\"Kitchen Light\",";
   payload += "\"manufacturer\":\"KitchenLight\",";
-  payload += "\"model\":\"" CLUNET_DEVICE_NAME "\"}";
+  payload += "\"model\":\"" MQTT_DISCOVERY_DEVICE_MODEL "\"}";
   payload += "}";
   return payload;
 }

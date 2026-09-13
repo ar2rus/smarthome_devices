@@ -6,6 +6,7 @@
 
 #define CLUNET_DEVICE_ID 0x89
 #define CLUNET_DEVICE_NAME "KitchenLightNew"
+#define MQTT_DISCOVERY_DEVICE_MODEL "Light Controller"
 
 
 #define MQTT_CLIENT_ID "kitchen-light"
