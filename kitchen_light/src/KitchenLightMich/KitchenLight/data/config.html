@@ -164,7 +164,7 @@
         <div class="card">
             <div class="headerRow">
                 <h1>Настройки Kitchen Light</h1>
-                <div class="topLinks">
+                <div id="homeLinkContainer" class="topLinks" style="display:none;">
                     <a class="linkButton secondary" href="/">Главная</a>
                 </div>
             </div>
@@ -295,6 +295,7 @@
             const modeBadge = document.getElementById('modeBadge');
             const modeDescription = document.getElementById('modeDescription');
             const apOnlyNote = document.getElementById('apOnlyNote');
+            const homeLinkContainer = document.getElementById('homeLinkContainer');
 
             const labels = {
                 idle: 'Ожидание',
@@ -305,6 +306,7 @@
 
             const modeLabel = labels[network.mode] || network.mode || 'Неизвестно';
             modeBadge.textContent = modeLabel;
+            homeLinkContainer.style.display = network.mode === 'ap' ? 'none' : 'flex';
 
             if (network.mode === 'ap') {
                 modeDescription.textContent = 'Устройство подняло свою точку доступа и ждёт сетевые настройки.';
