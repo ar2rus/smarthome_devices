@@ -27,7 +27,8 @@
             margin-top: 0;
         }
         h1 {
-            margin-bottom: 8px;
+            font-size: 24px;
+            margin-bottom: 0;
         }
         .topLinks {
             display: flex;
@@ -109,7 +110,7 @@
             font-weight: 600;
             margin-bottom: 4px;
         }
-        input {
+        input, select {
             width: 100%;
             box-sizing: border-box;
             padding: 10px 12px;
@@ -156,15 +157,6 @@
             gap: 8px;
             margin-top: 16px;
         }
-        @media (max-width: 640px) {
-            .headerRow {
-                align-items: flex-start;
-            }
-            .topLinks {
-                width: 100%;
-                margin-left: 0;
-            }
-        }
     </style>
 </head>
 <body>
@@ -201,12 +193,12 @@
                     <span id="mqttStatus">-</span>
                 </div>
                 <div class="statusItem">
-                    <strong>Сохраненный WiFi</strong>
-                    <span id="savedWifi">-</span>
+                    <strong>Время устройства</strong>
+                    <span id="deviceTime">--:--:--</span>
                 </div>
             </div>
             <div id="apOnlyNote" class="note" style="display:none;">
-                В режиме AP доступна только страница конфигурации. MQTT и работа в домашней сети появятся после сохранения настроек WiFi и перезагрузки устройства.
+                В режиме AP доступна только страница конфигурации. MQTT, NTP и основная UI-страница полноценно заработают после подключения устройства к домашнему WiFi.
             </div>
         </div>
 
@@ -271,6 +263,16 @@
                 </div>
             </div>
 
+            <div class="card">
+                <h2>Время</h2>
+                <div class="grid">
+                    <div>
+                        <label for="timeZone">Таймзона</label>
+                        <select id="timeZone"></select>
+                    </div>
+                </div>
+            </div>
+
             <div class="actions">
                 <button id="saveButton" type="submit">Сохранить и перезагрузить</button>
             </div>
@@ -278,6 +280,11 @@
     </div>
 
     <script>
+        let deviceTimeOffsetMs = 0;
+        let deviceTimeValid = false;
+        let currentTimeZoneId = '';
+        let timeTicker = null;
+
         function setMessage(text, type) {
             const message = document.getElementById('message');
             message.textContent = text;
@@ -317,10 +324,44 @@
             document.getElementById('apPassword').textContent = network.apPassword || '-';
             document.getElementById('apIp').textContent = network.apIp || '-';
             document.getElementById('stationIp').textContent = network.stationIp || '-';
-            document.getElementById('savedWifi').textContent = network.savedWifi ? 'да' : 'нет';
             document.getElementById('mqttStatus').textContent = mqtt.enabled
                 ? (mqtt.connected ? 'подключен' : 'настроен, нет соединения')
                 : 'отключен';
+        }
+
+        function updateTimeDisplay() {
+            const element = document.getElementById('deviceTime');
+            if (!deviceTimeValid) {
+                element.textContent = '--:--:--';
+                return;
+            }
+
+            const date = new Date(Date.now() + deviceTimeOffsetMs);
+            try {
+                element.textContent = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: currentTimeZoneId || undefined,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }).format(date);
+            } catch (error) {
+                element.textContent = date.toLocaleTimeString('ru-RU');
+            }
+        }
+
+        function applyTime(data) {
+            const epoch = Number(data.epoch);
+            deviceTimeValid = Boolean(data.valid);
+            if (!Number.isNaN(epoch)) {
+                deviceTimeOffsetMs = epoch * 1000 - Date.now();
+            }
+            currentTimeZoneId = data.timeZone || currentTimeZoneId;
+            updateTimeDisplay();
+
+            if (timeTicker) {
+                clearInterval(timeTicker);
+            }
+            timeTicker = setInterval(updateTimeDisplay, 1000);
         }
 
         function syncStaticIpFields() {
@@ -344,8 +385,37 @@
             document.getElementById('mqttUser').value = data.mqtt.user || '';
             document.getElementById('mqttPassword').value = data.mqtt.password || '';
 
+            if (data.timeZone) {
+                currentTimeZoneId = data.timeZone;
+                document.getElementById('timeZone').value = data.timeZone;
+            }
+
             setMode(data.network, data.mqtt);
+            applyTime(data);
             syncStaticIpFields();
+        }
+
+        async function loadTimeZones() {
+            const response = await fetch('/api/timezones');
+            if (!response.ok) {
+                throw new Error('Не удалось загрузить список таймзон');
+            }
+
+            const data = await response.json();
+            const select = document.getElementById('timeZone');
+            select.innerHTML = '';
+
+            (data.zones || []).forEach(zone => {
+                const option = document.createElement('option');
+                option.value = zone.id;
+                option.textContent = zone.label || zone.id;
+                select.appendChild(option);
+            });
+
+            if (data.current) {
+                currentTimeZoneId = data.current;
+                select.value = data.current;
+            }
         }
 
         async function loadConfig() {
@@ -379,7 +449,8 @@
                     port: Number(document.getElementById('mqttPort').value || 0),
                     user: document.getElementById('mqttUser').value.trim(),
                     password: document.getElementById('mqttPassword').value.trim()
-                }
+                },
+                timeZone: document.getElementById('timeZone').value
             };
 
             try {
@@ -407,6 +478,7 @@
             document.getElementById('useStaticIp').addEventListener('change', syncStaticIpFields);
 
             try {
+                await loadTimeZones();
                 await loadConfig();
             } catch (error) {
                 setMessage(error.message || 'Ошибка загрузки страницы', 'error');

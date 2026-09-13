@@ -159,6 +159,7 @@ void setup() {
   loadButtonBrightness();
 
   littleFsAvailable = LittleFS.begin();
+  loadTimeSettings();
 
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);

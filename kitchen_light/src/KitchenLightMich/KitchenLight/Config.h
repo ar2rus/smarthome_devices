@@ -14,6 +14,7 @@ extern bool littleFsAvailable;
 extern char accessPointSsid[32];
 
 void initializeConfig();
+void loadTimeSettings();
 bool hasSavedWiFiSettings();
 bool hasConfiguredWiFiSettings();
 bool loadPersistedSettings();

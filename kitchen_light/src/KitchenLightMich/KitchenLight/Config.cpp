@@ -2,6 +2,8 @@
 
 #include <DNSServer.h>
 #include <EEPROM.h>
+#include <LittleFS.h>
+#include "TimeZones.h"
 #include <ESP8266WiFi.h>
 
 #include "MQTT.h"
@@ -12,6 +14,36 @@ unsigned long rebootScheduledAt = 0;
 unsigned long lastMqttReconnect = 0;
 bool littleFsAvailable = false;
 char accessPointSsid[32] = {};
+
+static String currentTimeZoneId = DEFAULT_TIMEZONE_ID;
+
+void loadTimeSettings() {
+  if (!littleFsAvailable || !LittleFS.exists("/settings.json")) return;
+  File file = LittleFS.open("/settings.json", "r");
+  if (!file) return;
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, file)) return;
+  String id = doc["timeZone"] | DEFAULT_TIMEZONE_ID;
+  if (findTimeZoneById(id)) currentTimeZoneId = id;
+}
+
+static bool saveTimeSettings(const String& id) {
+  if (!findTimeZoneById(id) || !littleFsAvailable) return false;
+  DynamicJsonDocument doc(256);
+  if (LittleFS.exists("/settings.json")) {
+    File file = LittleFS.open("/settings.json", "r");
+    if (!file || deserializeJson(doc, file) || !doc.is<JsonObject>()) return false;
+  }
+  doc["timeZone"] = id;
+  File file = LittleFS.open("/settings.json.tmp", "w");
+  if (!file) return false;
+  bool written = !doc.overflowed() && serializeJson(doc, file) == measureJson(doc);
+  file.close();
+  if (!written || !LittleFS.rename("/settings.json.tmp", "/settings.json")) return false;
+  currentTimeZoneId = id;
+  configTime(getPosixTimeZone(findTimeZoneById(id)->key), "pool.ntp.org", "time.nist.gov");
+  return true;
+}
 
 static DNSServer dnsServer;
 static unsigned long wifiConnectStartedAt = 0;
@@ -222,7 +254,7 @@ static void handleStationConnected() {
   apModeStartedAt = 0;
 
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  configTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
+  configTime(getPosixTimeZone(findTimeZoneById(currentTimeZoneId)->key), "pool.ntp.org", "time.nist.gov");
 }
 
 static void startAccessPoint() {
@@ -333,6 +365,11 @@ void appendConfigPayload(DynamicJsonDocument& doc) {
   network["stationIp"] = WiFi.localIP().toString();
   network["savedWifi"] = hasSavedWiFiSettings();
   network["usingFallbackDefaults"] = false;
+  doc["timeZone"] = currentTimeZoneId;
+  time_t now = time(nullptr);
+  doc["epoch"] = static_cast<long>(now);
+  doc["valid"] = now > 1609459200;
+
 }
 
 static bool copyBodyToRequestBuffer(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
@@ -358,6 +395,19 @@ static bool copyBodyToRequestBuffer(AsyncWebServerRequest *request, uint8_t *dat
 }
 
 void setupConfigApiRoutes(AsyncWebServer& server) {
+  server.on("/api/timezones", HTTP_GET, [](AsyncWebServerRequest *request) {
+    DynamicJsonDocument doc(2048);
+    doc["current"] = currentTimeZoneId;
+    JsonArray zones = doc.createNestedArray("zones");
+    for (size_t i = 0; i < TIME_ZONES_COUNT; ++i) {
+      JsonObject zone = zones.createNestedObject();
+      zone["id"] = TIME_ZONES[i].id;
+      zone["label"] = TIME_ZONES[i].label;
+    }
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
   server.on("/api/config", HTTP_GET, [](AsyncWebServerRequest *request){
     DynamicJsonDocument doc(1024);
     appendConfigPayload(doc);
@@ -389,6 +439,12 @@ void setupConfigApiRoutes(AsyncWebServer& server) {
 
     if (!doc["wifi"].is<JsonObject>() || !doc["mqtt"].is<JsonObject>()) {
       request->send(400, "application/json", "{\"success\":false,\"message\":\"Ожидаются секции wifi и mqtt\"}");
+      return;
+    }
+
+    String timeZone = doc["timeZone"] | currentTimeZoneId.c_str();
+    if (!findTimeZoneById(timeZone)) {
+      request->send(400, "application/json", "{\"success\":false,\"message\":\"Неизвестная таймзона\"}");
       return;
     }
 
@@ -434,6 +490,10 @@ void setupConfigApiRoutes(AsyncWebServer& server) {
       return;
     }
 
+    if (doc.containsKey("timeZone") && !saveTimeSettings(timeZone)) {
+      request->send(500, "application/json", "{\"success\":false,\"message\":\"Сетевые настройки сохранены, но таймзону сохранить не удалось\"}");
+      return;
+    }
     scheduleReboot();
 
     DynamicJsonDocument responseDoc(1152);
