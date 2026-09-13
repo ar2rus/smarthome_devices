@@ -1,7 +1,7 @@
 /**
     Use 3.1.2 esp8266 core
     lwip v2 Higher bandwidth; CPU 80 MHz
-    1M (FS: 128K)
+    1M (FS: 64K)
 
     dependencies:
     https://github.com/me-no-dev/ESPAsyncWebServer

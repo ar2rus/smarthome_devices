@@ -61,12 +61,39 @@ static String mqttLightStatePayload() {
   const int brightness = currentLightBrightness();
 
   String payload = "{";
+  payload += "\"state\":\"";
+  payload += isOn ? "ON" : "OFF";
+  payload += "\",";
   payload += "\"on\":";
   payload += isOn ? "true" : "false";
   payload += ",\"brightness\":";
   payload += String(brightness);
   payload += ",\"pwm\":";
   payload += isPwmActive() ? "true" : "false";
+  payload += "}";
+  return payload;
+}
+
+static String mqttHomeAssistantDiscoveryPayload() {
+  String payload = "{";
+  payload += "\"name\":\"Kitchen Light\",";
+  payload += "\"unique_id\":\"" MQTT_CLIENT_ID "_light\",";
+  payload += "\"object_id\":\"" MQTT_CLIENT_ID "_light\",";
+  payload += "\"schema\":\"json\",";
+  payload += "\"state_topic\":\"" MQTT_TOPIC_LIGHT_STATE "\",";
+  payload += "\"command_topic\":\"" MQTT_TOPIC_LIGHT_SET "\",";
+  payload += "\"brightness\":true,";
+  payload += "\"brightness_scale\":";
+  payload += String(PWM_RANGE);
+  payload += ",\"supported_color_modes\":[\"brightness\"],";
+  payload += "\"transition\":true,";
+  payload += "\"availability_topic\":\"" MQTT_TOPIC_STATUS "\",";
+  payload += "\"payload_available\":\"online\",";
+  payload += "\"payload_not_available\":\"offline\",";
+  payload += "\"device\":{\"identifiers\":[\"" MQTT_CLIENT_ID "\"],";
+  payload += "\"name\":\"Kitchen Light\",";
+  payload += "\"manufacturer\":\"KitchenLight\",";
+  payload += "\"model\":\"" CLUNET_DEVICE_NAME "\"}";
   payload += "}";
   return payload;
 }
@@ -78,6 +105,15 @@ static void publishMqttLightMeta() {
 
   String payload = mqttLightMetaPayload();
   mqttClient.publish(MQTT_TOPIC_LIGHT_META, 0, true, payload.c_str());
+}
+
+static void publishHomeAssistantDiscovery() {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  String payload = mqttHomeAssistantDiscoveryPayload();
+  mqttClient.publish(MQTT_TOPIC_HOME_ASSISTANT_DISCOVERY, 1, true, payload.c_str());
 }
 
 void publishMqttLightState() {
@@ -200,13 +236,89 @@ static bool parseBrightnessCommandPayload(
 }
 
 static void subscribeMqttCommandTopics() {
+  mqttClient.subscribe(MQTT_TOPIC_LIGHT_SET, 1);
   mqttClient.subscribe(MQTT_TOPIC_LIGHT_SET_ON, 1);
   mqttClient.subscribe(MQTT_TOPIC_LIGHT_SET_OFF, 1);
   mqttClient.subscribe(MQTT_TOPIC_LIGHT_SET_TOGGLE, 1);
   mqttClient.subscribe(MQTT_TOPIC_LIGHT_SET_BRIGHTNESS, 1);
 }
 
+static void mqttHomeAssistantCommandReceived(const uint8_t* payload, unsigned int length) {
+  DynamicJsonDocument doc(256);
+  DeserializationError error = deserializeJson(doc, payload, length);
+  if (error) {
+    return;
+  }
+
+  String state = doc["state"] | "";
+  state.trim();
+  state.toUpperCase();
+
+  const bool hasBrightness = doc.containsKey("brightness");
+  int brightness = hasBrightness ? doc["brightness"].as<int>() : 0;
+  if (hasBrightness && (brightness < 0 || brightness > PWM_RANGE)) {
+    return;
+  }
+
+  unsigned long durationSeconds = 0;
+  if (doc.containsKey("duration")) {
+    long value = doc["duration"].as<long>();
+    if (value > 0) {
+      durationSeconds = static_cast<unsigned long>(value);
+    }
+  }
+
+  String effect = doc["effect"] | "";
+  effect.trim();
+
+  unsigned long effectDurationMs = 0;
+  if (doc.containsKey("effect_duration")) {
+    long value = doc["effect_duration"].as<long>();
+    if (value > 0) {
+      effectDurationMs = static_cast<unsigned long>(value);
+    }
+  }
+
+  if (doc.containsKey("transition")) {
+    float transitionSeconds = doc["transition"].as<float>();
+    if (transitionSeconds > 0 && effectDurationMs == 0) {
+      effectDurationMs = static_cast<unsigned long>(transitionSeconds * 1000.0f);
+      if (effect.length() == 0) {
+        effect = "fade";
+      }
+    }
+  }
+
+  if (state == "OFF") {
+    if (effectDurationMs > 0) {
+      applyMqttBrightnessCommand(0, 0, effect.c_str(), effectDurationMs);
+    } else {
+      switch_off(false);
+    }
+    return;
+  }
+
+  if (state == "TOGGLE") {
+    switch_toggle(false);
+    return;
+  }
+
+  if (hasBrightness) {
+    applyMqttBrightnessCommand(brightness, durationSeconds, effect.c_str(), effectDurationMs);
+    return;
+  }
+
+  if (state == "ON") {
+    switch_on(false);
+  }
+}
+
 static void mqttMessageReceived(char* topic, uint8_t* payload, unsigned int length) {
+  if (strcmp(topic, MQTT_TOPIC_LIGHT_SET) == 0) {
+    mqttHomeAssistantCommandReceived(payload, length);
+    return;
+  }
+
   if (strcmp(topic, MQTT_TOPIC_LIGHT_SET_ON) == 0) {
     switch_on(false);
     return;
@@ -278,6 +390,7 @@ void onMqttMessage(
 void publishMqttStartMessages() {
   mqttClient.publish(MQTT_TOPIC_STATUS, 1, true, "online");
   subscribeMqttCommandTopics();
+  publishHomeAssistantDiscovery();
   publishMqttLightMeta();
   publishMqttLightState();
 }
