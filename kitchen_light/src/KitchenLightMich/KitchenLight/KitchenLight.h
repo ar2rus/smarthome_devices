@@ -43,15 +43,8 @@
 
 
 #define PWM_RANGE 1023
-// Keep the MQTT/HA brightness scale at 0..1023, but use finer hardware PWM
-// steps so fades do not visibly jump at low brightness.
-#define PWM_OUTPUT_RANGE 4095
 #define CLUNET_DIMMER_RANGE 255
 #define PWM_FREQUENCY 100
-// The dimmer's values represent perceived brightness.  A LED's light output is
-// linear with PWM duty cycle, but the human eye is not; this makes fades look
-// even instead of changing too quickly at the beginning.
-#define PWM_PERCEPTUAL_GAMMA 1.4f
 
 #define DELAY_BEFORE_TOGGLE 25
 #define DELAY_BEFORE_PWM 500
