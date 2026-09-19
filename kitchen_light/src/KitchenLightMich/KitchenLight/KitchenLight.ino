@@ -41,7 +41,7 @@ unsigned long fade_in_start_time = 0;
 unsigned long button_state_changed_time = 0;
 unsigned long button_pressed_time = 0;
 unsigned long button_dimming_start_time = 0;
-unsigned long last_button_on_time = 0;
+unsigned long last_button_off_time = 0;
 unsigned long mqtt_light_off_deadline = 0;
 unsigned long mqtt_effect_started_at = 0;
 unsigned long mqtt_effect_duration_ms = 0;
@@ -55,7 +55,6 @@ bool mqtt_light_off_use_effect = false;
 int button_dimming_start_value = BUTTON_BRIGHTNESS_DEFAULT;
 int mqtt_effect_start_brightness = 0;
 int mqtt_effect_target_brightness = 0;
-byte button_on_cycle_count = 0;
 bool clunet_handlers_initialized = false;
 uint32_t clunetDiscoveryRequestsSeen = 0;
 uint32_t clunetDiscoveryResponsesSent = 0;
@@ -551,28 +550,14 @@ void loadButtonBrightness() {
 
 bool shouldResetPwmOnButtonTurnOn(unsigned long now) {
   if (!button_cycle_pending) {
-    button_on_cycle_count = 0;
-    last_button_on_time = 0;
+    last_button_off_time = 0;
     return false;
   }
 
   button_cycle_pending = false;
-
-  if (last_button_on_time && now - last_button_on_time <= BUTTON_PWM_RESET_WINDOW) {
-    button_on_cycle_count++;
-  } else {
-    button_on_cycle_count = 1;
-  }
-
-  last_button_on_time = now;
-
-  if (button_on_cycle_count >= 2) {
-    button_on_cycle_count = 0;
-    last_button_on_time = 0;
-    return true;
-  }
-
-  return false;
+  unsigned long time_since_off = now - last_button_off_time;
+  last_button_off_time = 0;
+  return time_since_off <= BUTTON_PWM_RESET_WINDOW;
 }
 
 bool buttonTurnOn(unsigned long now) {
@@ -610,11 +595,12 @@ bool buttonTurnOff() {
   }
 
   button_cycle_pending = true;
+  last_button_off_time = millis();
   return switch_exec(0x00, true);
 }
 
 void startButtonDimming(unsigned long now) {
-  if (button_dimming_active || !button_press_started_while_on || !light_state) {
+  if (button_dimming_active || !light_state) {
     return;
   }
 
@@ -838,8 +824,7 @@ void loop() {
     } else {
       if (button_dimming_active) {
         stopButtonDimming(true);
-      } else if (button_press_started_while_on &&
-                 button_pressed_time &&
+      } else if (button_pressed_time &&
                  m - button_pressed_time >= DELAY_BEFORE_PWM) {
         startButtonDimming(button_pressed_time + DELAY_BEFORE_PWM);
         updateButtonDimming(m);
@@ -857,7 +842,6 @@ void loop() {
 
   if (button_state == LOW &&
       button_pressed_time &&
-      button_press_started_while_on &&
       !button_dimming_active &&
       m - button_pressed_time >= DELAY_BEFORE_PWM) {
     startButtonDimming(m);
