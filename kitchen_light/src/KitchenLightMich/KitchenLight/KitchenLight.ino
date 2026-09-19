@@ -14,6 +14,7 @@
 #include <LittleFS.h>
 #include <EEPROM.h>
 #include <TZ.h>
+#include <math.h>
 
 #include <ESPAsyncWebServer.h>
 #include <ClunetMulticast.h>
@@ -152,7 +153,7 @@ void setup() {
   button_raw_state = button_state;
   button_state_changed_time = millis();
 
-  analogWriteRange(PWM_RANGE);
+  analogWriteRange(PWM_OUTPUT_RANGE);
   analogWriteFreq(PWM_FREQUENCY);
 
   loadButtonBrightness();
@@ -724,7 +725,9 @@ bool dimmerExecute(int value) {
   if (value >= 0 && value <= PWM_RANGE) {
     dimmer_value = value;
     light_state = value > 0;
-    analogWrite(LIGHT_PIN, PWM_RANGE - dimmer_value);
+    float normalizedBrightness = (float)dimmer_value / PWM_RANGE;
+    int pwmDuty = (int)(powf(normalizedBrightness, PWM_PERCEPTUAL_GAMMA) * PWM_OUTPUT_RANGE + 0.5f);
+    analogWrite(LIGHT_PIN, PWM_OUTPUT_RANGE - pwmDuty);
     return true;
   }
   return false;
